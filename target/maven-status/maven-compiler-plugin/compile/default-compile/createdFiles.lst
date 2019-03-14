@@ -1,0 +1,11 @@
+betaBinomialMetaAnalysis\LogLikelihoodFunc.class
+SNPCalling\SNPCaller.class
+meripSeqPeakCalling\peakCaller.class
+SNPCalling\fastqQualify.class
+betaBinomialMetaAnalysis\MetaOddRatio.class
+SNPCalling\SNPExtractProcedure.class
+betaBinomialMetaAnalysis\betaBinomialDistribution.class
+betaBinomialMetaAnalysis\SignificantTest.class
+SNPCalling\sra2fastq.class
+betaBinomialMetaAnalysis\RhoEstimator.class
+betaBinomialMetaAnalysis\RhoDerivation.class
