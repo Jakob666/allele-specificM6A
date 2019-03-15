@@ -48,6 +48,9 @@ public class SNPCaller {
                 int dot = f.getName().lastIndexOf('.');
                 String sraNum = f.getName().substring(0, dot);
 
+                if (new File(outputCellDir, sraNum + "_RefinedSNP.vcf").exists())
+                    continue;
+
                 readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread);
                 filterMappedReads(refGenomeDir, picardJarDir, outputCellDirPath, sraNum);
                 refGenomeDict(picardJarDir, refGenomeFilePath);
