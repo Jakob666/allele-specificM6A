@@ -42,24 +42,28 @@ public class SNPCaller {
         String outputCellDirPath = outputCellDir.getAbsolutePath();
 
         File[] fastqFiles = fastqDirectory.listFiles();
-        for (File f : fastqFiles) {
-            if (f.getName().endsWith(".fastq")) {
-                readLength = getFastqReadLength(f.getAbsolutePath()) - 1;
-                int dot = f.getName().lastIndexOf('.');
-                String sraNum = f.getName().substring(0, dot);
+        if (fastqFiles != null) {
+            for (File f : fastqFiles) {
+                if (f.getName().endsWith(".fastq")) {
+                    readLength = getFastqReadLength(f.getAbsolutePath()) - 1;
+                    int dot = f.getName().lastIndexOf('.');
+                    String sraNum = f.getName().substring(0, dot);
 
-                if (new File(outputCellDir, sraNum + "_RefinedSNP.vcf").exists())
-                    continue;
+                    if (new File(outputCellDir, sraNum + "_RefinedSNP.vcf").exists())
+                        continue;
 
-                readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread);
-                filterMappedReads(refGenomeDir, picardJarDir, outputCellDirPath, sraNum);
-                refGenomeDict(picardJarDir, refGenomeFilePath);
-                createFastaiFile(refGenomeFilePath);
-                readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                variantCalling(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                variantFilter(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
+                    readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread);
+                    filterMappedReads(refGenomeDir, picardJarDir, outputCellDirPath, sraNum);
+                    refGenomeDict(picardJarDir, refGenomeFilePath);
+                    createFastaiFile(refGenomeFilePath);
+                    readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
+                    variantCalling(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
+                    variantFilter(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
+                    mergeVcfFiles(outputCellDirPath, gatkJarDir);
+                }
             }
         }
+
     }
 
     /**
@@ -452,5 +456,46 @@ public class SNPCaller {
         }
 
         return length;
+    }
+
+    /**
+     * merge the output vcf files in one for further heterozygote site analysis
+     * @param outputDir directory stores vcf calling result
+     * @param gatkLocaljar install directory which contains gatk jar package
+     */
+    public static void mergeVcfFiles(String outputDir, String gatkLocaljar) {
+        File outputDirectory = new File(outputDir);
+        String cellLine = outputDirectory.getName();
+        File[] snpCallingRes = outputDirectory.listFiles();
+        File mergeVcfFile = new File(outputDir, cellLine + ".vcf");
+        String cmd = gatkLocaljar;
+        StringBuilder sb = new StringBuilder();
+
+        if (snpCallingRes != null) {
+            for (File f : snpCallingRes) {
+                if (f.getName().endsWith(".vcf"))
+                    sb.append(" -I ");
+                    sb.append(f.getAbsolutePath());
+            }
+            cmd += sb.toString();
+            cmd += " -O " + mergeVcfFile.getAbsolutePath();
+
+            try {
+                Process p = Runtime.getRuntime().exec(cmd);
+                int exitVal = p.waitFor();
+                if (exitVal == 0) {
+                    for (File f : snpCallingRes) {
+                        if (f.getName().endsWith(".vcf")){
+                            p = Runtime.getRuntime().exec("rm -f " + f.getAbsolutePath());
+                            exitVal = p.waitFor();
+                        }
+
+                    }
+                }
+            } catch (IOException | InterruptedException ie) {
+                ie.printStackTrace();
+            }
+
+        }
     }
 }
