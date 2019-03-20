@@ -1,0 +1,175 @@
+package SamtoolsPilupSNPCalling;
+
+
+import java.io.*;
+import java.util.HashMap;
+
+public class AseInference {
+
+    public static void inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools) {
+        pileup(refGenomeFilePath, sortedBamFile, samtools);
+        File outputDir = new File(sortedBamFile).getParentFile();
+        String pileFile = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
+        alleleAbundant(pileFile);
+    }
+
+    /**
+     * ASE inference can be carried out using the mpileup function available with SAMtools. The mpileup function requires a
+     * sorted BAM file (created in the previous step) and a reference genome in FASTA format.
+     * @param refGenomeFilePath reference fasta file absolute path
+     * @param sortedBamFile sorted bam file absolute path
+     * @param samtools executive samtools file
+     */
+    private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools) {
+        File outputDir = new File(sortedBamFile).getParentFile();
+        String outputTextFile = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
+        // samtools mpileup -C50 -f /path/to/FASTA/file/ref.fa output.sorted.bam > columns.txt
+        String cmd = samtools + " -C50 -f " + refGenomeFilePath + " " + sortedBamFile + " > " + outputTextFile;
+
+        try {
+            Process p = Runtime.getRuntime().exec(cmd);
+            int exitVal = p.waitFor();
+            if (exitVal != 0) {
+                throw new RuntimeException("pileup failed");
+            }
+        } catch (IOException | InterruptedException ie) {
+            ie.printStackTrace();
+        }
+    }
+
+    
+    /**
+     * Each symbol in the fifth column represents the nucleotide from one read. The fifth column is encoded relative to
+     * the reference nucleotide
+     * @param pileupFilePath pileupFile path
+     */
+    private static void alleleAbundant(String pileupFilePath) {
+
+        File outputDir = new File(pileupFilePath).getParentFile();
+        File abundantFile = new File(outputDir.getAbsolutePath(), "alleleAbundant.txt");
+
+        // chr6 410512 T 25 .,,,,,,.,.,.,,,..,......^S. ""!#&%%%%%"&%!"!$%#%%!!"
+        try {
+            BufferedReader pileupFile = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(new File(pileupFilePath)))
+            );
+
+            BufferedWriter outputAbundantFile = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(abundantFile))
+            );
+
+            String line = "";
+            HashMap<String, Integer> col5Info;
+            String[] usefulInfo;
+            String outputLine;
+            int total, ambiguous, maxRead;
+            int[] nuclearRead;
+            while (!line.isEmpty()) {
+                line = pileupFile.readLine();
+                if (!line.isEmpty()) {
+                    total = 0;
+                    ambiguous = 0;
+                    String[] colInfo = line.split("\t");
+                    String refNuclear = colInfo[2];
+                    col5Info = decodeCol5(colInfo[4]);
+
+                    int match = col5Info.get("matched");
+                    ambiguous = col5Info.get("ambiguous");
+                    total = col5Info.get("A") + col5Info.get("T") + col5Info.get("C") + col5Info.get("G") + match + ambiguous;
+                    nuclearRead = new int[]{col5Info.get("A"), col5Info.get("T"), col5Info.get("C"), col5Info.get("G")};
+                    maxRead = getMaxRead(nuclearRead);
+
+//                     col5Info.put(refNuclear, col5Info.get(refNuclear) + match);
+
+                    if (0.15 * total <= maxRead && 0.85 * total >= maxRead && total >= 20) {
+                        usefulInfo = new String[]{colInfo[0], colInfo[1], colInfo[2], colInfo[3], col5Info.get("A").toString(), col5Info.get("C").toString(), col5Info.get("T").toString(), col5Info.get("G").toString(), Integer.toString(ambiguous)};
+
+                        StringBuffer sb = new StringBuffer();
+
+                        for (String str : usefulInfo) {
+                            sb.append(str).append("\t");
+                        }
+                        outputLine = sb.toString();
+
+                        outputAbundantFile.write(outputLine);
+                        outputAbundantFile.flush();
+                        sb = null;
+                        outputLine = null;
+                    }
+                }
+
+                pileupFile.close();
+                outputAbundantFile.flush();
+                outputAbundantFile.close();
+            }
+
+        } catch (FileNotFoundException fne) {
+            fne.printStackTrace();
+            System.exit(2);
+        } catch (IOException ie) {
+            ie.printStackTrace();
+            System.exit(3);
+        }
+    }
+
+
+    /**
+     * given the string of the fifth column returns match, mismatch, ambiguous
+     * @param col5Text text of the fifth column
+     */
+    private static HashMap<String, Integer> decodeCol5(String col5Text) {
+        char[] columnText = col5Text.toCharArray();
+        if (columnText.length == 0)
+            throw new RuntimeException("invalid input");
+        HashMap<String, Integer> statisResult = new HashMap<String, Integer>();
+
+        for (char c: columnText) {
+            switch (c) {
+                case '.':
+                case ',':
+                    statisResult.put("matched", statisResult.getOrDefault("matched", 0) + 1);
+                    break;
+                case 'A':
+                case 'a':
+                    statisResult.put("A", statisResult.getOrDefault("A", 0) + 1);
+                    break;
+                case 'T':
+                case 't':
+                    statisResult.put("T", statisResult.getOrDefault("T", 0) + 1);
+                    break;
+                case 'C':
+                case 'c':
+                    statisResult.put("C", statisResult.getOrDefault("C", 0) + 1);
+                    break;
+                case 'G':
+                case 'g':
+                    statisResult.put("G", statisResult.getOrDefault("G", 0) + 1);
+                    break;
+                case 'N':
+                case 'n':
+                    statisResult.put("ambiguous", statisResult.getOrDefault("ambiguous", 0) + 1);
+                    break;
+            }
+        }
+
+        return statisResult;
+    }
+
+
+    /**
+     * get max read of the 4 kind of nucleotide
+     * @param nuclearReads reads
+     * @return max reads number
+     */
+    private static int getMaxRead(int[] nuclearReads) {
+        int max = nuclearReads[0];
+
+        for (int i : nuclearReads) {
+            if (i > max) {
+                max = i;
+            }
+        }
+
+        return max;
+    }
+}
