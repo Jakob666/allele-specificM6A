@@ -1,4 +1,4 @@
-package SamtoolsPilupSNPCalling;
+package SamtoolsPileupSNPCalling;
 
 import GatkSNPCalling.SNPCaller;
 

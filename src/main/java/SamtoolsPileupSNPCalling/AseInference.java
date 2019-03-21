@@ -1,4 +1,4 @@
-package SamtoolsPilupSNPCalling;
+package SamtoolsPileupSNPCalling;
 
 
 import java.io.*;
@@ -37,7 +37,7 @@ public class AseInference {
         }
     }
 
-    
+
     /**
      * Each symbol in the fifth column represents the nucleotide from one read. The fifth column is encoded relative to
      * the reference nucleotide
@@ -64,9 +64,9 @@ public class AseInference {
             String outputLine;
             int total, ambiguous, maxRead;
             int[] nuclearRead;
-            while (!line.isEmpty()) {
+            while (line != null) {
                 line = pileupFile.readLine();
-                if (!line.isEmpty()) {
+                if (line != null) {
                     total = 0;
                     ambiguous = 0;
                     String[] colInfo = line.split("\t");
