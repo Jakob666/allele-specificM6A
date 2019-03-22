@@ -9,6 +9,7 @@ public class SamtoolsPileupSNPCalling {
 
 
         ReadsMapping.alignment(refGenomeFile, fastqFile, execthread);
+        // TODO: complete this procedure
 //        SamtoolsProcessing.samFileProcess(aligmentResultFile, outputDir, sraNum, samtools);
 //        AseInference.inferenceASE(refGenomeFile, sortedBamFile, samtools);
 //        SnpFilter sf = new SnpFilter(refVcfFilePath, rawVcfFile);

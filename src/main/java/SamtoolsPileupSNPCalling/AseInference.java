@@ -13,6 +13,10 @@ public class AseInference {
         alleleAbundant(pileFile);
     }
 
+    public static void onlyAbundant(String pileupFile) {
+        alleleAbundant(pileupFile);
+    }
+
     /**
      * ASE inference can be carried out using the mpileup function available with SAMtools. The mpileup function requires a
      * sorted BAM file (created in the previous step) and a reference genome in FASTA format.
@@ -22,9 +26,9 @@ public class AseInference {
      */
     private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools) {
         File outputDir = new File(sortedBamFile).getParentFile();
-        String outputTextFile = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
-        // samtools mpileup -C50 -f /path/to/FASTA/file/ref.fa output.sorted.bam > columns.txt
-        String cmd = samtools + " -C50 -f " + refGenomeFilePath + " " + sortedBamFile + " > " + outputTextFile;
+        String outputText = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
+        // samtools mpileup -o output.txt -f /data1/hubs/reference_genome/hg38.fa /data1/hubs/samtoolsTest/alignment_sorted.bam
+        String cmd = samtools + " mpileup -o " + outputText + " -f " + refGenomeFilePath + " " + sortedBamFile;
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
@@ -73,16 +77,17 @@ public class AseInference {
                     String refNuclear = colInfo[2];
                     col5Info = decodeCol5(colInfo[4]);
 
-                    int match = col5Info.get("matched");
-                    ambiguous = col5Info.get("ambiguous");
-                    total = col5Info.get("A") + col5Info.get("T") + col5Info.get("C") + col5Info.get("G") + match + ambiguous;
-                    nuclearRead = new int[]{col5Info.get("A"), col5Info.get("T"), col5Info.get("C"), col5Info.get("G")};
+                    int match = col5Info.getOrDefault("matched", 0);
+                    ambiguous = col5Info.getOrDefault("ambiguous", 0);
+                    total = col5Info.getOrDefault("A", 0) + col5Info.getOrDefault("T", 0) + col5Info.getOrDefault("C", 0) + col5Info.getOrDefault("G", 0) + match + ambiguous;
+                    nuclearRead = new int[]{col5Info.getOrDefault("A", 0), col5Info.getOrDefault("T", 0), col5Info.getOrDefault("C", 0), col5Info.getOrDefault("G", 0)};
                     maxRead = getMaxRead(nuclearRead);
 
-//                     col5Info.put(refNuclear, col5Info.get(refNuclear) + match);
+                     col5Info.put(refNuclear, col5Info.getOrDefault(refNuclear, 0) + match);
 
                     if (0.15 * total <= maxRead && 0.85 * total >= maxRead && total >= 20) {
-                        usefulInfo = new String[]{colInfo[0], colInfo[1], colInfo[2], colInfo[3], col5Info.get("A").toString(), col5Info.get("C").toString(), col5Info.get("T").toString(), col5Info.get("G").toString(), Integer.toString(ambiguous)};
+                        usefulInfo = new String[]{colInfo[0], colInfo[1], colInfo[2], colInfo[3], col5Info.getOrDefault("A", 0).toString(), col5Info.getOrDefault("C", 0).toString(),
+                                col5Info.getOrDefault("T", 0).toString(), col5Info.getOrDefault("G", 0).toString(), Integer.toString(ambiguous)};
 
                         StringBuffer sb = new StringBuffer();
 
@@ -92,21 +97,26 @@ public class AseInference {
                         outputLine = sb.toString();
 
                         outputAbundantFile.write(outputLine);
-                        outputAbundantFile.flush();
+                        outputAbundantFile.newLine();
                         sb = null;
                         outputLine = null;
                     }
                 }
+            }
+            pileupFile.close();
+            outputAbundantFile.flush();
+            outputAbundantFile.close();
 
-                pileupFile.close();
-                outputAbundantFile.flush();
-                outputAbundantFile.close();
+            Process p = Runtime.getRuntime().exec("rm -f " + pileupFilePath);
+            int exitVal = p.waitFor();
+            if (exitVal != 0) {
+                throw new RuntimeException("rm pileup.txt failed");
             }
 
         } catch (FileNotFoundException fne) {
             fne.printStackTrace();
             System.exit(2);
-        } catch (IOException ie) {
+        } catch (IOException | InterruptedException ie) {
             ie.printStackTrace();
             System.exit(3);
         }
@@ -127,6 +137,8 @@ public class AseInference {
             switch (c) {
                 case '.':
                 case ',':
+                case '>':
+                case '<':
                     statisResult.put("matched", statisResult.getOrDefault("matched", 0) + 1);
                     break;
                 case 'A':

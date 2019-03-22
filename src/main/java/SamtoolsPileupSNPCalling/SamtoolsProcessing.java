@@ -41,7 +41,7 @@ public class SamtoolsProcessing {
      * @param sraNum sra number
      */
     private static void sorted(String samtools, String bamFilePath, String sraNum) {
-        String cmd = samtools + " sort " + bamFilePath + " " + sraNum+"_alignment.sort";
+        String cmd = samtools + " sort " + bamFilePath + " -o " + sraNum+"_alignment.sort";
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
