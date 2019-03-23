@@ -59,9 +59,9 @@ public class GatkSNPCalling {
                     readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
                     variantCalling(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
                     variantFilter(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                    mergeVcfFiles(outputCellDirPath, gatkJarDir);
                 }
             }
+            mergeVcfFiles(outputCellDirPath, gatkJarDir);
         }
 
     }
