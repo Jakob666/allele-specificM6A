@@ -1,4 +1,4 @@
-package SNPCalling;
+package GatkSNPCalling;
 
 import java.io.*;
 import java.util.ArrayList;

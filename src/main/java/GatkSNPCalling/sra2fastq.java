@@ -1,4 +1,4 @@
-package SNPCalling;
+package GatkSNPCalling;
 
 import java.io.File;
 import java.io.IOException;

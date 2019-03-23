@@ -1,4 +1,4 @@
-package SNPCalling;
+package GatkSNPCalling;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,8 +35,8 @@ public class SNPExtractProcedure {
         File alignIPDir = new File(alignDir.getAbsolutePath(), "IP");
         File alignINPUTDir = new File(alignDir.getAbsolutePath(), "INPUT");
 
-        SNPCaller.snpCalling(genomeFile, fastqIPDir.getAbsolutePath(), alignIPDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, execThread);
-        SNPCaller.snpCalling(genomeFile, fastqINPUTDir.getAbsolutePath(), alignINPUTDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, execThread);
+        GatkSNPCalling.snpCalling(genomeFile, fastqIPDir.getAbsolutePath(), alignIPDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, execThread);
+        GatkSNPCalling.snpCalling(genomeFile, fastqINPUTDir.getAbsolutePath(), alignINPUTDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, execThread);
 
         try {
             Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
