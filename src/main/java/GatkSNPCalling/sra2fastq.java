@@ -11,7 +11,7 @@ public class sra2fastq {
      * @param rawDataDir directory stores sra raw data
      * @param fastqDir dorectory stores fastq data
      */
-    sra2fastq(String rawDataDir, String fastqDir) {
+    public sra2fastq(String rawDataDir, String fastqDir) {
         this.sraDataDir = rawDataDir;
         this.fastqDataDir = fastqDir;
     }

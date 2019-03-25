@@ -5,22 +5,20 @@ import java.io.IOException;
 
 public class SamtoolsProcessing {
 
-    public static void samFileProcess(String alignmentResultFile, String outputDir, String sraNum, String samtools) {
-        SamtoolsProcessing.sam2bam(alignmentResultFile, outputDir, sraNum, samtools);
+    public static String samFileProcess(String alignmentResultFile, String outputDir, String prefix, String samtools) {
+        String bamFile = SamtoolsProcessing.sam2bam(alignmentResultFile, outputDir, prefix ,samtools);
+        String sortedBamFile = SamtoolsProcessing.sorted(samtools, bamFile);
 
-        String bamFilePath = new File(outputDir, sraNum + "_alignment.bam").getAbsolutePath();
-        SamtoolsProcessing.sorted(samtools, bamFilePath, sraNum);
+        return sortedBamFile;
     }
 
     /**
      * transform file format from sam to bam
      * @param alignmentResultFile alignment result file output by STAR
-     * @param outputDir bam file directory
-     * @param sraNum sra number
      * @param samtools samtools executive file path
      */
-    private static void sam2bam(String alignmentResultFile, String outputDir, String sraNum, String samtools) {
-        String bamFilePath = new File(outputDir, sraNum + "_alignment.bam").getAbsolutePath();
+    private static String sam2bam(String alignmentResultFile, String outputDir, String prefix, String samtools) {
+        String bamFilePath = new File(outputDir, prefix + "_alignment.bam").getAbsolutePath();
         String cmd = samtools + " view -bS -o " + bamFilePath + " " + alignmentResultFile;
 
         try {
@@ -32,16 +30,18 @@ public class SamtoolsProcessing {
         } catch (IOException | InterruptedException ie) {
             ie.printStackTrace();
         }
+
+        return bamFilePath;
     }
 
     /**
      * sort the alignment bam file with samtools
      * @param samtools samtools executive file path
-     * @param bamFilePath alignment result bam file path
-     * @param sraNum sra number
      */
-    private static void sorted(String samtools, String bamFilePath, String sraNum) {
-        String cmd = samtools + " sort " + bamFilePath + " -o " + sraNum+"_alignment.sort";
+    private static String sorted(String samtools, String bamFile) {
+        String sortedBamFile = new File(bamFile.substring(0, bamFile.lastIndexOf("_"))+"_sort.bam").getAbsolutePath();
+
+        String cmd = samtools + " sort " + bamFile + " -o " + sortedBamFile;
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
@@ -51,5 +51,7 @@ public class SamtoolsProcessing {
         }catch (IOException | InterruptedException ie) {
             ie.printStackTrace();
         }
+
+        return sortedBamFile;
     }
 }

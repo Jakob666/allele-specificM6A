@@ -6,11 +6,12 @@ import java.util.HashMap;
 
 public class AseInference {
 
-    public static void inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools) {
+    public static String inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools) {
         pileup(refGenomeFilePath, sortedBamFile, samtools);
-        File outputDir = new File(sortedBamFile).getParentFile();
-        String pileFile = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
+        String pileFile = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"Pileup.txt").getAbsolutePath();
         alleleAbundant(pileFile);
+
+        return pileFile;
     }
 
     public static void onlyAbundant(String pileupFile) {
@@ -25,10 +26,10 @@ public class AseInference {
      * @param samtools executive samtools file
      */
     private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools) {
-        File outputDir = new File(sortedBamFile).getParentFile();
-        String outputText = new File(outputDir.getAbsolutePath(), "pileup.txt").getAbsolutePath();
+        String outputText = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"Pileup.txt").getAbsolutePath();
         // samtools mpileup -o output.txt -f /data1/hubs/reference_genome/hg38.fa /data1/hubs/samtoolsTest/alignment_sorted.bam
         String cmd = samtools + " mpileup -o " + outputText + " -f " + refGenomeFilePath + " " + sortedBamFile;
+        System.out.println(cmd);
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);

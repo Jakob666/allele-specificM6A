@@ -1,6 +1,6 @@
 package SamtoolsPileupSNPCalling;
 
-import GatkSNPCalling.SNPCaller;
+import GatkSNPCalling.SNPCalling;
 
 import java.io.File;
 
@@ -14,7 +14,7 @@ public class ReadsMapping {
      */
     public static void alignment(String refGenomeFile, String fastqFile, int execThread) {
         String refGenomeDir = new File(refGenomeFile).getParent();
-        int readLength = SNPCaller.getFastqReadLength(fastqFile);
-        SNPCaller.readsMapping(refGenomeDir, refGenomeFile, fastqFile, readLength, execThread);
+        int readLength = SNPCalling.getFastqReadLength(fastqFile);
+        SNPCalling.readsMapping(refGenomeDir, refGenomeFile, fastqFile, readLength, execThread);
     }
 }
