@@ -33,16 +33,10 @@ public class sra2fastq {
         if (rawData.isFile()) {
             throw new RuntimeException("invalid sra data directory");
         }
-        String cellLineName = rawData.getName();
 
-        File outputDir = new File(this.fastqDataDir, cellLineName);
-        File ipOutputDir = new File(outputDir.getAbsolutePath(), "IP");
-        File inputOutputDir = new File(outputDir.getAbsolutePath(), "INPUT");
-
+        File outputDir = new File(this.fastqDataDir);
         if (!outputDir.exists()) {
             makeDir(outputDir);
-            makeDir(ipOutputDir);
-            makeDir(inputOutputDir);
         }
 
         execSuccess = sra2fastq(rawData, outputDir);
@@ -55,28 +49,14 @@ public class sra2fastq {
      * @param fastqFileDir directory of fastq files
      */
     public boolean sra2fastq(File sraFileDir, File fastqFileDir) {
-        // SRA raw data stores in sub-directory "IP" and "INPUT"
-        File ipDir = new File(sraFileDir.getAbsolutePath(), "IP");
-        File inputDir = new File(sraFileDir.getAbsolutePath(), "INPUT");
-
-        File[] ipFiles = ipDir.listFiles();
-        File[] inputFiles = inputDir.listFiles();
-
-        File inputFastqDir = new File(fastqFileDir.getAbsolutePath(), "INPUT");
-        File ipFastqDir = new File(fastqFileDir.getAbsolutePath(), "IP");
-
+        File[] sraFiles = sraFileDir.listFiles();
+        if (sraFiles == null)
+            return false;
         try {
-            for (File f : ipFiles) {
+            for (File f : sraFiles) {
                 if (f != null && f.isFile() && f.getName().endsWith(".sra")) {
                     String sraFilePath = f.getAbsolutePath();
-                    transform(sraFilePath, ipFastqDir.getAbsolutePath());
-                }
-            }
-
-            for (File f : inputFiles) {
-                if (f != null && f.isFile() && f.getName().endsWith(".sra")) {
-                    String sraFilePath = f.getAbsolutePath();
-                    transform(sraFilePath, inputFastqDir.getAbsolutePath());
+                    transform(sraFilePath, fastqFileDir.getAbsolutePath());
                 }
             }
         } catch (RuntimeException re) {

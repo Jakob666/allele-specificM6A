@@ -1,43 +1,92 @@
 package GatkSNPCalling;
 
+import org.apache.commons.cli.*;
+
 import java.io.File;
 import java.io.IOException;
 
 public class GatkSNPCalling {
 
-    public static void main(String[] args) {
-        String sraDataDir = args[0];
-        String fastqTempDir = args[1];
-        String alignmentOutputDir = args[2];
-        String genomeFile = args[3];
-        String picardLocalJar = args[4];
-        String gatkLocalJar = args[5];
-        String samtools = args[6];
-        int execThread = Integer.parseInt(args[7]);
+    public static void main(String[] args) throws ParseException {
+        Options options = new Options();
+        CommandLine commandLine = setCommand(args, options);
 
-        File sraDir = new File(sraDataDir);
-        String cellLineName = sraDir.getName();
+        // initialize the default params
+        String sourceDataDir = "";
+        String fastqTempDir = null;
+        String genomeFile = "";
+        String outputDir = "";
+        String gatkLocalJar = "gatk";
+        String picardLocalJar = "./picard.jar";
+        String inputFormat = "sra";
+        int execThread = 2;
 
-        // make directories for fastq files and alignment result
-        mkDir(fastqTempDir);
-        mkDir(alignmentOutputDir);
-
-        boolean sraTransRes = sraToFastq(sraDataDir, fastqTempDir);
-        if (!sraTransRes) {
-            System.out.println("transform failed");
+        // change params according to the received arguments
+        if (commandLine.hasOption('h')) {
+            new HelpFormatter().printHelp("flume-ng agent", options, true);
+            return;
+        }
+        if (commandLine.hasOption('r')) {
+            genomeFile = commandLine.getOptionValue('r');
+        }
+        if (commandLine.hasOption("fmt")) {
+            inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
+            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq")) {
+                System.out.println("invalid input file format, the format should be sra or fastq");
+                System.exit(2);
+            }
+        }
+        if (commandLine.hasOption('s')) {
+            sourceDataDir = commandLine.getOptionValue('s');
+            if (inputFormat.equals("sra")) {
+                if (commandLine.hasOption("tmp")) {
+                    fastqTempDir = commandLine.getOptionValue("tmp");
+                } else {
+                    try {
+                        File directory = new File("");
+                        fastqTempDir = directory.getCanonicalPath();
+                    } catch (IOException ie) {
+                        ie.printStackTrace();
+                        return;
+                    }
+                }
+            } else {
+                fastqTempDir = sourceDataDir;
+            }
         }
 
-        File fastqDir = new File(fastqTempDir, cellLineName);
-        File fastqIPDir = new File(fastqDir.getAbsolutePath(), "IP");
-        File fastqINPUTDir = new File(fastqDir.getAbsolutePath(), "INPUT");
+        if (commandLine.hasOption('o')) {
+            outputDir = commandLine.getOptionValue('o');
+        } else {
+            try {
+                File directory = new File("");
+                outputDir = directory.getCanonicalPath();
+            } catch (IOException ie) {
+                ie.printStackTrace();
+                return;
+            }
+        }
+        if (commandLine.hasOption("gatk")) {
+            gatkLocalJar = commandLine.getOptionValue("gatk");
+        }
+        if (commandLine.hasOption("picard")) {
+            picardLocalJar = commandLine.getOptionValue("picard");
+        }
+        if (commandLine.hasOption('t')) {
+            execThread = Integer.parseInt(commandLine.getOptionValue('t'));
+        }
 
-        File alignDir = new File(alignmentOutputDir, cellLineName);
-        mkDir(alignDir.getAbsolutePath());
-        File alignIPDir = new File(alignDir.getAbsolutePath(), "IP");
-        File alignINPUTDir = new File(alignDir.getAbsolutePath(), "INPUT");
+        // make directories for fastq files and alignment result
+        if (inputFormat.equals("sra")) {
+            mkDir(fastqTempDir);
+            boolean sraTransRes = sraToFastq(sourceDataDir, fastqTempDir);
+            if (!sraTransRes) {
+                System.out.println("transform failed");
+            }
+        }
+        mkDir(outputDir);
 
-        SNPCalling.snpCalling(genomeFile, fastqIPDir.getAbsolutePath(), alignIPDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, samtools, execThread);
-        SNPCalling.snpCalling(genomeFile, fastqINPUTDir.getAbsolutePath(), alignINPUTDir.getAbsolutePath(), picardLocalJar, gatkLocalJar, samtools, execThread);
+        SNPCalling.snpCalling(genomeFile, fastqTempDir, outputDir, picardLocalJar, gatkLocalJar, execThread);
 
         try {
             Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
@@ -49,6 +98,56 @@ public class GatkSNPCalling {
         } catch (IOException | InterruptedException ie) {
             ie.printStackTrace();
         }
+    }
+
+    /**
+     * set received params for command line
+     * @param args arguments in command line
+     * @param options Options instance
+     * @return CommandLine instance
+     * @throws ParseException
+     */
+    private static CommandLine setCommand(String[] args, Options options) throws ParseException{
+
+        Option option = new Option("r", "ref-genome", true, "reference genome file absolute path");
+        option.setRequired(true);
+        options.addOption(option);
+
+        option = new Option("s", "source-dir", true, "sequence source data directory");
+        option.setRequired(true);
+        options.addOption(option);
+
+        option = new Option("fmt", "input-format", true, "input file format, sra or fastq, default sra");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("tmp", "temp-dir", true, "when input files in sra format, a temporary directory store fastq file generate by sra file, default PWD");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("o", "output", true, "absolute path of the output directory, default PWD");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("gatk", "gatk-tool", true, "GATK executive file path, default gatk");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("picard", "picard-tool", true, "PICARD executive file path, default ./picard.jar");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("t", "threads", true, "number of working threads, default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("h", "help", false, "display help text");
+        options.addOption(option);
+
+        CommandLineParser parser = new DefaultParser();
+        CommandLine commandLine = parser.parse(options, args);
+
+        return commandLine;
     }
 
     /**
@@ -67,6 +166,10 @@ public class GatkSNPCalling {
         return execSuccess;
     }
 
+    /**
+     * make up directory if it is not existed
+     * @param dirName directory name
+     */
     private static void mkDir(String dirName) {
         File targetDir = new File(dirName);
         if (!targetDir.exists()) {

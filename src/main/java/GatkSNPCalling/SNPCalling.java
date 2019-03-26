@@ -15,10 +15,9 @@ public class SNPCalling {
         String outputDir = args[2];
         String picardDir = args[3];
         String gatkLocalJar = args[4];
-        String samtools = args[5];
         int execThread = Integer.parseInt(args[6]);
 
-        snpCalling(genomeFilePath, FastqDir, outputDir, picardDir, gatkLocalJar, samtools, execThread);
+        snpCalling(genomeFilePath, FastqDir, outputDir, picardDir, gatkLocalJar, execThread);
     }
 
     /**
@@ -28,9 +27,8 @@ public class SNPCalling {
      * @param outputDir output result directory
      * @param picardJarDir path of picard tool executive jar
      * @param gatkJarDir path of gatk tool executive file
-     * @param samtools path of samtools executive file
      */
-    public static void snpCalling(String refGenomeFilePath, String fastqDir, String outputDir, String picardJarDir, String gatkJarDir, String samtools, int execThread) {
+    public static void snpCalling(String refGenomeFilePath, String fastqDir, String outputDir, String picardJarDir, String gatkJarDir, int execThread) {
         File refGenomePath = new File(refGenomeFilePath);
         String refGenomeDir = refGenomePath.getParent();
         int readLength = 0;
@@ -55,15 +53,14 @@ public class SNPCalling {
                         continue;
 
                     readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread);
-                    filterMappedReads(refGenomeFilePath, picardJarDir, outputCellDirPath, sraNum, samtools);
+                    filterMappedReads(refGenomeFilePath, picardJarDir, outputCellDirPath, sraNum);
                     refGenomeDict(picardJarDir, refGenomeFilePath);
                     createFastaiFile(refGenomeFilePath);
-                    readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
+                    String bamFile = readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
                     variantCalling(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
                     String gatkVcfFile = variantFilter(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                    SnpReadCount src = new SnpReadCount(refGenomeFilePath, gatkVcfFile, samtools, gatkVcfFile);
-                    src.gatkSnpTree();
-                    src.mapSnpWithReadCount();
+                    SnpReadCount src = new SnpReadCount(refGenomeFilePath, bamFile, gatkVcfFile, gatkVcfFile);
+                    src.countRead();
                 }
             }
             mergeVcfFiles(outputCellDirPath, gatkJarDir);
@@ -94,19 +91,13 @@ public class SNPCalling {
      * @param picardJarDir install directory which contains picard jar package
      * @param outputDir the output result directory which contains STAR alignment output file
      */
-    public static void filterMappedReads(String refGenomeFilePath, String picardJarDir, String outputDir, String sraNum, String samtools) {
+    public static void filterMappedReads(String refGenomeFilePath, String picardJarDir, String outputDir, String sraNum) {
         String refGenomeDir = new File(refGenomeFilePath).getParent();
         File starSamFile = new File(refGenomeDir, "Aligned.out.sam");
         File sortedBamFile = new File(outputDir, sraNum + "_sorted.bam");
         File deduplicatedBamFile = new File(outputDir, sraNum + "_deduplicated.bam");
         readsGroup(picardJarDir, starSamFile.getAbsolutePath(), sortedBamFile.getAbsolutePath());
-        samtoolsReadsCount(refGenomeFilePath, sortedBamFile.getAbsolutePath(), samtools);
         dropDuplicateReads(picardJarDir, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath());
-    }
-
-    public static void samtoolsReadsCount(String refGenomeFilePath, String sortedBamFile, String samtools) {
-        SnpReadCount src = new SnpReadCount(refGenomeFilePath, sortedBamFile, samtools, "");
-        src.countRead();
     }
 
     /**
@@ -115,7 +106,7 @@ public class SNPCalling {
      * @param refGenomeFile reference genome file path
      * @param outputDir output result directory
      */
-    public static void readsTrimReassign(String gatkLocalJar, String refGenomeFile, String outputDir, String sraNum) {
+    public static String readsTrimReassign(String gatkLocalJar, String refGenomeFile, String outputDir, String sraNum) {
         File deduplicatedBamFile = new File(outputDir, sraNum + "_deduplicated.bam");
         File trimmedBamFile = new File(outputDir, sraNum + "_trimmed.bam");
         String cmd = gatkLocalJar + " SplitNCigarReads -R " + refGenomeFile + " -I " + deduplicatedBamFile.getAbsolutePath() +
@@ -139,6 +130,8 @@ public class SNPCalling {
         } catch (IOException | InterruptedException ie) {
             ie.printStackTrace();
         }
+
+        return trimmedBamFile.getAbsolutePath();
     }
 
     /**
@@ -482,14 +475,15 @@ public class SNPCalling {
         String cellLine = outputDirectory.getName();
         File[] snpCallingRes = outputDirectory.listFiles();
         File mergeVcfFile = new File(outputDir, cellLine + ".vcf");
-        String cmd = gatkLocaljar;
+        String cmd = gatkLocaljar + " MergeVcfs ";
         StringBuilder sb = new StringBuilder();
 
         if (snpCallingRes != null) {
             for (File f : snpCallingRes) {
-                if (f.getName().endsWith(".vcf"))
+                if (f.getName().endsWith(".vcf")) {
                     sb.append(" -I ");
                     sb.append(f.getAbsolutePath());
+                }
             }
             cmd += sb.toString();
             cmd += " -O " + mergeVcfFile.getAbsolutePath();
