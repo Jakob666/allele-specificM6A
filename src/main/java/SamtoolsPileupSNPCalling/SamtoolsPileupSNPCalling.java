@@ -86,7 +86,7 @@ public class SamtoolsPileupSNPCalling {
             mkDir(fastqTempDir);
             boolean sraTransRes = sraToFastq(sourceDataDir, fastqTempDir);
             if (!sraTransRes) {
-                System.out.println("transform failed");
+                logger.error("transform failed");
             }
         }
 
@@ -126,9 +126,9 @@ public class SamtoolsPileupSNPCalling {
             ReadsMapping.alignment(genomeFilePath, fq.getAbsolutePath(), execThread, logger);
             String refGenomeDir = new File(genomeFilePath).getParent();
             String aligmentResultFile = new File(refGenomeDir, "Aligned.out.sam").getAbsolutePath();
-            String dedupBamFile = SamtoolsProcessing.samFileProcess(aligmentResultFile, outputDir, prefix, samtools);
-            String readsCountFile = AseInference.inferenceASE(genomeFilePath, dedupBamFile, samtools);
-            SnpFilter sf = new SnpFilter(gtfDir, readsCountFile);
+            String dedupBamFile = SamtoolsProcessing.samFileProcess(aligmentResultFile, outputDir, prefix, samtools, logger);
+            String readsCountFile = AseInference.inferenceASE(genomeFilePath, dedupBamFile, samtools, logger);
+            SnpFilter sf = new SnpFilter(gtfDir, readsCountFile, logger);
             sf.filterVcf();
         }
     }

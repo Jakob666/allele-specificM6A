@@ -1,6 +1,8 @@
 package SamtoolsPileupSNPCalling;
 
 
+import org.apache.log4j.Logger;
+
 import java.io.*;
 import java.util.HashMap;
 
@@ -13,24 +15,23 @@ public class SnpFilter {
     /**
      * use 1000 Genome project SNP to filter samtools pileup function output SNP
      * @param refVcfDirPath directory which stores 1000 Genome VCF file for each chromosome
-     * @param rawVcfFile samtools pileup function output rough vcf result
+     * @param rawVcfFile samtools pileup function output reads abundant file
      */
-    public SnpFilter(String refVcfDirPath, String rawVcfFile) {
+    public SnpFilter(String refVcfDirPath, String rawVcfFile, Logger log) {
         File referenceVcfDir = new File(refVcfDirPath);
         if (!referenceVcfDir.isDirectory()) {
-            System.out.println("need reference VCF directory");
+            log.error("need reference VCF directory");
             System.exit(4);
         }
         this.referenceVcfFiles = referenceVcfDir.listFiles();
         if (this.referenceVcfFiles == null) {
-            System.out.println("empty reference VCF directory");
+            log.error("empty reference VCF directory");
             System.exit(5);
         }
 
         this.rawVcfFile = new File(rawVcfFile);
-        String rawVcfName = this.rawVcfFile.getName();
-        String outputFileName = rawVcfName.substring(0, rawVcfFile.lastIndexOf("_")) + "ReadsCount.txt";
-        this.outputFile = new File(this.rawVcfFile.getParent(), outputFileName);
+        String outputFileName = rawVcfFile.substring(0, rawVcfFile.lastIndexOf("_")) + "ReadsCount.txt";
+        this.outputFile = new File(outputFileName);
 
         this.cols = new HashMap<>();
         this.cols.put("A", 4);
@@ -62,7 +63,7 @@ public class SnpFilter {
                         continue;
                     String[] lineInfo = readIn.split("\t");
                     // skip letters "chr"
-                    String chrNum = lineInfo[0].substring(3);
+                    String chrNum = lineInfo[0];
                     int position = Integer.parseInt(lineInfo[1]);
 
                     BinarySearchTree targetTree = trees.get(chrNum);
@@ -70,7 +71,8 @@ public class SnpFilter {
                     if (searchRes != null) {
                         String id = searchRes.id;
                         String altNc = searchRes.altNucleotide;
-
+                        if (!this.cols.containsKey(altNc))
+                            continue;
                         // output information contains chr, position, id(1000Genome), reference nc, alternative nc, ref count, alt count
                         String[] usefulInfo = new String[]{lineInfo[0], lineInfo[1], id, lineInfo[2], altNc, lineInfo[this.cols.get(lineInfo[2])], lineInfo[this.cols.get(altNc)]};
                         StringBuffer stringBuf = new StringBuffer();
@@ -82,6 +84,7 @@ public class SnpFilter {
                         bwr.write(writeOut);
                         bwr.newLine();
                     }
+
                 }
             }
 

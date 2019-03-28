@@ -1,6 +1,8 @@
 package SamtoolsPileupSNPCalling;
 
 
+import org.apache.log4j.Logger;
+
 import java.io.*;
 import java.util.HashMap;
 
@@ -13,16 +15,13 @@ public class AseInference {
      * @param samtools samtools executive file
      * @return abundant file name which records raw SNP sites and reads count
      */
-    public static String inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools) {
-        pileup(refGenomeFilePath, sortedBamFile, samtools);
+    public static String inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools, Logger log) {
+        log.debug("analysis ASE reads abundant");
+        pileup(refGenomeFilePath, sortedBamFile, samtools, log);
         String pileFile = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"_pileup.txt").getAbsolutePath();
-        String abundantFile = alleleAbundant(pileFile);
+        String abundantFile = alleleAbundant(pileFile, log);
 
         return abundantFile;
-    }
-
-    public static void onlyAbundant(String pileupFile) {
-        alleleAbundant(pileupFile);
     }
 
     /**
@@ -32,20 +31,22 @@ public class AseInference {
      * @param sortedBamFile sorted bam file absolute path
      * @param samtools executive samtools file
      */
-    private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools) {
+    private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools, Logger log) {
         String outputText = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"_pileup.txt").getAbsolutePath();
         // samtools mpileup -o output.txt -f /data1/hubs/reference_genome/hg38.fa /data1/hubs/samtoolsTest/alignment_sorted.bam
         String cmd = samtools + " mpileup -o " + outputText + " -f " + refGenomeFilePath + " " + sortedBamFile;
-        System.out.println(cmd);
+        log.debug("pile up reads, output: " + outputText);
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                throw new RuntimeException("pileup failed");
+                log.debug("pileup failed");
+                System.exit(2);
             }
         } catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
+            log.debug("pileup failed\n" + ie.getMessage());
+            System.exit(2);
         }
     }
 
@@ -55,10 +56,11 @@ public class AseInference {
      * the reference nucleotide
      * @param pileupFilePath pileupFile path
      */
-    private static String alleleAbundant(String pileupFilePath) {
+    private static String alleleAbundant(String pileupFilePath, Logger log) {
 
         String prefix = pileupFilePath.substring(0, pileupFilePath.lastIndexOf("_"));
         File abundantFile = new File(prefix + "_abundant.txt");
+        log.debug("calculate ASE reads abundant, output: " + abundantFile);
 
         // chr6 410512 T 25 .,,,,,,.,.,.,,,..,......^S. ""!#&%%%%%"&%!"!$%#%%!!"
         try {
@@ -118,14 +120,14 @@ public class AseInference {
             Process p = Runtime.getRuntime().exec("rm -f " + pileupFilePath);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                throw new RuntimeException("rm pileup.txt failed");
+                log.error("rm pileup.txt failed");
             }
 
         } catch (FileNotFoundException fne) {
-            fne.printStackTrace();
+            log.debug("reads abundant failed\n" + fne.getMessage());
             System.exit(2);
         } catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
+            log.debug("reads abundant failed\n" + ie.getMessage());
             System.exit(3);
         }
 
