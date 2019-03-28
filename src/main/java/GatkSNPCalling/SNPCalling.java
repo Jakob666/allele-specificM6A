@@ -1,5 +1,7 @@
 package GatkSNPCalling;
 
+import org.apache.log4j.Logger;
+
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,17 +10,7 @@ import java.util.regex.Pattern;
 
 public class SNPCalling {
 
-    public static void main(String[] args) {
-
-        String genomeFilePath = args[0];
-        String FastqDir = args[1];
-        String outputDir = args[2];
-        String picardDir = args[3];
-        String gatkLocalJar = args[4];
-        int execThread = Integer.parseInt(args[6]);
-
-        snpCalling(genomeFilePath, FastqDir, outputDir, picardDir, gatkLocalJar, execThread);
-    }
+    private static Logger log;
 
     /**
      * complete snp calling process
@@ -28,18 +20,18 @@ public class SNPCalling {
      * @param picardJarDir path of picard tool executive jar
      * @param gatkJarDir path of gatk tool executive file
      */
-    public static void snpCalling(String refGenomeFilePath, String fastqDir, String outputDir, String picardJarDir, String gatkJarDir, int execThread) {
+    public static void snpCalling(String refGenomeFilePath, String fastqDir, String outputDir, String picardJarDir, String gatkJarDir, int execThread, Logger logger) {
+
+        log = logger;
         File refGenomePath = new File(refGenomeFilePath);
         String refGenomeDir = refGenomePath.getParent();
         int readLength = 0;
 
         File fastqDirectory = new File(fastqDir);
-        File outputCellDir = new File(outputDir);
-        if (!outputCellDir.exists()) {
-            boolean res = outputCellDir.mkdir();
+        File outputTargetDir = new File(outputDir);
+        if (!outputTargetDir.exists()) {
+            boolean res = outputTargetDir.mkdir();
         }
-
-        String outputCellDirPath = outputCellDir.getAbsolutePath();
 
         File[] fastqFiles = fastqDirectory.listFiles();
         if (fastqFiles != null) {
@@ -47,23 +39,24 @@ public class SNPCalling {
                 if (f.getName().endsWith(".fastq")) {
                     readLength = getFastqReadLength(f.getAbsolutePath()) - 1;
                     int dot = f.getName().lastIndexOf('.');
-                    String sraNum = f.getName().substring(0, dot);
+                    String prefix = f.getName().substring(0, dot);
 
-                    if (new File(outputCellDir, sraNum + "_RefinedSNP.vcf").exists())
+                    if (new File(outputDir, prefix + "_RefinedSNP.vcf").exists())
                         continue;
-
-                    readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread);
-                    filterMappedReads(refGenomeFilePath, picardJarDir, outputCellDirPath, sraNum);
+                    logger.debug(f.getAbsolutePath() + " start SNP calling");
+                    readsMapping(refGenomeDir, refGenomePath.getAbsolutePath(), f.getAbsolutePath(), readLength, execThread, logger);
+                    filterMappedReads(refGenomeFilePath, picardJarDir, outputDir, prefix);
                     refGenomeDict(picardJarDir, refGenomeFilePath);
                     createFastaiFile(refGenomeFilePath);
-                    String bamFile = readsTrimReassign(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                    variantCalling(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                    String gatkVcfFile = variantFilter(gatkJarDir, refGenomeFilePath, outputCellDirPath, sraNum);
-                    SnpReadCount src = new SnpReadCount(refGenomeFilePath, bamFile, gatkVcfFile, gatkVcfFile);
-                    src.countRead();
+                    String bamFile = readsTrimReassign(gatkJarDir, refGenomeFilePath, outputDir, prefix);
+                    variantCalling(gatkJarDir, refGenomeFilePath, outputDir, prefix);
+                    String gatkVcfFile = variantFilter(gatkJarDir, refGenomeFilePath, outputDir, prefix);
+                    readsCount(refGenomeFilePath, bamFile, gatkJarDir, gatkVcfFile);
+                    logger.debug("SNP calling complete");
                 }
             }
-            mergeVcfFiles(outputCellDirPath, gatkJarDir);
+            if (fastqFiles.length > 1)
+                mergeVcfFiles(outputDir, gatkJarDir);
         }
 
     }
@@ -75,15 +68,16 @@ public class SNPCalling {
      * @param fastqFile absolute path of fastq file
      * @param genomeFileName name of reference genome file without path
      */
-    public static void readsMapping(String refGenomeDir, String genomeFileName, String fastqFile, int readLength, int execThread) {
+    public static void readsMapping(String refGenomeDir, String genomeFileName, String fastqFile, int readLength, int execThread, Logger log) {
         File genomeIdxFile = new File(refGenomeDir, "SAindex");
-
+        log.debug("reads mapping start.");
         if (!genomeIdxFile.exists()) {
-            genomeIndex(refGenomeDir, genomeFileName, execThread);
+            genomeIndex(refGenomeDir, genomeFileName, execThread, log);
         }
-        onePassMapping(refGenomeDir, fastqFile, execThread);
-        twoPassMapping(refGenomeDir, genomeFileName, readLength, execThread);
-        alignment(refGenomeDir, fastqFile, execThread);
+        onePassMapping(refGenomeDir, fastqFile, execThread, log);
+        twoPassMapping(refGenomeDir, genomeFileName, readLength, execThread, log);
+        alignment(refGenomeDir, fastqFile, execThread, log);
+        log.debug("reads mapping complete.");
     }
 
     /**
@@ -91,13 +85,15 @@ public class SNPCalling {
      * @param picardJarDir install directory which contains picard jar package
      * @param outputDir the output result directory which contains STAR alignment output file
      */
-    public static void filterMappedReads(String refGenomeFilePath, String picardJarDir, String outputDir, String sraNum) {
+    public static void filterMappedReads(String refGenomeFilePath, String picardJarDir, String outputDir, String prefix) {
         String refGenomeDir = new File(refGenomeFilePath).getParent();
         File starSamFile = new File(refGenomeDir, "Aligned.out.sam");
-        File sortedBamFile = new File(outputDir, sraNum + "_sorted.bam");
-        File deduplicatedBamFile = new File(outputDir, sraNum + "_deduplicated.bam");
+        File sortedBamFile = new File(outputDir, prefix + "_sorted.bam");
+        File deduplicatedBamFile = new File(outputDir, prefix + "_deduplicated.bam");
+        log.debug("filtering alignment reads");
         readsGroup(picardJarDir, starSamFile.getAbsolutePath(), sortedBamFile.getAbsolutePath());
         dropDuplicateReads(picardJarDir, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath());
+        log.debug("filtration complete");
     }
 
     /**
@@ -106,25 +102,25 @@ public class SNPCalling {
      * @param refGenomeFile reference genome file path
      * @param outputDir output result directory
      */
-    public static String readsTrimReassign(String gatkLocalJar, String refGenomeFile, String outputDir, String sraNum) {
-        File deduplicatedBamFile = new File(outputDir, sraNum + "_deduplicated.bam");
-        File trimmedBamFile = new File(outputDir, sraNum + "_trimmed.bam");
+    public static String readsTrimReassign(String gatkLocalJar, String refGenomeFile, String outputDir, String prefix) {
+        File deduplicatedBamFile = new File(outputDir, prefix + "_deduplicated.bam");
+        File trimmedBamFile = new File(outputDir, prefix + "_trimmed.bam");
         String cmd = gatkLocalJar + " SplitNCigarReads -R " + refGenomeFile + " -I " + deduplicatedBamFile.getAbsolutePath() +
                      " -O " + trimmedBamFile.getAbsolutePath();
-        System.out.println(cmd);
+        log.debug("split N cigar sequence");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("gatk reads trim process failed.");
+                log.error("gatk reads trim process failed.");
                 System.exit(2);
             }
 
             p = Runtime.getRuntime().exec("rm -f " + deduplicatedBamFile.getAbsolutePath());
             exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("remove previous file failed.");
+                log.error("remove previous file failed.");
                 System.exit(2);
             }
         } catch (IOException | InterruptedException ie) {
@@ -139,20 +135,20 @@ public class SNPCalling {
      * @param gatkLocalJar install directory which contains gatk jar package
      * @param genomeFileName reference genome file path
      * @param outputDir output result directory
-     * @param sraNum sra ID number of this data
+     * @param prefix sra ID number of this data
      */
-    public static void variantCalling(String gatkLocalJar, String genomeFileName, String outputDir, String sraNum) {
-        File trimmedBamFile = new File(outputDir, sraNum + "_trimmed.bam");
-        File outputVCF = new File(outputDir, sraNum + "RawSNP.vcf");
+    public static void variantCalling(String gatkLocalJar, String genomeFileName, String outputDir, String prefix) {
+        File trimmedBamFile = new File(outputDir, prefix + "_trimmed.bam");
+        File outputVCF = new File(outputDir, prefix + "RawSNP.vcf");
         String cmd = gatkLocalJar + " HaplotypeCaller -R " + genomeFileName + " -I " +
                      trimmedBamFile.getAbsolutePath() + " -O " + outputVCF.getAbsolutePath();
-        System.out.println(cmd);
+        log.debug("generate haplotype vcf file");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("raw SNP calling failed");
+                log.error("raw SNP calling failed");
                 System.exit(2);
             }
         } catch (IOException | InterruptedException ie) {
@@ -165,27 +161,27 @@ public class SNPCalling {
      * @param gatkLocalJar install directory which contains gatk jar package
      * @param genomeFileName reference genome file path
      * @param outputDir output result directory
-     * @param sraNum sra ID number of this data
+     * @param prefix sra ID number of this data
      */
-    public static String variantFilter(String gatkLocalJar, String genomeFileName, String outputDir, String sraNum) {
-        File rawVcfFile = new File(outputDir, sraNum + "RawSNP.vcf");
-        File refinedVCF = new File(outputDir, sraNum + "RefinedSNP.vcf");
+    public static String variantFilter(String gatkLocalJar, String genomeFileName, String outputDir, String prefix) {
+        File rawVcfFile = new File(outputDir, prefix + "RawSNP.vcf");
+        File refinedVCF = new File(outputDir, prefix + "RefinedSNP.vcf");
         String cmd = gatkLocalJar + " VariantFiltration -R " + genomeFileName + " -V " + rawVcfFile.getAbsolutePath() +
                      " -window 35 -cluster 3 -O " + refinedVCF.getAbsolutePath();
-        System.out.println(cmd);
+        log.debug("filter raw SNP sites");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("filter raw vcf failed");
+                log.error("filter raw vcf failed");
                 System.exit(2);
             }
 
             p = Runtime.getRuntime().exec("rm -f " + rawVcfFile.getAbsolutePath());
             exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("remove previous file failed.");
+                log.error("remove previous file failed.");
                 System.exit(2);
             }
 
@@ -203,11 +199,11 @@ public class SNPCalling {
      * @param genomeFilePath    reference genome file Path
      * @param execThread    number of working thread
      */
-    public static void genomeIndex(String refGenomeDir, String genomeFilePath, int execThread) {
+    public static void genomeIndex(String refGenomeDir, String genomeFilePath, int execThread, Logger log) {
         String idxCmd = "STAR --runMode genomeGenerate --genomeDir " + refGenomeDir + " --genomeFastaFiles " + genomeFilePath +
                         " --runThreadN " + execThread + " --limitGenomeGenerateRAM=124544990592";
 
-        System.out.println(idxCmd);
+        log.debug("index reference genome file " + genomeFilePath);
         List<String> processList = new ArrayList<String>();
         try{
             Process p = Runtime.getRuntime().exec(idxCmd);
@@ -227,7 +223,7 @@ public class SNPCalling {
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            log.error("Genome index failed.");
         }
 
         try {
@@ -248,10 +244,10 @@ public class SNPCalling {
      * @param fastqFile  absolute file path of fastq files
      * @param execThread number of working thread
      */
-    public static void onePassMapping(String refGenomeDir, String fastqFile, int execThread) {
+    public static void onePassMapping(String refGenomeDir, String fastqFile, int execThread, Logger log) {
 
         String cmd = "STAR --genomeDir " + refGenomeDir + " --readFilesIn " + fastqFile + " --runThreadN " + execThread;
-        System.out.println(cmd);
+        log.debug("1-pass mapping procedure...");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
@@ -262,7 +258,7 @@ public class SNPCalling {
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            log.error("1-pass mapping failed.");
         }
     }
 
@@ -273,12 +269,12 @@ public class SNPCalling {
      * @param genomeFileName reference genome file name
      * @param execThread number of working thread
      */
-    public static void twoPassMapping(String refGenomeDir, String genomeFileName, int readLength, int execThread) {
+    public static void twoPassMapping(String refGenomeDir, String genomeFileName, int readLength, int execThread, Logger log) {
 
         File onePassSJOutput = new File(refGenomeDir, "SJ.out.tab");
         String cmd = "STAR --runMode genomeGenerate --genomeDir " + refGenomeDir + " --genomeFastaFiles " + genomeFileName +
                      " --sjdbFileChrStartEnd " + onePassSJOutput + " --sjdbOverhang " + readLength + " --runThreadN " + execThread + " --limitGenomeGenerateRAM 124544990592";
-        System.out.println(cmd);
+        log.debug("2-pass mapping procedure...");
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
@@ -288,7 +284,7 @@ public class SNPCalling {
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            log.error("2-pass mapping failed.");
         }
     }
 
@@ -298,22 +294,22 @@ public class SNPCalling {
      * @param refGenomeDir directory of the index reference genome file
      * @param execThread number of working thread
      */
-    public static void alignment(String refGenomeDir, String fastqFile, int execThread) {
+    public static void alignment(String refGenomeDir, String fastqFile, int execThread, Logger log) {
 
         String cmd = "STAR --genomeDir " + refGenomeDir + " --readFilesIn " + fastqFile + " --runThreadN " +
                 execThread;
-        System.out.println(cmd);
+        log.debug("output the final alignment result...");
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("Reads alignment process failed");
+                log.error("Reads alignment process failed");
                 System.exit(2);
             }
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            System.out.println("alignment result output failed.");
         }
     }
 
@@ -326,19 +322,19 @@ public class SNPCalling {
     public static void readsGroup(String picardJarDir, String starSamFile, String sortedBamFile) {
         String cmd = "java -jar " + picardJarDir + " AddOrReplaceReadGroups I=" + starSamFile + " O=" + sortedBamFile +
                      " SO=coordinate RGID=id RGLB=library RGPL=platform RGPU=machine RGSM=sample TMP_DIR=./tmp";
-        System.out.println(cmd);
+        log.debug("grouping alignment reads");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("picard reads grouping process failed.");
+                log.error("picard reads grouping process failed.");
                 System.exit(2);
             }
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            System.out.println("picard reads grouping process failed.");
         }
     }
 
@@ -351,26 +347,26 @@ public class SNPCalling {
     public static void dropDuplicateReads(String picardJarDir, String sortedBamFile, String deduplicatedBamFile) {
         String cmd = "java -jar " + picardJarDir + " MarkDuplicates I=" + sortedBamFile + " O=" + deduplicatedBamFile +
                      " CREATE_INDEX=true VALIDATION_STRINGENCY=SILENT M=output.metrics";
-        System.out.println(cmd);
+        log.debug("marking duplicated alignment reads");
 
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("picard reads deduplicate process failed.");
+                log.error("picard reads deduplicate process failed.");
                 System.exit(2);
             }
 
             p = Runtime.getRuntime().exec("rm -f " + sortedBamFile);
             exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("remove previous file failed.");
+                log.error("remove previous file failed.");
                 System.exit(2);
             }
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            System.out.println("picard reads deduplicate process failed.");
         }
     }
 
@@ -389,18 +385,18 @@ public class SNPCalling {
         }
 
         String cmd = "java -jar " + picardJarDir + " CreateSequenceDictionary R=" + refGenomeFastaPath + " O=" + refSequenceDict.getAbsolutePath();
-        System.out.println(cmd);
+        log.debug("create reference sequence dictionary");
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("create sequence dictionary failed");
+                log.error("create sequence dictionary failed");
                 System.exit(2);
             }
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            System.out.println("create sequence dictionary failed");
         }
     }
 
@@ -414,18 +410,18 @@ public class SNPCalling {
             return;
         }
         String cmd = "samtools faidx " + refGenomeFastaFile;
-        System.out.println(cmd);
+        log.debug("generate fai file");
         try {
             Process p = Runtime.getRuntime().exec(cmd);
             int exitVal = p.waitFor();
             if (exitVal != 0) {
-                System.out.println("create sequence idx failed");
+                log.error("create sequence idx failed");
                 System.exit(2);
             }
         }catch (IOException e){
             e.printStackTrace();
         }catch (InterruptedException e) {
-            System.out.println("Genome index failed.");
+            System.out.println("create sequence idx failed");
         }
     }
 
@@ -466,38 +462,49 @@ public class SNPCalling {
     }
 
     /**
+     * SNP site reads count by gatk ASEReadCounter tool
+     * @param refGenomeFilePath reference genome file
+     * @param bamFile gatk alignment bam file
+     * @param gatk gatk executive file
+     * @param gatkVcfFile gatk output VCF file
+     */
+    public static void readsCount(String refGenomeFilePath, String bamFile, String gatk, String gatkVcfFile) {
+        SnpReadCount src = new SnpReadCount(refGenomeFilePath, bamFile, gatk, gatkVcfFile, log);
+        src.snpReads();
+    }
+
+    /**
      * merge the output vcf files in one for further heterozygote site analysis
      * @param outputDir directory stores vcf calling result
      * @param gatkLocaljar install directory which contains gatk jar package
      */
     public static void mergeVcfFiles(String outputDir, String gatkLocaljar) {
         File outputDirectory = new File(outputDir);
-        String cellLine = outputDirectory.getName();
         File[] snpCallingRes = outputDirectory.listFiles();
-        File mergeVcfFile = new File(outputDir, cellLine + ".vcf");
+        File mergeVcfFile = new File(outputDir, "result.vcf");
         String cmd = gatkLocaljar + " MergeVcfs ";
         StringBuilder sb = new StringBuilder();
 
         if (snpCallingRes != null) {
             for (File f : snpCallingRes) {
-                if (f.getName().endsWith(".vcf")) {
-                    sb.append(" -I ");
+                if (f.getName().endsWith("Select.vcf")) {
+                    sb.append(" -I=");
                     sb.append(f.getAbsolutePath());
                 }
             }
-            cmd += sb.toString();
-            cmd += " -O " + mergeVcfFile.getAbsolutePath();
+            cmd = cmd + sb.toString();
+            cmd += " -O=" + mergeVcfFile.getAbsolutePath();
+            System.out.println(cmd);
 
             try {
                 Process p = Runtime.getRuntime().exec(cmd);
                 int exitVal = p.waitFor();
                 if (exitVal == 0) {
                     for (File f : snpCallingRes) {
-                        if (f.getName().endsWith(".vcf")){
+                        if (f.getName().endsWith(".vcf") | f.getName().endsWith(".idx") | f.getName().endsWith(".bai")){
                             p = Runtime.getRuntime().exec("rm -f " + f.getAbsolutePath());
                             exitVal = p.waitFor();
                         }
-
                     }
                 }
             } catch (IOException | InterruptedException ie) {

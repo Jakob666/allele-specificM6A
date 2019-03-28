@@ -1,8 +1,10 @@
 package SamtoolsPileupSNPCalling;
 
 import GatkSNPCalling.SNPCalling;
+import org.apache.log4j.Logger;
 
 import java.io.File;
+
 
 public class ReadsMapping {
 
@@ -12,9 +14,9 @@ public class ReadsMapping {
      * @param fastqFile absolute path of fastq file
      * @param execThread working thread number
      */
-    public static void alignment(String refGenomeFile, String fastqFile, int execThread) {
+    public static void alignment(String refGenomeFile, String fastqFile, int execThread, Logger logger) {
         String refGenomeDir = new File(refGenomeFile).getParent();
         int readLength = SNPCalling.getFastqReadLength(fastqFile);
-        SNPCalling.readsMapping(refGenomeDir, refGenomeFile, fastqFile, readLength, execThread);
+        SNPCalling.readsMapping(refGenomeDir, refGenomeFile, fastqFile, readLength, execThread, logger);
     }
 }

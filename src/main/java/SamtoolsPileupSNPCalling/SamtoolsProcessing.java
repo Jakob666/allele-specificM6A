@@ -8,8 +8,9 @@ public class SamtoolsProcessing {
     public static String samFileProcess(String alignmentResultFile, String outputDir, String prefix, String samtools) {
         String bamFile = SamtoolsProcessing.sam2bam(alignmentResultFile, outputDir, prefix ,samtools);
         String sortedBamFile = SamtoolsProcessing.sorted(samtools, bamFile);
+        String dedupBamFile = SamtoolsProcessing.deduplicate(samtools, sortedBamFile);
 
-        return sortedBamFile;
+        return dedupBamFile;
     }
 
     /**
@@ -53,5 +54,26 @@ public class SamtoolsProcessing {
         }
 
         return sortedBamFile;
+    }
+
+    /**
+     * mark duplicates reads in bam file with samtools
+     * @param samtools samtools executive file path
+     */
+    private static String deduplicate(String samtools, String sortedFile) {
+        String dedupFile = new File(sortedFile.substring(0, sortedFile.lastIndexOf("_"))+"_dedup.bam").getAbsolutePath();
+
+        String cmd = samtools + " markdup " + sortedFile + " " + dedupFile;
+        try {
+            Process p = Runtime.getRuntime().exec(cmd);
+            int exitVal = p.waitFor();
+            if (exitVal != 0) {
+                throw new RuntimeException("samtools deduplicate failed");
+            }
+        }catch (IOException | InterruptedException ie) {
+            ie.printStackTrace();
+        }
+
+        return dedupFile;
     }
 }

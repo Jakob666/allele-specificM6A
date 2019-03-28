@@ -28,7 +28,8 @@ public class SnpFilter {
         }
 
         this.rawVcfFile = new File(rawVcfFile);
-        String outputFileName = "filtered" + this.rawVcfFile.getName();
+        String rawVcfName = this.rawVcfFile.getName();
+        String outputFileName = rawVcfName.substring(0, rawVcfFile.lastIndexOf("_")) + "ReadsCount.txt";
         this.outputFile = new File(this.rawVcfFile.getParent(), outputFileName);
 
         this.cols = new HashMap<>();

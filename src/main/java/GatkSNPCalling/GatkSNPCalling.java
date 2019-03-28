@@ -1,11 +1,13 @@
 package GatkSNPCalling;
 
 import org.apache.commons.cli.*;
+import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
 
 public class GatkSNPCalling {
+    private static Logger logger;
 
     public static void main(String[] args) throws ParseException {
         Options options = new Options();
@@ -76,6 +78,9 @@ public class GatkSNPCalling {
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
         }
 
+        logger = initLog(outputDir);
+        mkDir(outputDir);
+
         // make directories for fastq files and alignment result
         if (inputFormat.equals("sra")) {
             mkDir(fastqTempDir);
@@ -84,9 +89,8 @@ public class GatkSNPCalling {
                 System.out.println("transform failed");
             }
         }
-        mkDir(outputDir);
 
-        SNPCalling.snpCalling(genomeFile, fastqTempDir, outputDir, picardLocalJar, gatkLocalJar, execThread);
+        SNPCalling.snpCalling(genomeFile, fastqTempDir, outputDir, picardLocalJar, gatkLocalJar, execThread, logger);
 
         try {
             Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
@@ -159,7 +163,7 @@ public class GatkSNPCalling {
     private static boolean sraToFastq(String sraInputDir, String fastqOutputDir) {
         boolean execSuccess;
 
-        sra2fastq s2fq = new sra2fastq(sraInputDir, fastqOutputDir);
+        sra2fastq s2fq = new sra2fastq(sraInputDir, fastqOutputDir, logger);
         execSuccess = s2fq.transFormat();
         s2fq = null;
 
@@ -176,5 +180,17 @@ public class GatkSNPCalling {
             boolean res = targetDir.mkdir();
         }
         targetDir = null;
+    }
+
+    /**
+     * initialize a log4j Logger instance for further logging
+     * @param logHome output directory of log file
+     * @return Logger instance
+     */
+    private static Logger initLog(String logHome) {
+        System.setProperty("log_home", logHome);
+        Logger logger = Logger.getLogger(GatkSNPCalling.class);
+
+        return logger;
     }
 }

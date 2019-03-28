@@ -6,12 +6,19 @@ import java.util.HashMap;
 
 public class AseInference {
 
+    /**
+     * get raw SNP reads count with samtools mpileup function
+     * @param refGenomeFilePath reference genome file
+     * @param sortedBamFile alignment result bam file
+     * @param samtools samtools executive file
+     * @return abundant file name which records raw SNP sites and reads count
+     */
     public static String inferenceASE(String refGenomeFilePath, String sortedBamFile, String samtools) {
         pileup(refGenomeFilePath, sortedBamFile, samtools);
-        String pileFile = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"Pileup.txt").getAbsolutePath();
-        alleleAbundant(pileFile);
+        String pileFile = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"_pileup.txt").getAbsolutePath();
+        String abundantFile = alleleAbundant(pileFile);
 
-        return pileFile;
+        return abundantFile;
     }
 
     public static void onlyAbundant(String pileupFile) {
@@ -26,7 +33,7 @@ public class AseInference {
      * @param samtools executive samtools file
      */
     private static void pileup(String refGenomeFilePath, String sortedBamFile, String samtools) {
-        String outputText = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"Pileup.txt").getAbsolutePath();
+        String outputText = new File(sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_"))+"_pileup.txt").getAbsolutePath();
         // samtools mpileup -o output.txt -f /data1/hubs/reference_genome/hg38.fa /data1/hubs/samtoolsTest/alignment_sorted.bam
         String cmd = samtools + " mpileup -o " + outputText + " -f " + refGenomeFilePath + " " + sortedBamFile;
         System.out.println(cmd);
@@ -48,10 +55,10 @@ public class AseInference {
      * the reference nucleotide
      * @param pileupFilePath pileupFile path
      */
-    private static void alleleAbundant(String pileupFilePath) {
+    private static String alleleAbundant(String pileupFilePath) {
 
-        File outputDir = new File(pileupFilePath).getParentFile();
-        File abundantFile = new File(outputDir.getAbsolutePath(), "alleleAbundant.txt");
+        String prefix = pileupFilePath.substring(0, pileupFilePath.lastIndexOf("_"));
+        File abundantFile = new File(prefix + "_abundant.txt");
 
         // chr6 410512 T 25 .,,,,,,.,.,.,,,..,......^S. ""!#&%%%%%"&%!"!$%#%%!!"
         try {
@@ -121,6 +128,8 @@ public class AseInference {
             ie.printStackTrace();
             System.exit(3);
         }
+
+        return abundantFile.getAbsolutePath();
     }
 
 
