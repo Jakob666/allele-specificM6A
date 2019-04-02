@@ -15,12 +15,11 @@ public class SamtoolsPileupSNPCalling {
         Options options = new Options();
         CommandLine commandLine = setCommand(args, options);
 
-        String sourceDataDir = "";
-        String fastqTempDir = null;
-        String genomeFile = "";
-        String gtfFileDir = null;
-        String outputDir = "";
+        // initialize the default params
+        String sourceDataDir, genomeFile, gtfFile, fastqTempDir, outputDir, prefix;
         String samtools = "samtools";
+        String gatkJar = "gatk";
+        String picardJar = "picard";
         String inputFormat = "sra";
         int execThread = 2;
 
@@ -28,58 +27,60 @@ public class SamtoolsPileupSNPCalling {
             new HelpFormatter().printHelp("flume-ng agent", options, true);
             return;
         }
-        if (commandLine.hasOption('r')) {
-            genomeFile = commandLine.getOptionValue('r');
-        }
-        if (commandLine.hasOption('g')) {
-            gtfFileDir = commandLine.getOptionValue('g');
-        }
-        if (commandLine.hasOption("fmt")) {
-            inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
-            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq")) {
-                System.out.println("invalid input file format, the format should be sra or fastq");
-                System.exit(2);
-            }
-        }
-        if (commandLine.hasOption('s')) {
-            sourceDataDir = commandLine.getOptionValue('s');
-            if (inputFormat.equals("sra")) {
-                if (commandLine.hasOption("tmp")) {
-                    fastqTempDir = commandLine.getOptionValue("tmp");
-                } else {
-                    try {
-                        File directory = new File("");
-                        fastqTempDir = directory.getCanonicalPath();
-                    } catch (IOException ie) {
-                        ie.printStackTrace();
-                        return;
-                    }
-                }
-            } else {
-                fastqTempDir = sourceDataDir;
-            }
-        }
+        // get reference genome file and GTF file
+        genomeFile = commandLine.getOptionValue('r');
+        gtfFile = commandLine.getOptionValue('g');
+        String genomeFileDir = new File(genomeFile).getParent();
 
+        // output result directory, default a new directory name "outputResult" in genome file directory
         if (commandLine.hasOption('o')) {
             outputDir = commandLine.getOptionValue('o');
         } else {
-            try {
-                File directory = new File("");
-                outputDir = directory.getCanonicalPath();
-            } catch (IOException ie) {
-                ie.printStackTrace();
-                return;
+            outputDir = new File(genomeFileDir, "outputResult").getAbsolutePath();
+            mkDir(outputDir);
+        }
+        logger = initLog(outputDir);
+
+        // get input file format(support sra, fastq, fasta)
+        if (commandLine.hasOption("fmt")) {
+            inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
+            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq")) {
+                logger.error("invalid input file format, the format should be sra or fastq");
+                System.exit(2);
             }
         }
-        if (commandLine.hasOption("smtool")) {
-            samtools = commandLine.getOptionValue("smtool");
+
+        // source data directory
+        sourceDataDir = commandLine.getOptionValue('s');
+        if (inputFormat.equals("sra")) {
+            if (commandLine.hasOption("tmp")) {
+                fastqTempDir = commandLine.getOptionValue("tmp");
+            } else {
+                fastqTempDir = new File(genomeFileDir, "temp").getAbsolutePath();
+                mkDir(fastqTempDir);
+            }
+        } else {
+            fastqTempDir = sourceDataDir;
+        }
+
+        if (commandLine.hasOption('p')) {
+            prefix = commandLine.getOptionValue('p');
+        } else {
+            prefix = "AseM6a";
+        }
+
+        if (commandLine.hasOption("smt")) {
+            samtools = commandLine.getOptionValue("smt");
+        }
+        if (commandLine.hasOption("gatk")) {
+            gatkJar = commandLine.getOptionValue("gatk");
+        }
+        if (commandLine.hasOption("picard")) {
+            picardJar = commandLine.getOptionValue("picard");
         }
         if (commandLine.hasOption('t')) {
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
         }
-
-        logger = initLog(outputDir);
-        mkDir(outputDir);
 
         // make directories for fastq files and alignment result
         if (inputFormat.equals("sra")) {
@@ -87,20 +88,23 @@ public class SamtoolsPileupSNPCalling {
             boolean sraTransRes = sraToFastq(sourceDataDir, fastqTempDir);
             if (!sraTransRes) {
                 logger.error("transform failed");
+                System.exit(2);
             }
         }
 
-        snpCalling(genomeFile, new File(fastqTempDir), outputDir, gtfFileDir, samtools, execThread);
+        snpCalling(genomeFile, new File(fastqTempDir), outputDir, prefix, gtfFile, samtools, picardJar, gatkJar, execThread, logger);
 
-        try {
-            Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
-            int exitVal = p.waitFor();
-            if (exitVal != 0) {
-                System.out.println("remove redundant fastq file failed");
-                System.exit(2);
+        if (!fastqTempDir.equals(sourceDataDir)) {
+            try {
+                Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
+                int exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    logger.error("remove redundant fastq file failed");
+                    System.exit(2);
+                }
+            } catch (IOException | InterruptedException ie) {
+                logger.error(ie.getMessage());
             }
-        } catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
         }
     }
 
@@ -109,28 +113,22 @@ public class SamtoolsPileupSNPCalling {
      * @param genomeFilePath reference genome file path
      * @param fastqDir fastq file directory
      * @param outputDir output directory
-     * @param gtfDir gtf files directory
+     * @param gtfFile gtf files path
      * @param samtools samtools executive file
      * @param execThread number of working threads
      */
-    private static void snpCalling(String genomeFilePath, File fastqDir, String outputDir, String gtfDir, String samtools, int execThread) {
+    private static void snpCalling(String genomeFilePath, File fastqDir, String outputDir, String prefix, String gtfFile,
+                                   String samtools, String picard, String gatk, int execThread, Logger log) {
         File[] fastqFiles = fastqDir.listFiles();
-        if (fastqFiles == null) {
-            System.out.println("empty fastq file Dir");
-            System.exit(2);
-        }
 
-        for (File fq : fastqFiles) {
-            String fileName = fq.getName();
-            String prefix = fileName.substring(0, fileName.lastIndexOf("."));
-            ReadsMapping.alignment(genomeFilePath, fq.getAbsolutePath(), execThread, logger);
-            String refGenomeDir = new File(genomeFilePath).getParent();
-            String aligmentResultFile = new File(refGenomeDir, "Aligned.out.sam").getAbsolutePath();
-            String dedupBamFile = SamtoolsProcessing.samFileProcess(aligmentResultFile, outputDir, prefix, samtools, logger);
-            String readsCountFile = AseInference.inferenceASE(genomeFilePath, dedupBamFile, samtools, logger);
-            SnpFilter sf = new SnpFilter(gtfDir, readsCountFile, logger);
-            sf.filterVcf();
-        }
+        ReadsMapping.alignment(genomeFilePath, gtfFile, fastqFiles, execThread, logger);
+        String refGenomeDir = new File(genomeFilePath).getParent();
+        String aligmentResultFile = new File(refGenomeDir, "Aligned.out.sam").getAbsolutePath();
+        String bamFile = SamtoolsProcessing.samFileProcess(genomeFilePath, aligmentResultFile, outputDir, prefix,
+                                                                samtools, picard, gatk, logger);
+        String readsCountFile = AseInference.inferenceASE(genomeFilePath, bamFile, samtools, logger);
+        SnpFilter sf = new SnpFilter(gtfFile, readsCountFile, logger);
+        sf.filterVcf();
     }
 
     /**
@@ -168,9 +166,13 @@ public class SamtoolsPileupSNPCalling {
      * @return CommandLine instance
      * @throws ParseException
      */
-    private static CommandLine setCommand(String[] args, Options options) throws ParseException{
+    private static CommandLine setCommand(String[] args, Options options) throws ParseException {
 
         Option option = new Option("r", "ref-genome", true, "reference genome file absolute path");
+        option.setRequired(true);
+        options.addOption(option);
+
+        option = new Option("g", "gtf-file", true, "gene transfer format(GTF) file");
         option.setRequired(true);
         options.addOption(option);
 
@@ -178,11 +180,11 @@ public class SamtoolsPileupSNPCalling {
         option.setRequired(true);
         options.addOption(option);
 
-        option = new Option("g", "gtf-dir", true, "gtf data directory");
-        option.setRequired(true);
+        option = new Option("fmt", "input-format", true, "input file format, sra or fastq, default sra");
+        option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("fmt", "input-format", true, "input file format, sra or fastq, default sra");
+        option = new Option("p", "prefix", true, "output result file prefix, default 'AseM6a'");
         option.setRequired(false);
         options.addOption(option);
 
@@ -194,7 +196,15 @@ public class SamtoolsPileupSNPCalling {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("smtool", "samtools", true, "samtools executive file path, default samtools");
+        option = new Option("smt", "samtools", true, "samtools executive file path, default samtools");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("gatk", "gatk-tool", true, "GATK executive file path, default gatk");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("picard", "picard-tool", true, "PICARD executive file path, default picard.jar");
         option.setRequired(false);
         options.addOption(option);
 

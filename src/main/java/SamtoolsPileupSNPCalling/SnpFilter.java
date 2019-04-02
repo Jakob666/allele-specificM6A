@@ -4,47 +4,46 @@ package SamtoolsPileupSNPCalling;
 import org.apache.log4j.Logger;
 
 import java.io.*;
-import java.util.HashMap;
+import java.util.*;
 
 public class SnpFilter {
 
-    private File[] referenceVcfFiles;
+    private File referenceVcfFile;
     private File outputFile, rawVcfFile;
-    private HashMap<String, Integer> cols;
+    private Logger log;
 
     /**
      * use 1000 Genome project SNP to filter samtools pileup function output SNP
-     * @param refVcfDirPath directory which stores 1000 Genome VCF file for each chromosome
+     * @param refVcfFile directory which stores 1000 Genome VCF file for each chromosome
      * @param rawVcfFile samtools pileup function output reads abundant file
      */
-    public SnpFilter(String refVcfDirPath, String rawVcfFile, Logger log) {
-        File referenceVcfDir = new File(refVcfDirPath);
-        if (!referenceVcfDir.isDirectory()) {
-            log.error("need reference VCF directory");
-            System.exit(4);
-        }
-        this.referenceVcfFiles = referenceVcfDir.listFiles();
-        if (this.referenceVcfFiles == null) {
-            log.error("empty reference VCF directory");
-            System.exit(5);
+    public SnpFilter(String refVcfFile, String rawVcfFile, Logger log) {
+        this.log = log;
+        this.referenceVcfFile = new File(refVcfFile);
+        if (this.referenceVcfFile.isDirectory()) {
+            this.log.error("need reference VCF file, not a directory");
+            System.exit(2);
         }
 
         this.rawVcfFile = new File(rawVcfFile);
         String outputFileName = rawVcfFile.substring(0, rawVcfFile.lastIndexOf("_")) + "ReadsCount.txt";
         this.outputFile = new File(outputFileName);
+    }
 
-        this.cols = new HashMap<>();
-        this.cols.put("A", 4);
-        this.cols.put("C", 5);
-        this.cols.put("T", 6);
-        this.cols.put("G", 7);
+    public static void main(String[] args) {
+        System.setProperty("log_home", "/data1/hubs/test_output/MT4_T-cells_Control/INPUT");
+        Logger log = Logger.getLogger(SnpFilter.class);
+        SnpFilter snpFilter = new SnpFilter("/data/hbs/dbsnp/dbsnp.vcf",
+                "/data1/hubs/test_output/MT4_T-cells_Control/INPUT/SRR2648293_abundant.txt", log);
+        snpFilter.filterVcf();
     }
 
     /**
      * filter SNP
      */
     public void filterVcf() {
-        HashMap<String, BinarySearchTree> trees = this.buildTreeForChr();
+        VcfSearch vs = new VcfSearch(this.referenceVcfFile, this.log);
+        HashMap<String, ArrayList<Integer>> vcfPositions = vs.vcfList();
         try {
             BufferedReader bfr = new BufferedReader(
                     new InputStreamReader(new FileInputStream(this.rawVcfFile))
@@ -62,107 +61,75 @@ public class SnpFilter {
                     if (readIn.startsWith("#"))
                         continue;
                     String[] lineInfo = readIn.split("\t");
-                    // skip letters "chr"
                     String chrNum = lineInfo[0];
                     int position = Integer.parseInt(lineInfo[1]);
 
-                    BinarySearchTree targetTree = trees.get(chrNum);
-                    VcfTreeNode searchRes = targetTree.search(targetTree.root, position);
-                    if (searchRes != null) {
-                        String id = searchRes.id;
-                        String altNc = searchRes.altNucleotide;
-                        if (!this.cols.containsKey(altNc))
-                            continue;
-                        // output information contains chr, position, id(1000Genome), reference nc, alternative nc, ref count, alt count
-                        String[] usefulInfo = new String[]{lineInfo[0], lineInfo[1], id, lineInfo[2], altNc, lineInfo[this.cols.get(lineInfo[2])], lineInfo[this.cols.get(altNc)]};
-                        StringBuffer stringBuf = new StringBuffer();
-                        for (String str: usefulInfo) {
-                            stringBuf.append(str);
-                            stringBuf.append("\t");
-                        }
-                        writeOut = stringBuf.toString();
+                    ArrayList<Integer> positions = vcfPositions.get(chrNum);
+                    boolean searchRes = vs.binarySearch(positions, position);
+                    if (searchRes) {
+                        HashMap<Integer, String> cols = new HashMap<Integer, String>();
+                        cols.put(Integer.parseInt(lineInfo[4]), "A");
+                        cols.put(Integer.parseInt(lineInfo[5]), "C");
+                        cols.put(Integer.parseInt(lineInfo[6]), "T");
+                        cols.put(Integer.parseInt(lineInfo[7]), "G");
+                        HashMap<String, Integer> majMinHaplotype = getMajorMinorHaplotype(cols);
+                        String refNc = cols.get(majMinHaplotype.get("first"));
+                        String altNc = cols.get(majMinHaplotype.get("second"));
+                        int refCount = majMinHaplotype.get("first");
+                        int altCount = majMinHaplotype.get("second");
+                        // output chr, position, ref-nucleotide, alt-nucleotide, ref-reads count, alt-reads count
+                        String[] outputInfo = new String[]{chrNum, Integer.toString(position), refNc, altNc,
+                                                           Integer.toString(refCount), Integer.toString(altCount)};
+                        writeOut = String.join("\t", outputInfo);
                         bwr.write(writeOut);
                         bwr.newLine();
                     }
-
                 }
             }
-
+            vcfPositions = null;
             bwr.flush();
             bfr.close();
             bwr.close();
-        } catch (FileNotFoundException fne) {
-            fne.printStackTrace();
-            System.exit(2);
         } catch (IOException ie) {
-            ie.printStackTrace();
-            System.exit(3);
+            this.log.error(ie.getMessage());
+            System.exit(2);
         }
     }
 
     /**
      * build binary search tree for each chromosome SNP
      * @param referenceFile 1000 genome project SNP for a particular chromosome
-     * @return binary search tree
+     * @return binary search tree for each chromosome
      */
-    private BinarySearchTree buildVcfTree(File referenceFile) {
-        VcfSearchTree vst = new VcfSearchTree(referenceFile);
-
-        return vst.buildTree();
-    }
+//    private HashMap<String, BinarySearchTree> buildVcfTree(File referenceFile) {
+//        VcfSearchTree vst = new VcfSearchTree(referenceFile, this.log);
+//
+//        return vst.buildTree();
+//    }
 
     /**
-     * build binary search tree for all reference SNP
-     * @return hashmap which contains binary search tree for each chromosome
+     * get base on major haplotype and minor haplotype
+     * @param readsCounts HashMap, key is the reads cover SNP, value is base
+     * @return HashMap
      */
-    private HashMap<String, BinarySearchTree> buildTreeForChr() {
-
-        HashMap<String, BinarySearchTree> chrBinaryTree = new HashMap<String, BinarySearchTree>();
-
-        for (File vcfFile : this.referenceVcfFiles) {
-            if (!vcfFile.getAbsolutePath().endsWith(".vcf"))
-                continue;
-            String chrNum = this.getChrNum(vcfFile);
-            if (chrNum == null) {
-                System.out.println("Invalid VCF reference file " + vcfFile.getAbsolutePath());
-                System.exit(6);
+    private HashMap<String, Integer> getMajorMinorHaplotype(HashMap<Integer, String> readsCounts) {
+        //get key set
+        ArrayList<Integer> list= new ArrayList<>(readsCounts.keySet());
+        //override sort function, descend
+        Collections.sort(list, new Comparator<Integer>() {
+            @Override
+            public int compare(Integer o1, Integer o2) {
+                return o1 < o2 ? 1:-1;
             }
+        });
 
-            chrBinaryTree.put(chrNum, this.buildVcfTree(vcfFile));
-        }
+        int first = list.get(0);
+        int second = list.get(1);
+        HashMap<String, Integer> map = new HashMap<>();
+        map.put("first", first);
+        map.put("second", second);
 
-        return chrBinaryTree;
+        return map;
     }
 
-    /**
-     * get chromosome number of a reference VCF File
-     * @param referenceVcf 1000 genome VCF file
-     * @return chrNum
-     */
-    private String getChrNum(File referenceVcf) {
-        String chrNum = null;
-        try {
-            BufferedReader bfr = new BufferedReader(
-                    new InputStreamReader(new FileInputStream(referenceVcf))
-            );
-
-            String line;
-            while ((line = bfr.readLine()) != null) {
-                if (line.startsWith("#"))
-                    continue;
-                chrNum = line.split("\t")[0];
-                break;
-            }
-
-            bfr.close();
-        } catch (FileNotFoundException fne) {
-            fne.printStackTrace();
-            System.exit(2);
-        } catch (IOException ie) {
-            ie.printStackTrace();
-            System.exit(3);
-        }
-
-        return chrNum;
-    }
 }
