@@ -1,33 +1,22 @@
 package heterozygoteSiteAnalysis;
 
-import jxl.Cell;
-import jxl.Sheet;
-import jxl.Workbook;
-import jxl.read.biff.BiffException;
+import org.apache.log4j.Logger;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.HashMap;
 
 
 public class PeakIntervalTree {
-    private Workbook workbook;
-    private Sheet peakResultSht;
+    private File peakBedFile;
+    private Logger logger;
 
-    public PeakIntervalTree(String resultExcel) {
-        File peakCallingExcel = new File(resultExcel);
-        try {
-            this.workbook = Workbook.getWorkbook(peakCallingExcel);
-            this.peakResultSht = workbook.getSheet("peak");
-        } catch (IOException | BiffException xlse) {
-            xlse.printStackTrace();
-        }
+    public PeakIntervalTree(String resultBedFile, Logger logger) {
+        this.logger = logger;
+        this.peakBedFile = new File(resultBedFile);
     }
 
-    public HashMap<String, HashMap<String, IntervalTree>> peakTrees() {
+    public HashMap<String, HashMap<String, IntervalTree>> getPeakTrees() {
         HashMap<String, HashMap<String, IntervalTree>> treeMap = this.buildPeakIntervalTree();
-        cleanup();
-
         return treeMap;
     }
 
@@ -36,26 +25,31 @@ public class PeakIntervalTree {
      */
     private HashMap<String, Integer> getFieldIndex() {
         HashMap<String, Integer> fieldIdx = new HashMap<String, Integer>();
-        int totalCols = this.peakResultSht.getColumns();
-
-        // the first row is field names
-        for (int i = 0; i < totalCols; i++) {
-            Cell cell = this.peakResultSht.getCell(0, i);
-            String field = cell.getContents();
-            if (field.equalsIgnoreCase("chr"))
-                fieldIdx.put("chr", i);
-            else if (field.equalsIgnoreCase("chromstart"))
-                fieldIdx.put("chromstart", i);
-            else if (field.equalsIgnoreCase("chromend"))
-                fieldIdx.put("chromend", i);
-            else if (field.equalsIgnoreCase("strand"))
-                fieldIdx.put("strand", i);
-            else if (field.equalsIgnoreCase("blockcount"))
-                fieldIdx.put("blockcount", i);
-            else if (field.equalsIgnoreCase("blocksizes"))
-                fieldIdx.put("blocksizes", i);
-            else if (field.equalsIgnoreCase("blockstarts"))
-                fieldIdx.put("blockstarts", i);
+        BufferedReader bfr;
+        try {
+            bfr = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(this.peakBedFile))
+            );
+            String line = bfr.readLine();
+            String[] columns = line.split("\t");
+            int idx = 0;
+            // the first row is field names
+            for (String col: columns) {
+                switch (col) {
+                    case "# chr": fieldIdx.put("chr", idx);
+                    case "chromStart": fieldIdx.put("chromstart", idx);
+                    case "chromEnd": fieldIdx.put("chromend", idx);
+                    case "strand": fieldIdx.put("strand", idx);
+                    case "blockCount": fieldIdx.put("blockcount", idx);
+                    case "blockSizes": fieldIdx.put("blocksizes", idx);
+                    case "blockStarts": fieldIdx.put("blockstarts", idx);
+                }
+                idx += 1;
+            }
+        } catch (IOException ie) {
+            this.logger.error("read bed file failed");
+            this.logger.error(ie.getMessage());
+            System.exit(2);
         }
 
         return fieldIdx;
@@ -69,41 +63,61 @@ public class PeakIntervalTree {
         HashMap<String, Integer> fieldIdx = this.getFieldIndex();
         String preChr = null;
         HashMap<String, HashMap<String, IntervalTree>> peakTreeMap = new HashMap<>();
-
+        BufferedReader bfr;
         String chrNum, start, end, strand, blockCount, blockSize, blockStart;
-        int totalRows = this.peakResultSht.getRows();
-        for (int i = 1; i < totalRows; i++) {
-            chrNum = this.peakResultSht.getCell(fieldIdx.get("chr"), i).getContents();
-            if (!chrNum.equals(preChr)) {
-                IntervalTree posStrandTree = new IntervalTree();
-                IntervalTree negStrandTree = new IntervalTree();
-                HashMap<String, IntervalTree> peakTree = new HashMap<>();
-                peakTree.put("+", posStrandTree);
-                peakTree.put("-", negStrandTree);
+        try {
+            bfr = new BufferedReader(
+                    new InputStreamReader(new FileInputStream(this.peakBedFile))
+            );
+            String line = "";
+            String[] lineInfo;
+            while (line != null) {
+                line = bfr.readLine();
+                if (line != null) {
+                    if (line.startsWith("#"))
+                        continue;
+                    lineInfo = line.split("\t");
+                    chrNum = lineInfo[fieldIdx.get("chr")];
+                    if (!peakTreeMap.containsKey(chrNum)) {
+                        IntervalTree posStrandTree = new IntervalTree();
+                        IntervalTree negStrandTree = new IntervalTree();
+                        HashMap<String, IntervalTree> peakTree = new HashMap<>();
+                        peakTree.put("+", posStrandTree);
+                        peakTree.put("-", negStrandTree);
 
-                peakTreeMap.put(chrNum, peakTree);
-            }
-            strand = this.peakResultSht.getCell(fieldIdx.get("strand"), i).getContents();
-            start = this.peakResultSht.getCell(fieldIdx.get("chromstart"), i).getContents();
-            end = this.peakResultSht.getCell(fieldIdx.get("chromend"), i).getContents();
-            blockCount = this.peakResultSht.getCell(fieldIdx.get("blockcount"), i).getContents();
-            blockSize = this.peakResultSht.getCell(fieldIdx.get("blocksizes"), i).getContents();
-            blockStart = this.peakResultSht.getCell(fieldIdx.get("blockstarts"), i).getContents();
-            if (Integer.parseInt(blockCount) > 1) {
-                IntervalTreeNode[] nodes = this.multiBlock(start, blockSize, blockStart);
-                for (IntervalTreeNode node : nodes) {
-                    IntervalTree it = peakTreeMap.get(chrNum).get(strand);
-                    it = it.insertNode(it, node);
-                    peakTreeMap.get(chrNum).put(strand, it);
+                        peakTreeMap.put(chrNum, peakTree);
+                    }
+                    strand = lineInfo[fieldIdx.get("strand")];
+                    start = lineInfo[fieldIdx.get("chromstart")];
+                    end = lineInfo[fieldIdx.get("chromend")];
+                    blockCount = lineInfo[fieldIdx.get("blockcount")];
+                    blockSize = lineInfo[fieldIdx.get("blocksizes")];
+                    blockStart = lineInfo[fieldIdx.get("blockstarts")];
+
+                    if (Integer.parseInt(blockCount) > 1) {
+                        IntervalTreeNode[] nodes = this.multiBlock(start, end, blockSize, blockStart);
+                        for (IntervalTreeNode node : nodes) {
+                            IntervalTree it = peakTreeMap.get(chrNum).get(strand);
+                            it = it.insertNode(it, node);
+                            peakTreeMap.get(chrNum).put(strand, it);
+                        }
+                    } else {
+                        int peakStart = Integer.parseInt(start);
+                        int peakEnd = Integer.parseInt(end);
+                        IntervalTreeNode newNode = new IntervalTreeNode(peakStart, peakEnd, peakStart, peakEnd);
+                        IntervalTree it = peakTreeMap.get(chrNum).get(strand);
+                        it = it.insertNode(it, newNode);
+                        peakTreeMap.get(chrNum).put(strand, it);
+                    }
+                    preChr = chrNum;
                 }
-            } else {
-                IntervalTreeNode newNode = new IntervalTreeNode(Integer.parseInt(start), Integer.parseInt(end));
-                IntervalTree it = peakTreeMap.get(chrNum).get(strand);
-                it = it.insertNode(it, newNode);
-                peakTreeMap.get(chrNum).put(strand, it);
             }
 
-            preChr = chrNum;
+            bfr.close();
+
+        } catch (IOException ie) {
+            this.logger.error("build m6a peak tree failed");
+            this.logger.error(ie.getMessage());
         }
 
         return peakTreeMap;
@@ -116,27 +130,20 @@ public class PeakIntervalTree {
      * @param blockStarts block start records
      * @return interval tree node list
      */
-    private IntervalTreeNode[] multiBlock(String start, String blockSize, String blockStarts) {
+    private IntervalTreeNode[] multiBlock(String start, String end, String blockSize, String blockStarts) {
         String[] sizes = blockSize.split(",");
         String[] starts = blockStarts.split(",");
-        int chrStart = Integer.parseInt(start);
+        int peakStart = Integer.parseInt(start);
+        int peakEnd = Integer.parseInt(end);
 
         IntervalTreeNode[] nodes = new IntervalTreeNode[starts.length];
         for (int i = 0; i < starts.length; i++) {
-            int intervalStart = chrStart + Integer.parseInt(starts[i]);
+            int intervalStart = peakStart + Integer.parseInt(starts[i]);
             int intervalEnd = intervalStart + Integer.parseInt(sizes[i]);
-            IntervalTreeNode newNode = new IntervalTreeNode(intervalStart, intervalEnd);
+            IntervalTreeNode newNode = new IntervalTreeNode(intervalStart, intervalEnd, peakStart, peakEnd);
             nodes[i] = newNode;
         }
 
         return nodes;
-    }
-
-    /**
-     * release resource, garbage collection
-     */
-    private void cleanup() {
-        if (this.workbook != null)
-            workbook.close();
     }
 }
