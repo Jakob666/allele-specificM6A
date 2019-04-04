@@ -29,7 +29,7 @@ public class SignificantTest {
      * @param peakNum total number of m6A peaks on haplotype
      * @return recalibrated q value
      */
-    public double BHRecalibration(double pValues, int rank, int peakNum) {
+    public static double BHRecalibration(double pValues, int rank, int peakNum) {
         return pValues * peakNum / rank;
     }
 

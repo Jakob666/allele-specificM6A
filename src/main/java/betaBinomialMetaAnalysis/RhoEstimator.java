@@ -5,7 +5,7 @@ public class RhoEstimator {
 
     private int[] majorSNPReadsCount, minorSNPReadsCount;
     private double learningRate, unImproveThreshold;
-    private double r, delta;
+    private double r, delta, initialRho;
 
     /**
      * Constructor
@@ -15,9 +15,10 @@ public class RhoEstimator {
      *                     an extremely tiny learning rate may train for a long time.
      * @param unImproveThreshold the threshold for early stop
      */
-    public RhoEstimator(int[] majorSNPReadsCount, int[] minorSNPReadsCount, double learningRate, double unImproveThreshold){
+    public RhoEstimator(int[] majorSNPReadsCount, int[] minorSNPReadsCount, double initialRho, double learningRate, double unImproveThreshold){
         this.majorSNPReadsCount = majorSNPReadsCount;
         this.minorSNPReadsCount = minorSNPReadsCount;
+        this.initialRho = initialRho;
         this.learningRate = learningRate;
         this.unImproveThreshold = unImproveThreshold;
         this.r = 0.0;
@@ -27,16 +28,15 @@ public class RhoEstimator {
     /**
      * estimate best rho parameter of beta binomial distribution with gradient ascend, update parameter rho with AdaGrad
      * optimizer
-     * @param initialRho initial value for parameter rho
      * @return The value of rho which corresponding to the maximum value of Log likelihood function
      */
-    public double gradientAscend(double initialRho) {
+    public double gradientAscend() {
         int iter = 0;
 
         LogLikelihoodFunc llf = new LogLikelihoodFunc(this.majorSNPReadsCount, this.minorSNPReadsCount);
         RhoDerivation gradient = new RhoDerivation(this.majorSNPReadsCount, this.minorSNPReadsCount);
 
-        double curTargetFuncVal = llf.logLikelihoodFunc(initialRho);
+        double curTargetFuncVal = llf.logLikelihoodFunc(this.initialRho);
         double bestTargetFuncVal = curTargetFuncVal;
         double preTargetFuncVal = curTargetFuncVal;
 
@@ -45,8 +45,8 @@ public class RhoEstimator {
         int unImproveTime = 0;
 
         double curGradient;
-        double curRho = initialRho;
-        double bestRho = initialRho;
+        double curRho = this.initialRho;
+        double bestRho = this.initialRho;
 
         while (true) {
             if ((iter+1) % 100 == 0)
