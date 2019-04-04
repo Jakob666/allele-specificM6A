@@ -26,7 +26,7 @@ public class SnpFilter {
         }
 
         this.rawVcfFile = new File(rawVcfFile);
-        String outputFileName = rawVcfFile.substring(0, rawVcfFile.lastIndexOf("_")) + "ReadsCount.txt";
+        String outputFileName = rawVcfFile.substring(0, rawVcfFile.lastIndexOf("_")) + "_readsCount.txt";
         this.outputFile = new File(outputFileName);
     }
 
@@ -96,11 +96,11 @@ public class SnpFilter {
         }
     }
 
-    /**
-     * build binary search tree for each chromosome SNP
-     * @param referenceFile 1000 genome project SNP for a particular chromosome
-     * @return binary search tree for each chromosome
-     */
+//    /**
+//     * build binary search tree for each chromosome SNP. Deprecated, use class VcfSearch instead
+//     * @param referenceFile 1000 genome project SNP for a particular chromosome
+//     * @return binary search tree for each chromosome
+//     */
 //    private HashMap<String, BinarySearchTree> buildVcfTree(File referenceFile) {
 //        VcfSearchTree vst = new VcfSearchTree(referenceFile, this.log);
 //

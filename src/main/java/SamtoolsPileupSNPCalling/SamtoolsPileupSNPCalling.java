@@ -16,7 +16,7 @@ public class SamtoolsPileupSNPCalling {
         CommandLine commandLine = setCommand(args, options);
 
         // initialize the default params
-        String sourceDataDir, genomeFile, gtfFile, fastqTempDir, outputDir, prefix;
+        String sourceDataDir, genomeFile, gtfFile, refVcfFile, fastqTempDir, outputDir, prefix;
         String samtools = "samtools";
         String gatkJar = "gatk";
         String picardJar = "picard";
@@ -31,6 +31,7 @@ public class SamtoolsPileupSNPCalling {
         genomeFile = commandLine.getOptionValue('r');
         gtfFile = commandLine.getOptionValue('g');
         String genomeFileDir = new File(genomeFile).getParent();
+        refVcfFile = commandLine.getOptionValue("rv");
 
         // output result directory, default a new directory name "outputResult" in genome file directory
         if (commandLine.hasOption('o')) {
@@ -92,7 +93,7 @@ public class SamtoolsPileupSNPCalling {
             }
         }
 
-        snpCalling(genomeFile, new File(fastqTempDir), outputDir, prefix, gtfFile, samtools, picardJar, gatkJar, execThread, logger);
+        snpCalling(genomeFile, new File(fastqTempDir), outputDir, prefix, gtfFile, refVcfFile, samtools, picardJar, gatkJar, execThread);
 
         if (!fastqTempDir.equals(sourceDataDir)) {
             try {
@@ -118,7 +119,7 @@ public class SamtoolsPileupSNPCalling {
      * @param execThread number of working threads
      */
     private static void snpCalling(String genomeFilePath, File fastqDir, String outputDir, String prefix, String gtfFile,
-                                   String samtools, String picard, String gatk, int execThread, Logger log) {
+                                   String refVcfFile, String samtools, String picard, String gatk, int execThread) {
         File[] fastqFiles = fastqDir.listFiles();
 
         ReadsMapping.alignment(genomeFilePath, gtfFile, fastqFiles, execThread, logger);
@@ -127,7 +128,7 @@ public class SamtoolsPileupSNPCalling {
         String bamFile = SamtoolsProcessing.samFileProcess(genomeFilePath, aligmentResultFile, outputDir, prefix,
                                                                 samtools, picard, gatk, logger);
         String readsCountFile = AseInference.inferenceASE(genomeFilePath, bamFile, samtools, logger);
-        SnpFilter sf = new SnpFilter(gtfFile, readsCountFile, logger);
+        SnpFilter sf = new SnpFilter(refVcfFile, readsCountFile, logger);
         sf.filterVcf();
     }
 
@@ -173,6 +174,10 @@ public class SamtoolsPileupSNPCalling {
         options.addOption(option);
 
         option = new Option("g", "gtf-file", true, "gene transfer format(GTF) file");
+        option.setRequired(true);
+        options.addOption(option);
+
+        option = new Option("rv", "ref_vcf", true, "reference VCF file, recommend dbSNP");
         option.setRequired(true);
         options.addOption(option);
 
