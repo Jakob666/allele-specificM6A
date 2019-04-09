@@ -24,7 +24,10 @@ public class AseM6aPeakDetector {
         this.aseM6aPeakFile = new File(outputFileName);
     }
 
-    private void detectAsePeak() {
+    /**
+     * detect ASE m6A peaks and output to file
+     */
+    public void detectAsePeak() {
         // get global rho
         double rho = this.getGlobalRho();
         double epsilon = 0.00001;
@@ -34,8 +37,12 @@ public class AseM6aPeakDetector {
                     new OutputStreamWriter(new FileOutputStream(this.aseM6aPeakFile))
             );
             HashMap<String, Double> peakPValues = this.getPValueOfEachPeak(rho);
-            HashMap<String, Double> peakQValues = this.bhRecalibrationOfEachPeak(peakPValues);
-            Set<Map.Entry<String, Double>> qValues = peakQValues.entrySet();
+            Set<Map.Entry<String, Double>> pVals = peakPValues.entrySet();
+            for (Map.Entry<String, Double> pv: pVals) {
+                System.out.println(pv.getKey() + "=>" + pv.getValue());
+            }
+            HashMap<String, Double> aseM6aPeaks = this.bhRecalibrationOfEachPeak(peakPValues);
+            Set<Map.Entry<String, Double>> qValues = aseM6aPeaks.entrySet();
             double qVal;
             String peakLabel, writeOut;
             String[] info, outputLine;
@@ -46,15 +53,11 @@ public class AseM6aPeakDetector {
                 String peakStart = info[1];
                 String peakEnd = info[2];
                 qVal = qValue.getValue();
-                // ASE significant m6a peak if q value less than 0.05
-                if (Math.abs(qVal - 0.05) < epsilon) {
-                    outputLine = new String[]{chrNum, peakStart, peakEnd, Double.toString(qVal)};
-                    writeOut = String.join("\t", outputLine);
-                    bfw.write(writeOut);
-                    bfw.newLine();
-                }
+                outputLine = new String[]{chrNum, peakStart, peakEnd, Double.toString(qVal)};
+                writeOut = String.join("\t", outputLine);
+                bfw.write(writeOut);
+                bfw.newLine();
             }
-
             bfw.close();
         } catch (IOException ie) {
             this.log.error("can not write ASE m6a peak result file");
@@ -162,7 +165,7 @@ public class AseM6aPeakDetector {
     }
 
     /**
-     * recalibrate peak p values using BH method, output Q value.
+     * recalibrate peak p values using BH method, output Q value. Select Q values < 0.05 as ASE m6a peak
      * @param peakPValues p values for each m6a peak
      * @return HashMap
      */
@@ -176,6 +179,7 @@ public class AseM6aPeakDetector {
             }
         });
 
+        HashMap<String, Double> aseM6aPeaks = new HashMap<>();
         int rankage = 0;
         int totalPeak = sortedByValue.size();
         double peakPValue;
@@ -185,9 +189,11 @@ public class AseM6aPeakDetector {
             peakLabel = sortedByValue.get(i).getKey();
             peakPValue = sortedByValue.get(i).getValue();
             double qValue = SignificantTest.BHRecalibration(peakPValue, rankage, totalPeak);
-            peakPValues.put(peakLabel, qValue);
+            if ((qValue - 0.05) > 0.00001)
+                break;
+            aseM6aPeaks.put(peakLabel, qValue);
         }
 
-        return peakPValues;
+        return aseM6aPeaks;
     }
 }

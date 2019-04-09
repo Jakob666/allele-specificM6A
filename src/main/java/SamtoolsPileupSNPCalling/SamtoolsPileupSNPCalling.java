@@ -122,11 +122,12 @@ public class SamtoolsPileupSNPCalling {
                                    String refVcfFile, String samtools, String picard, String gatk, int execThread) {
         File[] fastqFiles = fastqDir.listFiles();
 
-        ReadsMapping.alignment(genomeFilePath, gtfFile, fastqFiles, execThread, logger);
-        String refGenomeDir = new File(genomeFilePath).getParent();
-        String aligmentResultFile = new File(refGenomeDir, "Aligned.out.sam").getAbsolutePath();
-        String bamFile = SamtoolsProcessing.samFileProcess(genomeFilePath, aligmentResultFile, outputDir, prefix,
-                                                                samtools, picard, gatk, logger);
+//        ReadsMapping.alignment(genomeFilePath, gtfFile, fastqFiles, execThread, logger);
+//        String refGenomeDir = new File(genomeFilePath).getParent();
+//        String aligmentResultFile = new File(refGenomeDir, "Aligned.out.sam").getAbsolutePath();
+//        String bamFile = SamtoolsProcessing.samFileProcess(genomeFilePath, aligmentResultFile, outputDir, prefix,
+//                                                                samtools, picard, gatk, logger);
+        String bamFile = "/data1/hubs/test_output/MT4_T-cells_Control/INPUT/AseM6a_deduplicated.bam";
         String readsCountFile = AseInference.inferenceASE(genomeFilePath, bamFile, samtools, logger);
         SnpFilter sf = new SnpFilter(refVcfFile, readsCountFile, logger);
         sf.filterVcf();

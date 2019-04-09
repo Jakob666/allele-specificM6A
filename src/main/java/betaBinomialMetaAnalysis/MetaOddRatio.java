@@ -83,8 +83,8 @@ public class MetaOddRatio {
     private double oddRatioWeightSingleSNP(int majorSNPReads, int minorSNPReads) {
         double majorSNPProbability = (double)majorSNPReads / (double)(majorSNPReads + minorSNPReads);
         int totalReads = majorSNPReads + minorSNPReads;
-        double calibrator = 1 + (totalReads) * this.rho;
-        return 1 / (2 * calibrator / totalReads) * 0.5 * (1 - majorSNPProbability);
+        double calibrator = 1 + (totalReads - 1) * this.rho;
+        return totalReads / (2 * calibrator) * 0.5 * (1 - majorSNPProbability);
     }
 
     /**

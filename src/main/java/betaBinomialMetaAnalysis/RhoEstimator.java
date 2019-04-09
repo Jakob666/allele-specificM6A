@@ -49,8 +49,8 @@ public class RhoEstimator {
         double bestRho = this.initialRho;
 
         while (true) {
-            if ((iter+1) % 100 == 0)
-                System.out.println(iter+1 +" times, curRho=" + curRho + ", bestRho=" + bestRho + ", LogLikelihoodFunc: " + curTargetFuncVal);
+//            if ((iter+1) % 100 == 0)
+//                System.out.println(iter+1 +" times, curRho=" + curRho + ", bestRho=" + bestRho + ", LogLikelihoodFunc: " + curTargetFuncVal);
             // use first order derivation calculate gradient and update value of rho
             curGradient = gradient.firstOrderDerivation(curRho);
 

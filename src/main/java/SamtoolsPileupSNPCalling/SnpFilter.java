@@ -67,16 +67,39 @@ public class SnpFilter {
                     ArrayList<Integer> positions = vcfPositions.get(chrNum);
                     boolean searchRes = vs.binarySearch(positions, position);
                     if (searchRes) {
-                        HashMap<Integer, String> cols = new HashMap<Integer, String>();
-                        cols.put(Integer.parseInt(lineInfo[4]), "A");
-                        cols.put(Integer.parseInt(lineInfo[5]), "C");
-                        cols.put(Integer.parseInt(lineInfo[6]), "T");
-                        cols.put(Integer.parseInt(lineInfo[7]), "G");
+                        HashMap<Integer, LinkedList<String>> cols = new HashMap<Integer, LinkedList<String>>();
+                        LinkedList<String> base = cols.getOrDefault(Integer.parseInt(lineInfo[4]), new LinkedList<>());
+                        base.add("A");
+                        cols.put(Integer.parseInt(lineInfo[4]), base);
+
+                        base = cols.getOrDefault(Integer.parseInt(lineInfo[5]), new LinkedList<>());
+                        base.add("C");
+                        cols.put(Integer.parseInt(lineInfo[5]), base);
+
+                        base = cols.getOrDefault(Integer.parseInt(lineInfo[6]), new LinkedList<>());
+                        base.add("T");
+                        cols.put(Integer.parseInt(lineInfo[6]), base);
+
+                        base = cols.getOrDefault(Integer.parseInt(lineInfo[7]), new LinkedList<>());
+                        base.add("G");
+                        cols.put(Integer.parseInt(lineInfo[7]), base);
+
                         HashMap<String, Integer> majMinHaplotype = getMajorMinorHaplotype(cols);
-                        String refNc = cols.get(majMinHaplotype.get("first"));
-                        String altNc = cols.get(majMinHaplotype.get("second"));
-                        int refCount = majMinHaplotype.get("first");
-                        int altCount = majMinHaplotype.get("second");
+                        LinkedList<String> maxReadsBase = cols.get(majMinHaplotype.get("first"));
+                        LinkedList<String> secReadsBase = cols.get(majMinHaplotype.get("second"));
+                        String refNc, altNc;
+                        int refCount, altCount;
+                        if (maxReadsBase.size() > 1) {
+                            refNc = maxReadsBase.get(0);
+                            altNc = maxReadsBase.get(1);
+                            refCount = majMinHaplotype.get("first");
+                            altCount = majMinHaplotype.get("first");
+                        } else {
+                            refNc = maxReadsBase.get(0);
+                            altNc = secReadsBase.get(0);
+                            refCount = majMinHaplotype.get("first");
+                            altCount = majMinHaplotype.get("second");
+                        }
                         // output chr, position, ref-nucleotide, alt-nucleotide, ref-reads count, alt-reads count
                         String[] outputInfo = new String[]{chrNum, Integer.toString(position), refNc, altNc,
                                                            Integer.toString(refCount), Integer.toString(altCount)};
@@ -112,10 +135,10 @@ public class SnpFilter {
      * @param readsCounts HashMap, key is the reads cover SNP, value is base
      * @return HashMap
      */
-    private HashMap<String, Integer> getMajorMinorHaplotype(HashMap<Integer, String> readsCounts) {
+    private HashMap<String, Integer> getMajorMinorHaplotype(HashMap<Integer, LinkedList<String>> readsCounts) {
         //get key set
         ArrayList<Integer> list= new ArrayList<>(readsCounts.keySet());
-        //override sort function, descend
+        //override sort function, order by reads count, descend
         Collections.sort(list, new Comparator<Integer>() {
             @Override
             public int compare(Integer o1, Integer o2) {

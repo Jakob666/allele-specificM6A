@@ -17,6 +17,7 @@ public class PeakCoveredSNP {
      */
     public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, Logger logger) {
         this.logger = logger;
+        String outputFileName = vcfRecordFile.substring(0, vcfRecordFile.lastIndexOf("_")) + "_peakCoveredSNP.txt";
         this.vcfFile = new File(vcfRecordFile);
         if (!vcfFile.exists()) {
             this.logger.error("vcf file not exists");
@@ -27,7 +28,7 @@ public class PeakCoveredSNP {
             this.logger.error("peak calling result bed file not exists");
             System.exit(2);
         }
-        this.outputFile = new File(vcfFile.getParent(), "peakCoveredSNP.txt");
+        this.outputFile = new File(outputFileName);
     }
 
     /**
