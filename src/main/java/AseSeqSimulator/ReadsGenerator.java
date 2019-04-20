@@ -16,6 +16,7 @@ public class ReadsGenerator {
     private HashMap<String, String> genesOriginExonSeq, genesMutatedExonSeq;
     private HashMap<String, HashSet<Integer>> geneMutatedPosition;
     private HashMap<String, int[]> mutGeneRefAltCount = new HashMap<>();
+    private SequencingError seqErrorModel;
 
     public ReadsGenerator(String gtfFile, int geneNum, String twoBitFile) {
         this.readGTF.readFromFile(gtfFile);
@@ -115,7 +116,6 @@ public class ReadsGenerator {
             System.out.println("select two bit Exception");
         }
     }
-
 
     /**
      * generate a simplified GTF file of selected genes.
@@ -298,7 +298,7 @@ public class ReadsGenerator {
                     gene.calculateReadsCount(librarySize);
 
                     gene.generateReads(fragmentMean, fragmentTheta, fw, this.readLength, InputMultiple,
-                                       this.geneMutatedPosition.getOrDefault(geneId, null));
+                                       this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
 
                     if (mutGeneIds.contains(geneId)) {
                         int refCount = gene.getRefReadsCount();
@@ -326,8 +326,9 @@ public class ReadsGenerator {
      * sequencing reads simulating
      */
     public void simulateSequencing(String dataPath, int librarySize, int readLength, int fragmentMean, int fragmentTheta,
-                                   int mutGeneNum, int inputMultiple) {
+                                   int mutGeneNum, int inputMultiple, int repeat, double pcrErrorProb) {
 
+        this.seqErrorModel = new SequencingError(pcrErrorProb, readLength);
         this.setLibrarySize(librarySize);
         this.setReadLength(readLength);
         this.selectGene();
@@ -343,10 +344,10 @@ public class ReadsGenerator {
         // record the RPKM data
         this.transcriptionParameter(dataPath + "\\rpkm.txt");
 
-        String InputOutputfile = dataPath + "\\Input.fasta";
-        this.generateReads(fragmentMean,fragmentTheta, InputOutputfile,inputMultiple);
-
-        mutateGeneInfomation(dataPath + "\\mutations.txt");
-
+        for (int i = 0; i < repeat; i++) {
+            String InputOutputfile = dataPath + "\\Input"+i+".fasta";
+            this.generateReads(fragmentMean,fragmentTheta, InputOutputfile,inputMultiple);
+            mutateGeneInfomation(dataPath + "\\mutations"+i+".txt");
+        }
     }
 }

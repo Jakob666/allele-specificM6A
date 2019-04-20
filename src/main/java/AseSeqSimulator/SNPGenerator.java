@@ -12,7 +12,6 @@ public class SNPGenerator {
     private ArrayList<Integer> mutSiteNum = new ArrayList<>(Arrays.asList(1, 2, 3, 4, 5));
     private HashMap<String, HashSet<Integer>> mutGenePosition;
     private HashMap<String, String> originExonSequence = new HashMap<>();
-    private HashMap<String, Double> refProportion = new HashMap<>();
     private HashMap<String, String> mutatedExonSeqence = new HashMap<>();
     private HashMap<String, LinkedList<Gene>> selectedGenes;
     private int mutateGeneNum;
@@ -24,7 +23,6 @@ public class SNPGenerator {
         this.selectedGenes = selectedGenes;
         this.mutateGeneNum = mutateGeneNum;
         this.randomMutateGene();
-//        this.refAltProportion();
         this.mutatedExonSeqenceuence();
     }
 
@@ -37,7 +35,8 @@ public class SNPGenerator {
         for (LinkedList<Gene> chrGenes: selectedGenes.values()) {
             totalGene.addAll(chrGenes);
         }
-        for (int i = 0; i < this.mutateGeneNum; i++) {
+        int i = 0;
+        while (i < this.mutateGeneNum) {
             Collections.shuffle(totalGene);
             Gene mutGene = totalGene.get(0);
             if (!mutatedGene.keySet().contains(mutGene.getGeneId())) {
@@ -57,23 +56,11 @@ public class SNPGenerator {
                     order ++;
                 }
                 mutatedGene.put(mutGene.getGeneId(), geneMutPosition);
+                i ++;
             }
         }
 
         this.mutGenePosition = mutatedGene;
-    }
-
-    /**
-     * proportion of reference and alternative reads for each gene
-     */
-    private void refAltProportion() {
-        Set<String> mutGeneIds = this.mutGenePosition.keySet();
-        UniformRealDistribution urd = new UniformRealDistribution(0, 1);
-        double refProportion;
-        for (String geneId: mutGeneIds) {
-            refProportion = urd.sample();
-            this.refProportion.put(geneId, refProportion);
-        }
     }
 
     /**
@@ -95,7 +82,7 @@ public class SNPGenerator {
     private void singleSiteMutation(String geneId, int mutPosition) {
         String exonSeq = this.mutatedExonSeqence.get(geneId);
         String mutateSeq;
-        String ref = Character.toString(exonSeq.charAt(mutPosition));
+        String ref = Character.toString(exonSeq.charAt(mutPosition-1));
         String mut = ref;
         while (mut.equals(ref)) {
             Collections.shuffle(this.bases);
@@ -116,10 +103,6 @@ public class SNPGenerator {
     
     public HashMap<String, String> getmutatedExonSeqence() {
         return this.mutatedExonSeqence;
-    }
-
-    public HashMap<String, Double> getRefProportion() {
-        return this.refProportion;
     }
 
 }

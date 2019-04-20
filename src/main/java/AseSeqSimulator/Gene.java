@@ -148,7 +148,7 @@ public class Gene {
      * @param multiple replication of the experiment
      */
     public void generateReads(int fragmentMean, int fragmentTheta, BufferedWriter fw, int readLength, int multiple,
-                              HashSet<Integer> geneMutationPositions) {
+                              HashSet<Integer> geneMutationPositions, SequencingError seqErrorModel) {
 
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0;
@@ -183,18 +183,23 @@ public class Gene {
                     fragment.getSequencingRead("-", readLength);
                 }
                 this.inputFragmentList.add(fragment);
+
+                // sequencing reads may contains sequencing error
+                String sequencingRead = fragment.getReadSeq();
+                sequencingRead = seqErrorModel.pcrErrorReads(sequencingRead);
+
                 int readsStart = fragment.getFragmentStart();
                 int readsEnd = (readLength < fragment.getFragmentLength()) ? readsStart + readLength - 1: fragment.getFragmentEnd();
                 // write read in fasta format ">chrNum_geneId_fragmentStart_fragmentEnd"
                 fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point+"_"+readsStart+":"+readsEnd);
                 fw.newLine();
-                fw.write(fragment.getReadSeq());
+                fw.write(sequencingRead);
                 fw.newLine();
 
                 curReadsCount++;
             }
         } catch (Exception io) {
-            System.out.println("SetInputFragment Error");
+            io.printStackTrace();
         }
     }
 
