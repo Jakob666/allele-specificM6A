@@ -350,4 +350,12 @@ public class ReadsGenerator {
             mutateGeneInfomation(dataPath + "\\mutations"+i+".txt");
         }
     }
+
+    public HashMap<String, HashSet<Integer>> getGeneMutatedPosition() {
+        return this.geneMutatedPosition;
+    }
+
+    public HashMap<String, String> getGenesMutatedExonSeq() {
+        return this.genesMutatedExonSeq;
+    }
 }

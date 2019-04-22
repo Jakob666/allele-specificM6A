@@ -33,6 +33,9 @@ public class VcfReader {
                     id = lineInfo[2];
                     ref = lineInfo[3];
                     alt = lineInfo[4];
+                    // only use single site nucleotide SNP in VCF file
+                    if (ref.length() != 1 || alt.length() != 1)
+                        continue;
                     vcfPosition = Integer.parseInt(lineInfo[1]);
                     VcfRecord vr = new VcfRecord(chr, vcfPosition, id, ref, alt);
                     LinkedList<VcfRecord> vcfs = this.chrVcfs.getOrDefault(chr, new LinkedList<VcfRecord>());
@@ -56,18 +59,5 @@ public class VcfReader {
 
     public HashMap<String, LinkedList<VcfRecord>> getChrVcfs() {
         return this.chrVcfs;
-    }
-}
-
-class VcfRecord {
-    public int vcfSite;
-    public String chrNum, vcfId, ref, alt;
-
-    public VcfRecord(String chrNum, int vcfSite, String vcfId, String ref, String alt) {
-        this.chrNum = chrNum;
-        this.vcfSite = vcfSite;
-        this.vcfId = vcfId;
-        this.ref= ref;
-        this.alt =alt;
     }
 }
