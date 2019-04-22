@@ -325,8 +325,8 @@ public class ReadsGenerator {
     /**
      * sequencing reads simulating
      */
-    public void simulateSequencing(String dataPath, int librarySize, int readLength, int fragmentMean, int fragmentTheta,
-                                   int mutGeneNum, int inputMultiple, int repeat, double pcrErrorProb) {
+    public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int readLength, int maximumMut,
+                                   int fragmentMean, int fragmentTheta, int mutGeneNum, int inputMultiple, int repeat, double pcrErrorProb) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb, readLength);
         this.setLibrarySize(librarySize);
@@ -334,9 +334,9 @@ public class ReadsGenerator {
         this.selectGene();
 
         // random select mutated genes
-        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutGeneNum);
+        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutGeneNum, vcfFile, maximumMut);
         this.genesOriginExonSeq = snpGenerator.getOriginExonSequence();
-        this.genesMutatedExonSeq = snpGenerator.getmutatedExonSeqence();
+        this.genesMutatedExonSeq = snpGenerator.getMutatedExonSeqence();
         this.geneMutatedPosition = snpGenerator.getMutGenePosition();
 
         // generate a simplified GTF file

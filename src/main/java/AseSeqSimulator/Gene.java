@@ -89,7 +89,7 @@ public class Gene {
         return this.altReadsCount;
     }
 
-    public LinkedList getExonList() {
+    public LinkedList<ElementRecord> getExonList() {
         return this.exonList;
     }
 

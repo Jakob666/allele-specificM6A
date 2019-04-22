@@ -10,20 +10,25 @@ public class AseSeqSimulator {
 
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
-        int librarySize = 100000, readLength = 50, fragmentMean = 250, fragmentStd = 25, geneNum = 0, multiple = 1, repeat = 1, mutateGeneNum;
+        int librarySize = 100000, readLength = 50, fragmentMean = 250, fragmentStd = 25, geneNum = 0, multiple = 1,
+                          repeat = 1, mutateGeneNum, maximumMut = 5;
         // default 20% gene has SNP site;
         double mutProportion = 0.2, pcrErrorProb = 0.005;
-        String gtfFile, twoBitFile;
+        String gtfFile, twoBitFile, vcfFile = null;
         File outputDir = new File("./AseSeqReads");
 
         gtfFile = commandLine.getOptionValue('g');
         twoBitFile = commandLine.getOptionValue('t');
+        if (commandLine.hasOption('v'))
+            vcfFile = commandLine.getOptionValue('v');
         if (commandLine.hasOption('o'))
             outputDir = new File(commandLine.getOptionValue('o'));
         if (commandLine.hasOption("ls"))
             librarySize = Integer.parseInt(commandLine.getOptionValue("ls"));
         if (commandLine.hasOption("rl"))
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
+        if (commandLine.hasOption("mx"))
+            maximumMut = Integer.parseInt(commandLine.getOptionValue("mx"));
         if (commandLine.hasOption("fm"))
             fragmentMean = Integer.parseInt(commandLine.getOptionValue("fm"));
         if (commandLine.hasOption("ft"))
@@ -73,8 +78,8 @@ public class AseSeqSimulator {
         mutateGeneNum = (int) (geneNum * mutProportion);
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneNum, twoBitFile);
-        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), librarySize, readLength, fragmentMean, fragmentStd,
-                                          mutateGeneNum, multiple, repeat, pcrErrorProb);
+        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, readLength, maximumMut,
+                                          fragmentMean, fragmentStd, mutateGeneNum, multiple, repeat, pcrErrorProb);
 
     }
 
@@ -89,6 +94,10 @@ public class AseSeqSimulator {
         option.setRequired(true);
         options.addOption(option);
 
+        option = new Option("v", "vcf_file", true, "vcf file path used for generate SNP");
+        option.setRequired(false);
+        options.addOption(option);
+
         option = new Option("o", "outputDir", true, "output directory");
         option.setRequired(false);
         options.addOption(option);
@@ -98,6 +107,10 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("rl", "read_length", true, "sequencing reads length");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("mx", "maximum_mutation", true, "maximum mutation sites on fragment");
         option.setRequired(false);
         options.addOption(option);
 
