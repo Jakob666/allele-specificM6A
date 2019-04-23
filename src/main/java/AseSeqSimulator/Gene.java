@@ -2,6 +2,7 @@ package AseSeqSimulator;
 
 import GTFComponent.ElementRecord;
 import GTFComponent.TranscriptRecord;
+import PeakSimulator.Peak;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 
@@ -23,7 +24,8 @@ public class Gene {
     private int readsCount, refReadsCount = 0, altReadsCount = 0;
     private double[] pmRange;
     private LinkedList<ElementRecord> exonList = new LinkedList<ElementRecord>();
-    private LinkedList<Fragmentation> inputFragmentList = new LinkedList<Fragmentation>();
+    private LinkedList<Fragmentation> inputFragmentList = new LinkedList<Fragmentation>(), ipFragmentList = new LinkedList<Fragmentation>();
+    private LinkedList<Peak> peakList;
 
     public Gene(String geneId, int geneStart, int geneEnd, String strand, String chr) {
         this.geneId = geneId;
@@ -51,6 +53,10 @@ public class Gene {
 
     public void setExonSeq(String exonSeq) {
         this.exonSeq = exonSeq;
+    }
+
+    public void setPeakList(LinkedList<Peak> peakList) {
+        this.peakList = peakList;
     }
 
     public int getGeneStart() {
@@ -89,8 +95,20 @@ public class Gene {
         return this.altReadsCount;
     }
 
+    public double getRPKM() {
+        return this.RPKM;
+    }
+
+    public double[] getPmRange() {
+        return this.pmRange;
+    }
+
     public LinkedList<ElementRecord> getExonList() {
         return this.exonList;
+    }
+
+    public LinkedList<Peak> getPeakList() {
+        return this.peakList;
     }
 
     public String getExonSeq() {
@@ -147,9 +165,9 @@ public class Gene {
      * @param readLength sequencing read length
      * @param multiple replication of the experiment
      */
-    public void generateReads(int fragmentMean, int fragmentTheta, BufferedWriter fw, int readLength, int multiple,
-                              HashSet<Integer> geneMutationPositions, SequencingError seqErrorModel) {
-
+    public void generateInputReads(int fragmentMean, int fragmentTheta, BufferedWriter fw, int readLength, int multiple,
+                                   HashSet<Integer> geneMutationPositions, SequencingError seqErrorModel) {
+        // used to randomly generate fragment length
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0;
         Fragmentation fragment;
@@ -157,8 +175,10 @@ public class Gene {
         try {
             String fragmentString;
             int break_point, end_point, fragmentLength;
+            // generate reads, the total count equals to readsCount
             while (curReadsCount < this.readsCount/multiple) {
-                // first generate fragment from exon sequence
+
+                // randomly generate a fragment length and form exon fragment
                 fragmentLength = Math.abs((int) nordi.sample());
                 if(this.exonSeq.length() <= fragmentLength){
                     break_point = 0;
@@ -171,7 +191,8 @@ public class Gene {
                 fragmentString = this.exonSeq.substring(break_point, end_point);
                 fragment = new Fragmentation(fragmentString, break_point, end_point);
 
-                if (geneMutationPositions != null && !this.isAltRead(geneMutationPositions, break_point, end_point))
+                // if the current generated read is reference read
+                if (geneMutationPositions != null && this.isAltRead(geneMutationPositions, break_point, end_point))
                     this.altReadsCount ++;
                 else
                     this.refReadsCount ++;
@@ -200,6 +221,73 @@ public class Gene {
             }
         } catch (Exception io) {
             io.printStackTrace();
+        }
+    }
+
+    public void generateIpReads(int fragmentMean, int fragmentTheta, BufferedWriter fw, int readLength, int multiple,
+                                HashSet<Integer> geneMutationPositions, SequencingError seqErrorModel) {
+        NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
+        int curReadsCount = 0;
+        Fragmentation fragment;
+        UniformRealDistribution uniformdi;
+        try {
+            String fragmentString;
+            int break_point, end_point, fragmentLength;
+            // generate reads, the total count equals to readsCount
+            while (curReadsCount < this.readsCount/multiple) {
+
+                // randomly generate a fragment length and form exon fragment
+                fragmentLength = Math.abs((int) nordi.sample());
+                if (this.exonSeq.length() <= fragmentLength) {
+                    break_point = 0;
+                    end_point = this.exonSeq.length();
+                } else {
+                    uniformdi = new UniformRealDistribution(0, this.exonSeq.length() - fragmentLength);
+                    break_point = Math.abs((int) uniformdi.sample());
+                    end_point = break_point + fragmentLength;
+                }
+                fragmentString = this.exonSeq.substring(break_point, end_point);
+                fragment = new Fragmentation(fragmentString, break_point, end_point);
+
+                // if the current generated read is reference read
+                if (geneMutationPositions != null && this.isAltRead(geneMutationPositions, break_point, end_point))
+                    this.altReadsCount++;
+                else
+                    this.refReadsCount++;
+
+                // generate a read from fragment
+                if (Math.random() < 0.5) {
+                    fragment.getSequencingRead("+", readLength);
+                } else {
+                    fragment.getSequencingRead("-", readLength);
+                }
+
+                for (Peak peak: this.peakList) {
+                    int peakStart = peak.getPeak_start();
+                    int peakEnd = peak.getPeak_end();
+                    int centre = (peakStart + peakEnd)/2;
+                    if (break_point <= centre && centre <= end_point) {
+                        peak.addFragments(fragment);
+                    }
+                }
+                this.ipFragmentList.add(fragment);
+
+                // sequencing reads may contains sequencing error
+                String sequencingRead = fragment.getReadSeq();
+                sequencingRead = seqErrorModel.pcrErrorReads(sequencingRead);
+
+                int readsStart = fragment.getFragmentStart();
+                int readsEnd = (readLength < fragment.getFragmentLength()) ? readsStart + readLength - 1 : fragment.getFragmentEnd();
+
+                fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point+"_"+readsStart+":"+readsEnd);
+                fw.newLine();
+                fw.write(sequencingRead);
+                fw.newLine();
+
+                curReadsCount++;
+            }
+        } catch (IOException ie) {
+            ie.printStackTrace();
         }
     }
 

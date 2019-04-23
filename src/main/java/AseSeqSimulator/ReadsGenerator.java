@@ -1,6 +1,7 @@
 package AseSeqSimulator;
 
 import GTFComponent.*;
+import PeakSimulator.PeakSimulator;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.*;
@@ -9,7 +10,7 @@ import java.util.*;
 public class ReadsGenerator {
     private HashMap<String, LinkedList<Gene>> ChrGeneMap = new HashMap<String, LinkedList<Gene>>();
     private GTFReader readGTF = new GTFReader();
-    private int geneNum, readLength;
+    private int geneNum, readLength, peakLength;
     private TwoBitParser twoBit;
     private long librarySize;
     private String gtfFile;
@@ -37,6 +38,10 @@ public class ReadsGenerator {
         this.readLength = readLength;
     }
 
+    public void setPeakLength(int peakLength) {
+        this.peakLength = peakLength;
+    }
+
     public HashMap<String, LinkedList<Gene>> getChrGeneMap() {
         return this.ChrGeneMap;
     }
@@ -61,6 +66,9 @@ public class ReadsGenerator {
             for (Map.Entry<String, ChromosomeRecord> entry : chrMap.entrySet()) {
                 transcriptRegion = new LinkedList<int[]>();
                 chr = entry.getKey();
+                // 2bit file contains no chrMT
+                if (chr.equals("MT"))
+                    continue;
                 ChromosomeRecord chromosomeRecord = entry.getValue();
                 genesOnChr = chromosomeRecord.getChrGenes();
 
@@ -105,6 +113,12 @@ public class ReadsGenerator {
                     gene.setLongestTranscriptRecord(longestTranscript);
                     this.twoBit.setCurrentSequence("chr"+chr);
                     gene.splicing(this.twoBit);
+
+                    // peak on selected gene's exon region
+                    int peakNum = 1;
+                    LinkedList peaks= PeakSimulator.peakSimulation(peakNum, this.peakLength, gene.getExonSeq(), chr,
+                                                                   randomGeneId, gene.getExonList());
+                    gene.setPeakList(peaks);
                     geneList.add(gene);
                     twoBit.close();
 
@@ -266,14 +280,14 @@ public class ReadsGenerator {
     }
 
     /**
-     * generate sequencing reads for each selected gene. The simulated sequencing reads will be write out into the
+     * generate INPUT sequencing reads for each selected gene. The simulated sequencing reads will be write out into the
      * output file
      * @param fragmentMean fragment mean
      * @param fragmentTheta fragment std
      * @param inputOutputFile output file path
-     * @param InputMultiple replicates for each experiment
+     * @param inputMultiple replicates for each experiment
      */
-    public void generateReads(int fragmentMean, int fragmentTheta, String inputOutputFile, int InputMultiple) {
+    public void generateInputReads(int fragmentMean, int fragmentTheta, String inputOutputFile, int inputMultiple) {
         BufferedWriter fw = null;
         try {
             fw = new BufferedWriter(
@@ -284,10 +298,7 @@ public class ReadsGenerator {
 
             for (Map.Entry<String, LinkedList<Gene>> entry : ChrGeneMap.entrySet()) {
                 LinkedList<Gene> GeneList = entry.getValue();
-                Gene gene;
-
-                for (Iterator<Gene> iterator = GeneList.iterator(); iterator.hasNext(); ) {
-                    gene = iterator.next();
+                for (Gene gene: GeneList) {
                     String geneId = gene.getGeneId();
 
                     // if gene in mutate gene list, change its exon sequence to variant sequence
@@ -297,9 +308,10 @@ public class ReadsGenerator {
 
                     gene.calculateReadsCount(librarySize);
 
-                    gene.generateReads(fragmentMean, fragmentTheta, fw, this.readLength, InputMultiple,
+                    gene.generateInputReads(fragmentMean, fragmentTheta, fw, this.readLength, inputMultiple,
                                        this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
 
+                    // if gene is in mutated gene list, get its mutation information and then will be written into file
                     if (mutGeneIds.contains(geneId)) {
                         int refCount = gene.getRefReadsCount();
                         int altCount = gene.getAltReadsCount();
@@ -323,10 +335,74 @@ public class ReadsGenerator {
     }
 
     /**
+     * generate INPUT sequencing reads for each selected gene. The simulated sequencing reads will be write out into the
+     * output file
+     * @param fragmentMean fragment mean
+     * @param fragmentTheta fragment std
+     * @param ipOutputFile output file path
+     * @param ipMultiple replicates for each experiment
+     */
+    public void generateIpReads(int fragmentMean, int fragmentTheta, String ipOutputFile, int ipMultiple) {
+        BufferedWriter fw = null;
+        try {
+            fw = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(new File(ipOutputFile)))
+            );
+            // get mutated genes' ID
+            Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
+
+            for (Map.Entry<String, LinkedList<Gene>> entry : ChrGeneMap.entrySet()) {
+                LinkedList<Gene> GeneList = entry.getValue();
+                for (Gene gene: GeneList) {
+                    String geneId = gene.getGeneId();
+                    // if gene in mutate gene list, change its exon sequence to variant sequence
+                    if (mutGeneIds.contains(geneId)) {
+                        gene.setExonSeq(this.genesMutatedExonSeq.get(geneId));
+                    }
+
+                    gene.calculateReadsCount(librarySize);
+
+                    gene.generateIpReads(fragmentMean, fragmentTheta, fw, this.readLength, ipMultiple,
+                            this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
+
+                    if (mutGeneIds.contains(geneId)) {
+                        int refCount = gene.getRefReadsCount();
+                        int altCount = gene.getAltReadsCount();
+                        int[] refAndAlt = new int[]{refCount, altCount};
+                        this.mutGeneRefAltCount.put(geneId, refAndAlt);
+                    }
+                }
+            }
+            fw.close();
+
+            // write out the simulated peak record
+            String outputDir = new File(ipOutputFile).getParent();
+            File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
+            PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
+            File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
+            PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
+            File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
+            PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, 250);
+
+        } catch (Exception io) {
+            io.printStackTrace();
+        } finally {
+            if (fw != null) {
+                try {
+                    fw.close();
+                } catch (IOException ie) {
+                    ie.printStackTrace();
+                }
+            }
+        }
+    }
+
+    /**
      * sequencing reads simulating
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int readLength, int maximumMut,
-                                   int fragmentMean, int fragmentTheta, int mutGeneNum, int inputMultiple, int repeat, double pcrErrorProb) {
+                                   int fragmentMean, int fragmentTheta, int mutGeneNum, int Multiple, int repeat,
+                                   double pcrErrorProb) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb, readLength);
         this.setLibrarySize(librarySize);
@@ -346,7 +422,9 @@ public class ReadsGenerator {
 
         for (int i = 0; i < repeat; i++) {
             String InputOutputfile = dataPath + "\\Input"+i+".fasta";
-            this.generateReads(fragmentMean,fragmentTheta, InputOutputfile,inputMultiple);
+            String IpOutputfile = dataPath + "\\Ip"+i+".fasta";
+            this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,Multiple);
+            this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile,Multiple);
             mutateGeneInfomation(dataPath + "\\mutations"+i+".txt");
         }
     }
