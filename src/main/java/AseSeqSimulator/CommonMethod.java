@@ -16,11 +16,11 @@ public class CommonMethod {
         StringBuffer sb = new StringBuffer();
         for (int i = 0; i < Seq.length(); i++) {
             char nucleotide = Seq.charAt(i);
-            if (nucleotide == 'A') {
+            if (nucleotide == 'A' || nucleotide == 'a') {
                 sb.insert(0, 'T');
-            } else if (nucleotide == 'T') {
+            } else if (nucleotide == 'T' || nucleotide == 't') {
                 sb.insert(0, 'A');
-            } else if (nucleotide == 'C') {
+            } else if (nucleotide == 'C' || nucleotide == 'c') {
                 sb.insert(0, 'G');
             } else {
                 sb.insert(0, 'C');

@@ -23,11 +23,12 @@ public class SNPGenerator {
     /**
      * Constructor
      */
-    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, int mutateGeneNum, String vcfFile, int maxMutNum) {
+    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, int mutateGeneNum, String vcfFile, int minMutNum, int maxMutNum) {
         this.selectedGenes = selectedGenes;
         this.mutateGeneNum = mutateGeneNum;
-        this.setMutSiteNum(maxMutNum);
+        this.setMutSiteNum(minMutNum, maxMutNum);
         this.vcfFile = vcfFile;
+        // if no VCF file support, randomly generate SNP on exon sequence
         if (this.vcfFile == null) {
             this.randomMutateGene();
             this.randomMutatedExonSequence();
@@ -38,11 +39,10 @@ public class SNPGenerator {
 
     /**
      * set the maximum mutation site number on fragments
-     * @param num maximum mutation site number
      */
-    private void setMutSiteNum(int num) {
+    private void setMutSiteNum(int minNum, int maxNum) {
         ArrayList<Integer> mutNum = new ArrayList<>();
-        for (int i = 1; i <= num; i++) {
+        for (int i = minNum; i <= maxNum; i++) {
             mutNum.add(i);
         }
 

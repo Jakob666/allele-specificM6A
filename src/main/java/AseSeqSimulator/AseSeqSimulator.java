@@ -11,7 +11,7 @@ public class AseSeqSimulator {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 100000, readLength = 50, fragmentMean = 250, fragmentStd = 25, geneNum = 0, multiple = 1,
-                          repeat = 1, mutateGeneNum, maximumMut = 5;
+                          repeat = 1, mutateGeneNum, minimumMut = 5, maximumMut = 15, peakLength = 500;
         // default 20% gene has SNP site;
         double mutProportion = 0.2, pcrErrorProb = 0.005;
         String gtfFile, twoBitFile, vcfFile = null;
@@ -25,8 +25,12 @@ public class AseSeqSimulator {
             outputDir = new File(commandLine.getOptionValue('o'));
         if (commandLine.hasOption("ls"))
             librarySize = Integer.parseInt(commandLine.getOptionValue("ls"));
+        if (commandLine.hasOption("pl"))
+            peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
         if (commandLine.hasOption("rl"))
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
+        if (commandLine.hasOption("mi"))
+            minimumMut = Integer.parseInt(commandLine.getOptionValue("mi"));
         if (commandLine.hasOption("mx"))
             maximumMut = Integer.parseInt(commandLine.getOptionValue("mx"));
         if (commandLine.hasOption("fm"))
@@ -78,8 +82,8 @@ public class AseSeqSimulator {
         mutateGeneNum = (int) (geneNum * mutProportion);
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneNum, twoBitFile);
-        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, readLength, maximumMut,
-                                          fragmentMean, fragmentStd, mutateGeneNum, multiple, repeat, pcrErrorProb);
+        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, peakLength, readLength, minimumMut,
+                                          maximumMut, fragmentMean, fragmentStd, mutateGeneNum, multiple, repeat, pcrErrorProb);
 
     }
 
@@ -106,7 +110,15 @@ public class AseSeqSimulator {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("pl", "peak_length", true, "m6A peak length");
+        option.setRequired(false);
+        options.addOption(option);
+
         option = new Option("rl", "read_length", true, "sequencing reads length");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment");
         option.setRequired(false);
         options.addOption(option);
 

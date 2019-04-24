@@ -130,15 +130,15 @@ public class Gene {
         try {
             while (transcriptExon != null) {
                 String strand = transcriptExon.getStrand();
-                int feature_start = transcriptExon.getElementStart();
-                int feature_end = transcriptExon.getElementEnd();
+                int exonStart = transcriptExon.getElementStart();
+                int exonEnd = transcriptExon.getElementEnd();
                 twoBit.reset();
-                String featureSeq = twoBit.loadFragment(feature_start-1, (feature_end - feature_start + 1));
+                String exonSeq = twoBit.loadFragment(exonStart-1, (exonEnd - exonStart + 1));
                 this.exonList.add(transcriptExon);
                 if (strand.equals("-")) {
-                    exon_splicing = exon_splicing + CommonMethod.AntiChain(featureSeq);
+                    exon_splicing = exon_splicing + CommonMethod.AntiChain(exonSeq);
                 } else {
-                    exon_splicing = exon_splicing + featureSeq;
+                    exon_splicing = exon_splicing + exonSeq;
                 }
                 transcriptExon = transcriptExon.getNextElement();
             }
@@ -212,7 +212,7 @@ public class Gene {
                 int readsStart = fragment.getFragmentStart();
                 int readsEnd = (readLength < fragment.getFragmentLength()) ? readsStart + readLength - 1: fragment.getFragmentEnd();
                 // write read in fasta format ">chrNum_geneId_fragmentStart_fragmentEnd"
-                fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point+"_"+readsStart+":"+readsEnd);
+                fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point); // +"_"+readsStart+":"+readsEnd
                 fw.newLine();
                 fw.write(sequencingRead);
                 fw.newLine();
@@ -279,7 +279,7 @@ public class Gene {
                 int readsStart = fragment.getFragmentStart();
                 int readsEnd = (readLength < fragment.getFragmentLength()) ? readsStart + readLength - 1 : fragment.getFragmentEnd();
 
-                fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point+"_"+readsStart+":"+readsEnd);
+                fw.write(">chr" + this.chr + "_" + this.geneId + "_" + break_point + ":" + end_point); // +"_"+readsStart+":"+readsEnd
                 fw.newLine();
                 fw.write(sequencingRead);
                 fw.newLine();

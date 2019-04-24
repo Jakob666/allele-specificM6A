@@ -97,8 +97,7 @@ public class ReadsGenerator {
                     transStart = longestTranscript.getTranscriptStart();
                     transEnd = longestTranscript.getTranscriptEnd();
                     // there's no overlap regions between each two selected genes
-                    for (Iterator<int[]> region_iter = transcriptRegion.iterator(); region_iter.hasNext(); ) {
-                        int[] region = region_iter.next();
+                    for (int[] region: transcriptRegion) {
                         int start_max = Math.max(region[0], transStart);
                         int end_min = Math.min(region[1], transEnd);
                         if (start_max <= end_min) {
@@ -111,14 +110,9 @@ public class ReadsGenerator {
                     transcriptRegion.add(new int[]{transStart, transEnd});
                     Gene gene = new Gene(gr.getGeneId(), gr.getGeneStart(), gr.getGeneEnd(), gr.getStrand(), chr);
                     gene.setLongestTranscriptRecord(longestTranscript);
+                    // get the longest transcript exon sequence with Gene splicing method
                     this.twoBit.setCurrentSequence("chr"+chr);
                     gene.splicing(this.twoBit);
-
-                    // peak on selected gene's exon region
-                    int peakNum = 1;
-                    LinkedList peaks= PeakSimulator.peakSimulation(peakNum, this.peakLength, gene.getExonSeq(), chr,
-                                                                   randomGeneId, gene.getExonList());
-                    gene.setPeakList(peaks);
                     geneList.add(gene);
                     twoBit.close();
 
@@ -239,6 +233,28 @@ public class ReadsGenerator {
     }
 
     /**
+     * randomly generate m6A peak for selected genes
+     */
+    public void simulateM6aPeaks() {
+        Set<String> mutatedGenesId = this.geneMutatedPosition.keySet();
+        LinkedList peaks;
+        for (String chrNum: this.ChrGeneMap.keySet()) {
+            LinkedList<Gene> genes = this.ChrGeneMap.get(chrNum);
+            for (Gene gene: genes) {
+                String geneId = gene.getGeneId();
+                if (mutatedGenesId.contains(geneId)) {
+                    HashSet<Integer> mutPositions = this.geneMutatedPosition.get(geneId);
+                    peaks = PeakSimulator.altGenePeakSimulation(this.peakLength, gene, mutPositions);
+                    gene.setPeakList(peaks);
+                } else {
+                    peaks = PeakSimulator.refGenePeakSimulation(this.peakLength, gene);
+                    gene.setPeakList(peaks);
+                }
+            }
+        }
+    }
+
+    /**
      * write the simulated mutation informations into file system
      */
     public void mutateGeneInfomation(String outputFile) {
@@ -296,7 +312,7 @@ public class ReadsGenerator {
             // get mutated genes' ID
             Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
 
-            for (Map.Entry<String, LinkedList<Gene>> entry : ChrGeneMap.entrySet()) {
+            for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> GeneList = entry.getValue();
                 for (Gene gene: GeneList) {
                     String geneId = gene.getGeneId();
@@ -335,7 +351,7 @@ public class ReadsGenerator {
     }
 
     /**
-     * generate INPUT sequencing reads for each selected gene. The simulated sequencing reads will be write out into the
+     * generate IP sequencing reads for each selected gene. The simulated sequencing reads will be write out into the
      * output file
      * @param fragmentMean fragment mean
      * @param fragmentTheta fragment std
@@ -374,16 +390,6 @@ public class ReadsGenerator {
                 }
             }
             fw.close();
-
-            // write out the simulated peak record
-            String outputDir = new File(ipOutputFile).getParent();
-            File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
-            PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
-            File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
-            PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
-            File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
-            PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, 250);
-
         } catch (Exception io) {
             io.printStackTrace();
         } finally {
@@ -400,33 +406,47 @@ public class ReadsGenerator {
     /**
      * sequencing reads simulating
      */
-    public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int readLength, int maximumMut,
-                                   int fragmentMean, int fragmentTheta, int mutGeneNum, int Multiple, int repeat,
-                                   double pcrErrorProb) {
+    public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int peakLength, int readLength,
+                                   int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, int mutGeneNum,
+                                   int Multiple, int repeat, double pcrErrorProb) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb, readLength);
         this.setLibrarySize(librarySize);
+        this.setPeakLength(peakLength);
         this.setReadLength(readLength);
         this.selectGene();
 
-        // random select mutated genes
-        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutGeneNum, vcfFile, maximumMut);
+        // randomly generate mutations on selected genes' exon sequence
+        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutGeneNum, vcfFile, minimumMut, maximumMut);
         this.genesOriginExonSeq = snpGenerator.getOriginExonSequence();
         this.genesMutatedExonSeq = snpGenerator.getMutatedExonSeqence();
         this.geneMutatedPosition = snpGenerator.getMutGenePosition();
 
+        // randomly generate m6A peak, write out the simulated peak record
+        this.simulateM6aPeaks();
+        String outputDir = new File(dataPath).getAbsolutePath();
+        File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
+        PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
+        File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
+        PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
+        File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
+        PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, readLength / 2);
+
         // generate a simplified GTF file
-        this.createSimpleGTF(dataPath + "\\Homo_sapiens.GRCh38.sim.chr.gtf");
+        this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());
         // record the RPKM data
-        this.transcriptionParameter(dataPath + "\\rpkm.txt");
+        this.transcriptionParameter(new File(outputDir, "rpkm.txt").getAbsolutePath());
 
         for (int i = 0; i < repeat; i++) {
-            String InputOutputfile = dataPath + "\\Input"+i+".fasta";
-            String IpOutputfile = dataPath + "\\Ip"+i+".fasta";
+            String InputOutputfile = new File(outputDir, "Input"+i+".fasta").getAbsolutePath();
+            String IpOutputfile = new File(outputDir, "Ip"+i+".fasta").getAbsolutePath();
             this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,Multiple);
             this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile,Multiple);
-            mutateGeneInfomation(dataPath + "\\mutations"+i+".txt");
+            // write out gene mutation records of each experiment
+            mutateGeneInfomation(new File(outputDir, "mutations"+i+".txt").getAbsolutePath());
+
         }
+
     }
 
     public HashMap<String, HashSet<Integer>> getGeneMutatedPosition() {
