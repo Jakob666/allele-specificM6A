@@ -361,6 +361,7 @@ public class ReadsGenerator {
      */
     public void generateIpReads(int fragmentMean, int fragmentTheta, String ipOutputFile, int ipMultiple) {
         BufferedWriter fw = null;
+        UniformRealDistribution urd = new UniformRealDistribution(0.0, 0.95);
         try {
             fw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(new File(ipOutputFile)))
@@ -372,14 +373,16 @@ public class ReadsGenerator {
                 LinkedList<Gene> GeneList = entry.getValue();
                 for (Gene gene: GeneList) {
                     String geneId = gene.getGeneId();
-                    // if gene in mutate gene list, change its exon sequence to variant sequence
+                    String mutExonSeq = null;
+                    double ref = 1.0;
                     if (mutGeneIds.contains(geneId)) {
-                        gene.setExonSeq(this.genesMutatedExonSeq.get(geneId));
+                        ref = urd.sample();
+                        mutExonSeq = this.genesMutatedExonSeq.get(geneId);
                     }
 
                     gene.calculateReadsCount(librarySize);
 
-                    gene.generateIpReads(fragmentMean, fragmentTheta, fw, this.readLength, ipMultiple,
+                    gene.generateIpReads(fragmentMean, fragmentTheta, fw, this.readLength, ipMultiple, ref, mutExonSeq,
                             this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
 
                     if (mutGeneIds.contains(geneId)) {
@@ -411,7 +414,7 @@ public class ReadsGenerator {
                                    int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, int mutGeneNum,
                                    int Multiple, int repeat, double pcrErrorProb) {
 
-        this.seqErrorModel = new SequencingError(pcrErrorProb, readLength);
+        this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
         this.setPeakLength(peakLength);
         this.setReadLength(readLength);

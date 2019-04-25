@@ -12,13 +12,11 @@ import java.util.Collections;
 public class SequencingError {
 
     private double sequencingError;
-    private int readLength;
     private UniformRealDistribution uid;
     private ArrayList<String> bases = new ArrayList<>(Arrays.asList("A", "T", "C", "G"));
 
-    public SequencingError(double sequencingError, int readLength) {
+    public SequencingError(double sequencingError) {
         this.sequencingError = sequencingError;
-        this.readLength = readLength;
         this.uid = new UniformRealDistribution(0.0, 1.0);
     }
 
@@ -26,10 +24,10 @@ public class SequencingError {
      * get sequence error positions on PCR reads
      * @return ArrayList contains sequence error position
      */
-    public ArrayList<Integer> simulateSequenceError() {
+    public ArrayList<Integer> simulateSequenceError(int readLength) {
         ArrayList<Integer> sequenceErrorPositions = new ArrayList<>();
         double errorProb;
-        for (int i = 0; i < this.readLength; i++) {
+        for (int i = 0; i < readLength; i++) {
             errorProb = this.uid.sample();
             if (errorProb <= this.sequencingError)
                 sequenceErrorPositions.add(i);
@@ -44,7 +42,7 @@ public class SequencingError {
      * @return sequencing error base
      */
     public String pcrErrorReads(String originalReads) {
-        ArrayList<Integer> pcrErrorPositions = this.simulateSequenceError();
+        ArrayList<Integer> pcrErrorPositions = this.simulateSequenceError(originalReads.length());
         String originalBase, errorBase, mutateRead = null;
         if (pcrErrorPositions.size() == 0)
             mutateRead = originalReads;
