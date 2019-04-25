@@ -305,26 +305,27 @@ public class ReadsGenerator {
      */
     public void generateInputReads(int fragmentMean, int fragmentTheta, String inputOutputFile, int inputMultiple) {
         BufferedWriter fw = null;
+        UniformRealDistribution urd = new UniformRealDistribution(0.0, 0.95);
         try {
             fw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(new File(inputOutputFile)))
             );
             // get mutated genes' ID
             Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
-
             for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> GeneList = entry.getValue();
                 for (Gene gene: GeneList) {
                     String geneId = gene.getGeneId();
-
-                    // if gene in mutate gene list, change its exon sequence to variant sequence
+                    // if gene in mutate gene list, get its mutated exon sequence
+                    String mutExonSeq = null;
+                    double ref = 1.0;
                     if (mutGeneIds.contains(geneId)) {
-                        gene.setExonSeq(this.genesMutatedExonSeq.get(geneId));
+                        ref = urd.sample();
+                        mutExonSeq = this.genesMutatedExonSeq.get(geneId);
                     }
-
                     gene.calculateReadsCount(librarySize);
 
-                    gene.generateInputReads(fragmentMean, fragmentTheta, fw, this.readLength, inputMultiple,
+                    gene.generateInputReads(fragmentMean, fragmentTheta, fw, this.readLength, inputMultiple, ref, mutExonSeq,
                                        this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
 
                     // if gene is in mutated gene list, get its mutation information and then will be written into file

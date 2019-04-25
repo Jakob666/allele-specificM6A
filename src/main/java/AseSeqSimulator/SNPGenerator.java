@@ -66,7 +66,7 @@ public class SNPGenerator {
                 String exonSeq = mutGene.getExonSeq();
                 this.originExonSequence.put(mutGene.getGeneId(), exonSeq);
 
-                UniformRealDistribution urd = new UniformRealDistribution(0, exonSeq.length()-1);
+                UniformRealDistribution urd = new UniformRealDistribution(1, exonSeq.length()-1);
                 Collections.shuffle(this.mutSiteNum);
                 int mutNum = this.mutSiteNum.get(0);
                 int order = 0;

@@ -47,19 +47,12 @@ public class Fragmentation {
      * @param readLength read length
      */
     public void getSequencingRead(String strand, int readLength){
-        if(strand.equals("+")){
-            if(this.transcriptFragmentSeq.length() > readLength) {
-                this.readSeq = this.transcriptFragmentSeq.substring(0, readLength);
-            }else{
-                this.readSeq = this.transcriptFragmentSeq;
-            }
+        if(this.transcriptFragmentSeq.length() > readLength) {
+            this.readSeq = this.transcriptFragmentSeq.substring(0, readLength);
         }else{
-            String AntiFragment = CommonMethod.AntiChain(this.transcriptFragmentSeq);
-            if(this.transcriptFragmentSeq.length() > readLength){
-                this.readSeq = AntiFragment.substring(0, readLength);
-            }else{
-                this.readSeq = AntiFragment;
-            }
+            this.readSeq = this.transcriptFragmentSeq;
         }
+        if (strand.equals("-"))
+            this.readSeq = CommonMethod.AntiChain(this.readSeq);
     }
 }
