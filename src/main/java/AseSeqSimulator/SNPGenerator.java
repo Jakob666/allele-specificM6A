@@ -2,8 +2,7 @@ package AseSeqSimulator;
 
 import GTFComponent.ElementRecord;
 import heterozygoteSiteAnalysis.IntervalTree;
-import heterozygoteSiteAnalysis.IntervalTreeNode;
-import org.apache.commons.math3.distribution.UniformRealDistribution;
+import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 
 import java.util.*;
 
@@ -16,25 +15,26 @@ public class SNPGenerator {
     private HashMap<String, HashSet<Integer>> mutGenePosition;
     private HashMap<String, String> originExonSequence = new HashMap<>();
     private HashMap<String, String> mutatedExonSeqence = new HashMap<>();
+    private HashMap<String, HashMap<Integer, String[]>> mutationRefAlt = new HashMap<>();
     private HashMap<String, LinkedList<Gene>> selectedGenes;
-    private int mutateGeneNum;
+    private HashMap<String, HashMap<Integer, Integer>> mutGenomePosition = new HashMap<>();
+    private double mutateProp;
     private String vcfFile;
 
     /**
      * Constructor
      */
-    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, int mutateGeneNum, String vcfFile, int minMutNum, int maxMutNum) {
+    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, double mutateProportion, String vcfFile, int minMutNum, int maxMutNum) {
         this.selectedGenes = selectedGenes;
-        this.mutateGeneNum = mutateGeneNum;
+        this.mutateProp = mutateProportion;
         this.setMutSiteNum(minMutNum, maxMutNum);
         this.vcfFile = vcfFile;
         // if no VCF file support, randomly generate SNP on exon sequence
         if (this.vcfFile == null) {
             this.randomMutateGene();
             this.randomMutatedExonSequence();
-        } else
+        } else // vcf-based SNP generate
             this.vcfFileMutateGene();
-
     }
 
     /**
@@ -50,40 +50,69 @@ public class SNPGenerator {
     }
 
     /**
-     * randomly select mutated genes from all selected genes, and randomly select several SNP site on its exon sequence
+     * randomly select mutated genes from selected genes on each chromosome, and randomly select several
+     * SNP site on its exon sequence
      */
     private void randomMutateGene() {
-        ArrayList<Gene> totalGene = new ArrayList<>();
         HashMap<String, HashSet<Integer>> mutatedGene = new HashMap<>();
         for (LinkedList<Gene> chrGenes: selectedGenes.values()) {
-            totalGene.addAll(chrGenes);
-        }
-        int i = 0;
-        while (i < this.mutateGeneNum) {
-            Collections.shuffle(totalGene);
-            Gene mutGene = totalGene.get(0);
-            if (!mutatedGene.keySet().contains(mutGene.getGeneId())) {
+            // measure the number of mutate gene on current chromosome and randomly select from list
+            int mutGeneNum = (int) (this.mutateProp * chrGenes.size());
+            Collections.shuffle(chrGenes);
+            List<Gene> mutGenes = chrGenes.subList(0, mutGeneNum);
+
+            for (Gene mutGene: mutGenes) {
                 String exonSeq = mutGene.getExonSeq();
                 this.originExonSequence.put(mutGene.getGeneId(), exonSeq);
 
-                UniformRealDistribution urd = new UniformRealDistribution(1, exonSeq.length()-1);
+                UniformIntegerDistribution uid = new UniformIntegerDistribution(1, exonSeq.length()-1);
                 Collections.shuffle(this.mutSiteNum);
                 int mutNum = this.mutSiteNum.get(0);
                 int order = 0;
                 HashSet<Integer> geneMutPosition = new HashSet<>();
                 while (order < mutNum){
-                    Integer mutPosition = (int) urd.sample();
+                    Integer mutPosition = uid.sample();
                     if (geneMutPosition.contains(mutPosition))
                         continue;
                     geneMutPosition.add(mutPosition);
+                    HashMap<Integer, Integer> genomePos  = this.mutGenomePosition.getOrDefault(mutGene.getGeneId(), new HashMap<>());
+                    genomePos.put(mutPosition, this.getGenomePosition(mutGene, mutPosition));
+                    this.mutGenomePosition.put(mutGene.getGeneId(), genomePos);
                     order ++;
                 }
                 mutatedGene.put(mutGene.getGeneId(), geneMutPosition);
-                i ++;
             }
         }
 
         this.mutGenePosition = mutatedGene;
+    }
+
+    /**
+     * trans the exon sequence position to genome position
+     * @param gene Gene instance
+     * @param exonMutPos mutate exon sequence position
+     * @return genome position
+     */
+    private int getGenomePosition(Gene gene, int exonMutPos) {
+        ElementRecord exon = gene.getExonList();
+        int genomePosition;
+        int length = 0, distance = exonMutPos;
+        while (exon != null) {
+            length = length + exon.getElementEnd() - exon.getElementStart() + 1;
+            if (length >= exonMutPos)
+                break;
+            exon = exon.getNextElement();
+            distance = exonMutPos - length;
+        }
+        if (gene.getStrand().equals("+")) {
+            int start = exon.getElementStart();
+            genomePosition = start + distance;
+        } else {
+            int end = exon.getElementEnd();
+            genomePosition = end - distance;
+        }
+
+        return genomePosition;
     }
 
     /**
@@ -132,12 +161,13 @@ public class SNPGenerator {
             IntervalTree exonTree = new IntervalTree();
             LinkedList<Gene> chrGenes = this.selectedGenes.get(chrNum);
             for (Gene gene: chrGenes) {
-                LinkedList<ElementRecord> exons = gene.getExonList();
-                for (ElementRecord exon: exons) {
+                ElementRecord exon = gene.getExonList();
+                while (exon != null) {
                     int exonStart = exon.getElementStart();
                     int exonEnd = exon.getElementEnd();
                     ExonTreeNode etn = new ExonTreeNode(exonStart, exonEnd, gene.getGeneId(), chrNum);
                     exonTree = exonTree.insertNode(exonTree, etn);
+                    exon = exon.getNextElement();
                 }
             }
             chrExonTrees.put(chrNum, exonTree);
@@ -180,9 +210,9 @@ public class SNPGenerator {
             int idx = 0;
             if (!gene.getGeneId().equals(geneId))
                 continue;
-            LinkedList<ElementRecord> exons = gene.getExonList();
+            ElementRecord exon = gene.getExonList();
             String exonSeq = this.mutatedExonSeqence.getOrDefault(geneId, gene.getExonSeq());
-            for (ElementRecord exon: exons) {
+            while (exon != null) {
                 int start = exon.getElementStart();
                 int end = exon.getElementEnd();
                 if (start > mutatePosition)
@@ -191,6 +221,7 @@ public class SNPGenerator {
                     idx = idx + exon.getElementEnd() - exon.getElementStart() + 1;
                 else
                     idx = idx + mutatePosition - start + 1;
+                exon = exon.getNextElement();
             }
             String mutExonSeq = exonSeq.substring(0, idx) + alt + exonSeq.substring(idx+1);
             this.mutatedExonSeqence.put(geneId, mutExonSeq);
@@ -201,9 +232,10 @@ public class SNPGenerator {
      * site mutation on sequencing read
      */
     private void singleSiteMutation(String geneId, int mutPosition) {
+        HashMap<Integer, String[]> mutationType = this.mutationRefAlt.getOrDefault(geneId, new HashMap<>());
         String exonSeq = this.mutatedExonSeqence.get(geneId);
         String mutateSeq;
-        String ref = Character.toString(exonSeq.charAt(mutPosition-1));
+        String ref = Character.toString(exonSeq.charAt(mutPosition));
         String mut = ref;
         while (mut.equals(ref)) {
             Collections.shuffle(this.bases);
@@ -212,6 +244,8 @@ public class SNPGenerator {
 
         mutateSeq = exonSeq.substring(0, mutPosition) + mut + exonSeq.substring(mutPosition+1);
         this.mutatedExonSeqence.put(geneId, mutateSeq);
+        mutationType.put(mutPosition, new String[]{ref, mut});
+        this.mutationRefAlt.put(geneId, mutationType);
     }
     
     public HashMap<String, HashSet<Integer>> getMutGenePosition() {
@@ -224,6 +258,14 @@ public class SNPGenerator {
     
     public HashMap<String, String> getMutatedExonSeqence() {
         return this.mutatedExonSeqence;
+    }
+
+    public HashMap<String, HashMap<Integer, String[]>> getMutationRefAlt() {
+        return this.mutationRefAlt;
+    }
+
+    public HashMap<String, HashMap<Integer, Integer>> getMutGenomePosition() {
+        return this.mutGenomePosition;
     }
 
 }
