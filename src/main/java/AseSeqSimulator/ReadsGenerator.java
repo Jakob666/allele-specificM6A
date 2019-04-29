@@ -10,18 +10,22 @@ import java.util.*;
 public class ReadsGenerator {
     private HashMap<String, LinkedList<Gene>> ChrGeneMap = new HashMap<String, LinkedList<Gene>>();
     private GTFReader readGTF = new GTFReader();
-    private int geneNum, readLength, peakLength;
+    private int readLength, peakLength;
+    private double geneProp;
     private TwoBitParser twoBit;
     private long librarySize;
     private String gtfFile;
     private HashMap<String, String> genesOriginExonSeq, genesMutatedExonSeq;
     private HashMap<String, HashSet<Integer>> geneMutatedPosition;
-    private HashMap<String, int[]> mutGeneRefAltCount = new HashMap<>();
+    private HashMap<String, HashMap<Integer, String[]>> geneMutationRefAlt;
+    private HashMap<String, HashMap<Integer, Integer>> geneMutGenomePosition;
+    private HashMap<String, HashSet<String>> selectedGeneChr = new HashMap<>();
     private SequencingError seqErrorModel;
 
-    public ReadsGenerator(String gtfFile, int geneNum, String twoBitFile) {
+    public ReadsGenerator(String gtfFile, double geneProp, String twoBitFile) {
         this.readGTF.readFromFile(gtfFile);
-        this.geneNum = geneNum;
+        System.out.println("read GTF complete");
+        this.geneProp = geneProp;
         this.gtfFile = gtfFile;
         try {
             this.twoBit = new TwoBitParser(new File(twoBitFile));
@@ -54,32 +58,34 @@ public class ReadsGenerator {
      * select a group of genes from each chromosome, the group size equals to geneNum. These selected genes are stored
      * in chrGeneMap
      */
-    public void selectGene() {
+    public void selectGene(boolean overlapGene) {
         HashMap<String, ChromosomeRecord> chrMap = readGTF.getChromosomeMap();
         try {
-            String chr, randomGeneId;
+            String randomGeneId;
             HashMap<String, GeneRecord> genesOnChr;
             ArrayList<String> geneIds;
             LinkedList<Gene> geneList;
             LinkedList<int[]> transcriptRegion;
 
-            for (Map.Entry<String, ChromosomeRecord> entry : chrMap.entrySet()) {
+            for (String chr : chrMap.keySet()) {
+                HashSet<String> chrGenes = new HashSet<>();
                 transcriptRegion = new LinkedList<int[]>();
-                chr = entry.getKey();
                 // 2bit file contains no chrMT
                 if (chr.equals("MT"))
                     continue;
-                ChromosomeRecord chromosomeRecord = entry.getValue();
+                ChromosomeRecord chromosomeRecord = chrMap.get(chr);
                 genesOnChr = chromosomeRecord.getChrGenes();
 
                 // get all geneId and then shuffle for random select
                 geneIds = new ArrayList<String>(genesOnChr.keySet());
-                Collections.shuffle(geneIds);
+                int geneNum = (int) (this.geneProp * genesOnChr.size());
+                System.out.println(chr+":"+geneNum);
                 geneList = new LinkedList<>();
                 int order = 0, exonLength = 0, transStart, transEnd;
                 boolean overlap = false;
-                while (geneList.size() < this.geneNum && order < geneIds.size()) {
-                    randomGeneId = geneIds.get(order);
+                Collections.shuffle(geneIds);
+                for (int rank = 0; order < geneNum && rank < geneIds.size(); rank++) {
+                    randomGeneId = geneIds.get(rank);
                     GeneRecord gr = genesOnChr.get(randomGeneId);
                     TranscriptRecord longestTranscript = CommonMethod.findLongestTranscript(gr);
                     HashMap<String, ElementRecord> elements = longestTranscript.getElementList();
@@ -96,17 +102,20 @@ public class ReadsGenerator {
                         continue;
                     transStart = longestTranscript.getTranscriptStart();
                     transEnd = longestTranscript.getTranscriptEnd();
-                    // there's no overlap regions between each two selected genes
-                    for (int[] region: transcriptRegion) {
-                        int start_max = Math.max(region[0], transStart);
-                        int end_min = Math.min(region[1], transEnd);
-                        if (start_max <= end_min) {
-                            overlap = true;
-                            break;
+
+                    if (overlapGene) { // there's no overlap regions between each two selected genes
+                        for (int[] region: transcriptRegion) {
+                            int start_max = Math.max(region[0], transStart);
+                            int end_min = Math.min(region[1], transEnd);
+                            if (start_max <= end_min) {
+                                overlap = true;
+                                break;
+                            }
                         }
+                        if (overlap)
+                            continue;
                     }
-                    if (overlap)
-                        continue;
+
                     transcriptRegion.add(new int[]{transStart, transEnd});
                     Gene gene = new Gene(gr.getGeneId(), gr.getGeneStart(), gr.getGeneEnd(), gr.getStrand(), chr);
                     gene.setLongestTranscriptRecord(longestTranscript);
@@ -115,13 +124,15 @@ public class ReadsGenerator {
                     gene.splicing(this.twoBit);
                     geneList.add(gene);
                     twoBit.close();
-
+                    chrGenes.add(gene.getGeneId());
+//                    System.out.println(order + ":" + gene.getGeneId()+"->"+longestTranscript.getTranscriptId());
                     order ++;
                 }
-                ChrGeneMap.put(chr, geneList);
+                this.selectedGeneChr.put(chr, chrGenes);
+                this.ChrGeneMap.put(chr, geneList);
             }
         } catch (Exception ex) {
-            System.out.println("select two bit Exception");
+            ex.printStackTrace();
         }
     }
 
@@ -144,8 +155,7 @@ public class ReadsGenerator {
             Set<String> selectGeneList = new HashSet<>(), selectedTranscriptList = new HashSet<>();
             for (String chr: chrs) {
                 LinkedList<Gene> chrSelectGene = this.ChrGeneMap.get(chr);
-                for (Iterator<Gene> geneIterator = chrSelectGene.iterator(); geneIterator.hasNext();) {
-                    Gene gene = geneIterator.next();
+                for (Gene gene: chrSelectGene) {
                     String geneId = gene.getGeneId();
                     selectGeneList.add(geneId);
                     TranscriptRecord longestTranscript = gene.getLongestTranscriptRecord();
@@ -216,10 +226,9 @@ public class ReadsGenerator {
                 LinkedList<Gene> GeneList = entry.getValue();
                 String chr = entry.getKey();
                 double gene_pm_range = chr_pm_range / GeneList.size();
-                for (Iterator<Gene> gene_iterator = GeneList.iterator(); gene_iterator.hasNext(); ) {
+                for (Gene gene: GeneList) {
                     lower = upper;
                     upper = upper + gene_pm_range;
-                    Gene gene = gene_iterator.next();
                     gene.setPmRange(lower, upper);
                     double RPKM = unidiform.sample();
                     gene.setRPKM(RPKM);
@@ -264,22 +273,23 @@ public class ReadsGenerator {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(new File(outputFile)))
             );
+            bfw.write("chr\tgeneId\tgenomePos\texonSeqPos\tref\talt\n");
             int refCount, altCount;
-            String refExonSeq, altExonSeq, writeOut;
-            HashSet<Integer> mutPositions;
-            Object[] positions;
+            String locateChr, writeOut;
+            List<Integer> positions;
             for (String geneId: geneIds) {
-                refExonSeq = this.genesOriginExonSeq.get(geneId);
-                altExonSeq = this.genesMutatedExonSeq.get(geneId);
-                mutPositions = this.geneMutatedPosition.get(geneId);
-                positions = mutPositions.toArray();
-                Arrays.sort(positions);
-                refCount = this.mutGeneRefAltCount.get(geneId)[0];
-                altCount = this.mutGeneRefAltCount.get(geneId)[1];
-                writeOut = geneId + ": " + Arrays.toString(positions) + "\n" + "ref: " + refExonSeq + "\n" +
-                           "alt: " + altExonSeq + "\n" + "ref&alt reads count: " + refCount + "\t" + altCount;
-                bfw.write(writeOut);
-                bfw.newLine();
+                locateChr = this.getGeneChr(geneId);
+                positions = new ArrayList<>(this.geneMutatedPosition.get(geneId));
+                Collections.sort(positions);
+                for (Integer position: positions) {
+                    int genomePos = this.geneMutGenomePosition.get(geneId).get(position);
+                    String[] refAndAlt = this.geneMutationRefAlt.get(geneId).get(position);
+                    String ref = refAndAlt[0];
+                    String alt = refAndAlt[1];
+                    writeOut = locateChr + "\t" + geneId + "\t" + genomePos + "\t" + position + "\t" + ref + "\t" + alt;
+                    bfw.write(writeOut);
+                    bfw.newLine();
+                }
             }
             bfw.close();
         } catch (IOException ie) {
@@ -293,6 +303,16 @@ public class ReadsGenerator {
                 }
             }
         }
+    }
+
+    private String getGeneChr(String geneId) {
+        String locateChr = null;
+        for (String chr: this.selectedGeneChr.keySet()) {
+            HashSet<String> chrGenes = this.selectedGeneChr.get(chr);
+            if (chrGenes.contains(geneId))
+                locateChr = chr;
+        }
+        return locateChr;
     }
 
     /**
@@ -327,14 +347,8 @@ public class ReadsGenerator {
 
                     gene.generateInputReads(fragmentMean, fragmentTheta, fw, this.readLength, inputMultiple, ref, mutExonSeq,
                                        this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
-
-                    // if gene is in mutated gene list, get its mutation information and then will be written into file
-                    if (mutGeneIds.contains(geneId)) {
-                        int refCount = gene.getRefReadsCount();
-                        int altCount = gene.getAltReadsCount();
-                        int[] refAndAlt = new int[]{refCount, altCount};
-                        this.mutGeneRefAltCount.put(geneId, refAndAlt);
-                    }
+//                    HashMap<Integer, int[]> refAltReads = gene.getReadsCountRecord();
+//                    this.geneMutReadsCount.put(geneId, refAltReads);
                 }
             }
             fw.close();
@@ -385,12 +399,12 @@ public class ReadsGenerator {
                     gene.generateIpReads(fragmentMean, fragmentTheta, fw, this.readLength, ipMultiple, ref, mutExonSeq,
                             this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
 
-                    if (mutGeneIds.contains(geneId)) {
-                        int refCount = gene.getRefReadsCount();
-                        int altCount = gene.getAltReadsCount();
-                        int[] refAndAlt = new int[]{refCount, altCount};
-                        this.mutGeneRefAltCount.put(geneId, refAndAlt);
-                    }
+//                    if (mutGeneIds.contains(geneId)) {
+//                        int refCount = gene.getRefReadsCount();
+//                        int altCount = gene.getAltReadsCount();
+//                        int[] refAndAlt = new int[]{refCount, altCount};
+//                        this.mutGeneRefAltCount.put(geneId, refAndAlt);
+//                    }
                 }
             }
             fw.close();
@@ -411,30 +425,34 @@ public class ReadsGenerator {
      * sequencing reads simulating
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int peakLength, int readLength,
-                                   int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, int mutGeneNum,
-                                   int Multiple, int repeat, double pcrErrorProb) {
+                                   int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, double mutProp,
+                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
         this.setPeakLength(peakLength);
         this.setReadLength(readLength);
-        this.selectGene();
+        this.selectGene(overlap);
+        System.out.println("complete select");
 
         // randomly generate mutations on selected genes' exon sequence
-        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutGeneNum, vcfFile, minimumMut, maximumMut);
+        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutProp, vcfFile, minimumMut, maximumMut);
+        System.out.println("complete variant");
         this.genesOriginExonSeq = snpGenerator.getOriginExonSequence();
         this.genesMutatedExonSeq = snpGenerator.getMutatedExonSeqence();
         this.geneMutatedPosition = snpGenerator.getMutGenePosition();
+        this.geneMutationRefAlt = snpGenerator.getMutationRefAlt();
+        this.geneMutGenomePosition = snpGenerator.getMutGenomePosition();
+        String outputDir = new File(dataPath).getAbsolutePath();
 
         // randomly generate m6A peak, write out the simulated peak record
-        this.simulateM6aPeaks();
-        String outputDir = new File(dataPath).getAbsolutePath();
-        File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
-        PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
-        File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
-        PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
-        File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
-        PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, readLength / 2);
+//        this.simulateM6aPeaks();
+//        File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
+//        PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
+//        File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
+//        PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
+//        File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
+//        PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, readLength / 2);
 
         // generate a simplified GTF file
         this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());

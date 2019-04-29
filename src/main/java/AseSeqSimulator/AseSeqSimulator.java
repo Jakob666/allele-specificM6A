@@ -10,11 +10,12 @@ public class AseSeqSimulator {
 
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
-        int librarySize = 100000, readLength = 50, fragmentMean = 250, fragmentStd = 25, geneNum = 0, multiple = 1,
-                          repeat = 1, mutateGeneNum, minimumMut = 5, maximumMut = 15, peakLength = 500;
+        int librarySize = 1000000, readLength = 50, fragmentMean = 250, fragmentStd = 25, multiple = 1,
+                          repeat = 1, minimumMut = 5, maximumMut = 15, peakLength = 500;
         // default 20% gene has SNP site;
-        double mutProportion = 0.2, pcrErrorProb = 0.005;
+        double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
         String gtfFile, twoBitFile, vcfFile = null;
+        boolean overlap = false;
         File outputDir = new File("./AseSeqReads");
 
         gtfFile = commandLine.getOptionValue('g');
@@ -41,10 +42,10 @@ public class AseSeqSimulator {
             multiple = Integer.parseInt(commandLine.getOptionValue("mul"));
         if (commandLine.hasOption("rep"))
             repeat = Integer.parseInt(commandLine.getOptionValue("rep"));
-        if (commandLine.hasOption("gn")) {
-            int number = Integer.parseInt(commandLine.getOptionValue("gn"));
+        if (commandLine.hasOption("gp")) {
+            double number = Double.parseDouble(commandLine.getOptionValue("gp"));
             if (number > 0)
-                geneNum = number;
+                geneProp = number;
             else {
                 System.out.println("invalid input gene number, must large than 0");
                 System.exit(2);
@@ -59,6 +60,8 @@ public class AseSeqSimulator {
                 System.exit(2);
             }
         }
+        if (commandLine.hasOption("ol"))
+            overlap = Boolean.getBoolean(commandLine.getOptionValue("ol"));
         if (commandLine.hasOption("pe")) {
             double pcrError = Double.parseDouble(commandLine.getOptionValue("pe"));
             if (pcrError > 0 && pcrError < 1)
@@ -69,21 +72,9 @@ public class AseSeqSimulator {
             }
         }
 
-        int gtfGeneNum = AseSeqSimulator.totalGeneNum(gtfFile);
-        if (gtfGeneNum == 0) {
-            System.out.println("invalid format of GTF file");
-            System.exit(2);
-        } else if (geneNum == 0) {
-            geneNum = gtfGeneNum;
-        } else if (geneNum > gtfGeneNum) {
-            geneNum = gtfGeneNum;
-        }
-
-        mutateGeneNum = (int) (geneNum * mutProportion);
-
-        ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneNum, twoBitFile);
+        ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, peakLength, readLength, minimumMut,
-                                          maximumMut, fragmentMean, fragmentStd, mutateGeneNum, multiple, repeat, pcrErrorProb);
+                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb, overlap);
 
     }
 
@@ -98,97 +89,68 @@ public class AseSeqSimulator {
         option.setRequired(true);
         options.addOption(option);
 
-        option = new Option("v", "vcf_file", true, "vcf file path used for generate SNP");
+        option = new Option("v", "vcf_file", true, "vcf file path used for generate SNP, default null");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "outputDir", true, "output directory");
+        option = new Option("o", "outputDir", true, "output directory, default ./AseSeqRead");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("ls", "library_size", true, "cDNA library size");
+        option = new Option("ls", "library_size", true, "cDNA library size, default 1000000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("pl", "peak_length", true, "m6A peak length");
+        option = new Option("pl", "peak_length", true, "m6A peak length, default 500");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rl", "read_length", true, "sequencing reads length");
+        option = new Option("rl", "read_length", true, "sequencing reads length, default 50");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment");
+        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment, default 5");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mx", "maximum_mutation", true, "maximum mutation sites on fragment");
+        option = new Option("mx", "maximum_mutation", true, "maximum mutation sites on fragment, default 15");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("fm", "fragment_mean", true, "mean length of fragments");
+        option = new Option("fm", "fragment_mean", true, "mean length of fragments, default 250");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("ft", "fragment_theta", true, "standard deviation of fragment length");
+        option = new Option("ft", "fragment_theta", true, "standard deviation of fragment length, default 25");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("gn", "gene_num", true, "numbers of gene select from total genes");
+        option = new Option("gp", "gene_proportion", true, "The proportion of genes selected in the total number of genes on a particular chromosome, default 0.2");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mp", "mutate_proportion", true, "mutated gene proportion");
+        option = new Option("mp", "mutate_proportion", true, "The proportion of mutated genes in the total number of selected genes on a particular chromosome, default 0.4");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("pe", "pcr_error", true, "probability of PCR sequencing error");
+        option = new Option("ol", "overlap", true, "if the random select gene overlapped with each other, default false");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mul", "multiple_time", true, "multiple time");
+        option = new Option("pe", "pcr_error", true, "probability of PCR sequencing error, default 5‰");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rep", "repeat_time", true, "experiment repeat time");
+        option = new Option("mul", "multiple_time", true, "multiple time, default 1");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("rep", "repeat_time", true, "experiment repeat time, default 1");
         option.setRequired(false);
         options.addOption(option);
 
         CommandLineParser parser = new DefaultParser();
 
         return parser.parse(options, args);
-    }
-
-    private static int totalGeneNum(String gtfFile) {
-        BufferedReader bfr = null;
-        int geneNum = 0;
-        try {
-            bfr = new BufferedReader(
-                    new InputStreamReader(new FileInputStream(new File(gtfFile)))
-            );
-            String line = "";
-            String[] info;
-            while (line != null) {
-                line = bfr.readLine();
-                if (line != null) {
-                    info = line.split("\t");
-                    if (info[2].equals("gene"))
-                        geneNum ++;
-                }
-            }
-            bfr.close();
-        } catch (IOException ie) {
-            ie.printStackTrace();
-        } finally {
-            if (bfr != null) {
-                try {
-                    bfr.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        return geneNum;
     }
 }
