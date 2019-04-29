@@ -320,16 +320,25 @@ public class ReadsGenerator {
      * output file
      * @param fragmentMean fragment mean
      * @param fragmentTheta fragment std
-     * @param inputOutputFile output file path
+     * @param inputOutputFile1 output file path
+     * @param inputOutputFile2 output file path, if single end sequencing, set to be null
      * @param inputMultiple replicates for each experiment
      */
-    public void generateInputReads(int fragmentMean, int fragmentTheta, String inputOutputFile, int inputMultiple) {
-        BufferedWriter fw = null;
+    public void generateInputReads(int fragmentMean, int fragmentTheta, String inputOutputFile1, String inputOutputFile2, int inputMultiple) {
+        BufferedWriter mate1File = null;
+        BufferedWriter mate2File = null;
+        String direct = "SE";
         UniformRealDistribution urd = new UniformRealDistribution(0.0, 0.95);
         try {
-            fw = new BufferedWriter(
-                    new OutputStreamWriter(new FileOutputStream(new File(inputOutputFile)))
+            mate1File = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(new File(inputOutputFile1)))
             );
+            if (inputOutputFile2 != null) {
+                mate2File = new BufferedWriter(
+                        new OutputStreamWriter(new FileOutputStream(new File(inputOutputFile2)))
+                );
+                direct = "PE";
+            }
             // get mutated genes' ID
             Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
             for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
@@ -345,19 +354,26 @@ public class ReadsGenerator {
                     }
                     gene.calculateReadsCount(librarySize);
 
-                    gene.generateInputReads(fragmentMean, fragmentTheta, fw, this.readLength, inputMultiple, ref, mutExonSeq,
-                                       this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
-//                    HashMap<Integer, int[]> refAltReads = gene.getReadsCountRecord();
-//                    this.geneMutReadsCount.put(geneId, refAltReads);
+                    gene.generateInputReads(fragmentMean, fragmentTheta, mate1File, mate2File, this.readLength, inputMultiple,
+                                            ref, mutExonSeq, direct, this.seqErrorModel);
                 }
             }
-            fw.close();
+            mate1File.close();
+            if (mate2File != null)
+                mate2File.close();
         } catch (Exception io) {
             io.printStackTrace();
         } finally {
-            if (fw != null) {
+            if (mate1File != null) {
                 try {
-                    fw.close();
+                    mate1File.close();
+                } catch (IOException ie) {
+                    ie.printStackTrace();
+                }
+            }
+            if (mate2File != null) {
+                try {
+                    mate2File.close();
                 } catch (IOException ie) {
                     ie.printStackTrace();
                 }
@@ -370,16 +386,23 @@ public class ReadsGenerator {
      * output file
      * @param fragmentMean fragment mean
      * @param fragmentTheta fragment std
-     * @param ipOutputFile output file path
+     * @param ipOutputFile1 output file path
      * @param ipMultiple replicates for each experiment
      */
-    public void generateIpReads(int fragmentMean, int fragmentTheta, String ipOutputFile, int ipMultiple) {
-        BufferedWriter fw = null;
+    public void generateIpReads(int fragmentMean, int fragmentTheta, String ipOutputFile1, String ipOutputFile2, int ipMultiple) {
+        BufferedWriter mate1File = null, mate2File = null;
         UniformRealDistribution urd = new UniformRealDistribution(0.0, 0.95);
+        String direct = "SE";
         try {
-            fw = new BufferedWriter(
-                    new OutputStreamWriter(new FileOutputStream(new File(ipOutputFile)))
+            mate1File = new BufferedWriter(
+                    new OutputStreamWriter(new FileOutputStream(new File(ipOutputFile1)))
             );
+            if (ipOutputFile2 != null) {
+                mate2File = new BufferedWriter(
+                        new OutputStreamWriter(new FileOutputStream(new File(ipOutputFile2)))
+                );
+                direct = "PE";
+            }
             // get mutated genes' ID
             Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
 
@@ -396,24 +419,26 @@ public class ReadsGenerator {
 
                     gene.calculateReadsCount(librarySize);
 
-                    gene.generateIpReads(fragmentMean, fragmentTheta, fw, this.readLength, ipMultiple, ref, mutExonSeq,
-                            this.geneMutatedPosition.getOrDefault(geneId, null), this.seqErrorModel);
-
-//                    if (mutGeneIds.contains(geneId)) {
-//                        int refCount = gene.getRefReadsCount();
-//                        int altCount = gene.getAltReadsCount();
-//                        int[] refAndAlt = new int[]{refCount, altCount};
-//                        this.mutGeneRefAltCount.put(geneId, refAndAlt);
-//                    }
+                    gene.generateIpReads(fragmentMean, fragmentTheta, mate1File, mate2File, this.readLength, ipMultiple,
+                                         ref, mutExonSeq, direct, this.seqErrorModel);
                 }
             }
-            fw.close();
+            mate1File.close();
+            if (mate2File != null)
+                mate2File.close();
         } catch (Exception io) {
             io.printStackTrace();
         } finally {
-            if (fw != null) {
+            if (mate1File != null) {
                 try {
-                    fw.close();
+                    mate1File.close();
+                } catch (IOException ie) {
+                    ie.printStackTrace();
+                }
+            }
+            if (mate2File != null) {
+                try {
+                    mate2File.close();
                 } catch (IOException ie) {
                     ie.printStackTrace();
                 }
@@ -426,7 +451,7 @@ public class ReadsGenerator {
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int peakLength, int readLength,
                                    int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, double mutProp,
-                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap) {
+                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap, boolean singleEnd) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
@@ -462,8 +487,19 @@ public class ReadsGenerator {
         for (int i = 0; i < repeat; i++) {
             String InputOutputfile = new File(outputDir, "Input"+i+".fasta").getAbsolutePath();
             String IpOutputfile = new File(outputDir, "Ip"+i+".fasta").getAbsolutePath();
-            this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,Multiple);
-            this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile,Multiple);
+            String InputMatefile = null;
+            String IpMatefile = null;
+            // single-end sequencing
+            if (singleEnd) {
+                this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
+                this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile, IpMatefile, Multiple);
+            } else { // pair-end sequencing
+                InputMatefile = new File(outputDir, "Input_mate"+i+".fasta").getAbsolutePath();
+                IpMatefile = new File(outputDir, "Ip_mate"+i+".fasta").getAbsolutePath();
+                this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
+                this.generateIpReads(fragmentMean,fragmentTheta, InputOutputfile,IpMatefile, Multiple);
+            }
+
             // write out gene mutation records of each experiment
             mutateGeneInfomation(new File(outputDir, "mutations"+i+".txt").getAbsolutePath());
 

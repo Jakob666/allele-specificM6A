@@ -5,7 +5,7 @@ package AseSeqSimulator;
  */
 public class Fragmentation {
     private int fragmentStart, fragmentEnd;
-    private String transcriptFragmentSeq, readSeq;
+    private String transcriptFragmentSeq, mate1, mate2, mate1Strand = "+";
     private int fragmentLength;
 
     /**
@@ -33,8 +33,16 @@ public class Fragmentation {
         return this.transcriptFragmentSeq;
     }
 
-    public String getReadSeq(){
-        return this.readSeq;
+    public String getSingleEndRead() {
+        return this.mate1;
+    }
+
+    public String getReadStrand() {
+        return this.mate1Strand;
+    }
+
+    public String[] getPairEndRead() {
+        return new String[]{this.mate1, this.mate2};
     }
 
     public int getFragmentLength() {
@@ -46,13 +54,30 @@ public class Fragmentation {
      * @param strand positive or negative strand
      * @param readLength read length
      */
-    public void getSequencingRead(String strand, int readLength){
+    public void singleEndSequencingRead(String strand, int readLength){
         if(this.transcriptFragmentSeq.length() > readLength) {
-            this.readSeq = this.transcriptFragmentSeq.substring(0, readLength);
+            this.mate1 = this.transcriptFragmentSeq.substring(0, readLength);
         }else{
-            this.readSeq = this.transcriptFragmentSeq;
+            this.mate1 = this.transcriptFragmentSeq;
         }
-        if (strand.equals("-"))
-            this.readSeq = CommonMethod.AntiChain(this.readSeq);
+        if (strand.equals("-")) {
+            this.mate1 = CommonMethod.AntiChain(this.mate1);
+            this.mate1Strand = "-";
+        }
+    }
+
+    public void pairEndSequencingRead(String strand, int readLength){
+        if(this.transcriptFragmentSeq.length() > readLength) {
+            this.mate1 = this.transcriptFragmentSeq.substring(0, readLength);
+            this.mate2 = this.transcriptFragmentSeq.substring(this.transcriptFragmentSeq.length() - readLength);
+        }else{
+            this.mate1 = this.transcriptFragmentSeq;
+            this.mate2 = this.transcriptFragmentSeq;
+        }
+        if (strand.equals("-")) {
+            this.mate1 = CommonMethod.AntiChain(this.mate1);
+            this.mate2 = CommonMethod.AntiChain(this.mate2);
+            this.mate1Strand = "-";
+        }
     }
 }

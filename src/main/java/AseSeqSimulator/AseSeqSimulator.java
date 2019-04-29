@@ -15,7 +15,7 @@ public class AseSeqSimulator {
         // default 20% gene has SNP site;
         double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
         String gtfFile, twoBitFile, vcfFile = null;
-        boolean overlap = false;
+        boolean overlap = false, singleEnd = true;
         File outputDir = new File("./AseSeqReads");
 
         gtfFile = commandLine.getOptionValue('g');
@@ -62,6 +62,8 @@ public class AseSeqSimulator {
         }
         if (commandLine.hasOption("ol"))
             overlap = Boolean.getBoolean(commandLine.getOptionValue("ol"));
+        if (commandLine.hasOption("se"))
+            singleEnd = Boolean.getBoolean(commandLine.getOptionValue("se"));
         if (commandLine.hasOption("pe")) {
             double pcrError = Double.parseDouble(commandLine.getOptionValue("pe"));
             if (pcrError > 0 && pcrError < 1)
@@ -74,7 +76,7 @@ public class AseSeqSimulator {
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, peakLength, readLength, minimumMut,
-                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb, overlap);
+                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb, overlap, singleEnd);
 
     }
 
@@ -134,6 +136,10 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("ol", "overlap", true, "if the random select gene overlapped with each other, default false");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("se", "single_end", true, "if true, single-end reads, otherwise pair-end. Default true");
         option.setRequired(false);
         options.addOption(option);
 
