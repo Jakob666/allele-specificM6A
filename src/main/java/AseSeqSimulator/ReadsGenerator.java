@@ -2,6 +2,7 @@ package AseSeqSimulator;
 
 import GTFComponent.*;
 import PeakSimulator.PeakSimulator;
+import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.*;
@@ -117,7 +118,7 @@ public class ReadsGenerator {
                     }
 
                     transcriptRegion.add(new int[]{transStart, transEnd});
-                    Gene gene = new Gene(gr.getGeneId(), gr.getGeneStart(), gr.getGeneEnd(), gr.getStrand(), chr);
+                    Gene gene = new Gene(gr.getGeneId(), gr.getGeneStart(), gr.getGeneName(), gr.getGeneEnd(), gr.getStrand(), chr);
                     gene.setLongestTranscriptRecord(longestTranscript);
                     // get the longest transcript exon sequence with Gene splicing method
                     this.twoBit.setCurrentSequence("chr"+chr);
@@ -215,11 +216,15 @@ public class ReadsGenerator {
      * set RPKM and PM parameters for each selected gene
      * @param outputfile output file path
      */
-    public void transcriptionParameter(String outputfile) {
+    public void transcriptionParameter(String outputfile, String geneExpFile) {
         double chr_pm_range = 0.95 / ChrGeneMap.keySet().size();
         double lower;
         double upper = 0;
         UniformRealDistribution unidiform = new UniformRealDistribution(10, 1000);
+        GeneExpDistribution geneExp = GeneExpDistribution.getInstance();
+        HashMap<String, double[]> geneExpValue = null;
+        if (geneExpFile != null)
+            geneExpValue = geneExp.experimentalGeneExp(geneExpFile);
         try {
             FileWriter fw = new FileWriter(outputfile);
             for (Map.Entry<String, LinkedList<Gene>> entry : ChrGeneMap.entrySet()) {
@@ -230,9 +235,21 @@ public class ReadsGenerator {
                     lower = upper;
                     upper = upper + gene_pm_range;
                     gene.setPmRange(lower, upper);
-                    double RPKM = unidiform.sample();
+                    double RPKM;
+                    if (geneExpValue == null)
+                        RPKM = unidiform.sample();
+                    else {
+                        double[] expData = geneExpValue.getOrDefault(gene.getGeneName(), null);
+                        if (expData == null)
+                            RPKM = unidiform.sample();
+                        else {
+                            NormalDistribution dist = new NormalDistribution(expData[0], expData[1]+0.0001);
+                            RPKM = Math.abs(dist.sample());
+                            dist = null;
+                        }
+                    }
                     gene.setRPKM(RPKM);
-                    fw.write(chr + "\t" + gene.getGeneId() + "\t" + RPKM + "\n");
+                    fw.write(chr + "\t" + gene.getGeneId() + "\t" + gene.getGeneName() + "\t" + RPKM + "\n");
                 }
             }
             fw.close();
@@ -451,7 +468,8 @@ public class ReadsGenerator {
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int peakLength, int readLength,
                                    int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, double mutProp,
-                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap, boolean singleEnd) {
+                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap, boolean singleEnd,
+                                   String geneExpFile) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
@@ -482,7 +500,7 @@ public class ReadsGenerator {
         // generate a simplified GTF file
         this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());
         // record the RPKM data
-        this.transcriptionParameter(new File(outputDir, "rpkm.txt").getAbsolutePath());
+        this.transcriptionParameter(new File(outputDir, "rpkm.txt").getAbsolutePath(), geneExpFile);
 
         for (int i = 0; i < repeat; i++) {
             String InputOutputfile = new File(outputDir, "Input"+i+".fasta").getAbsolutePath();
@@ -492,12 +510,12 @@ public class ReadsGenerator {
             // single-end sequencing
             if (singleEnd) {
                 this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
-                this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile, IpMatefile, Multiple);
+//                this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile, IpMatefile, Multiple);
             } else { // pair-end sequencing
                 InputMatefile = new File(outputDir, "Input_mate"+i+".fasta").getAbsolutePath();
                 IpMatefile = new File(outputDir, "Ip_mate"+i+".fasta").getAbsolutePath();
                 this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
-                this.generateIpReads(fragmentMean,fragmentTheta, InputOutputfile,IpMatefile, Multiple);
+//                this.generateIpReads(fragmentMean,fragmentTheta, InputOutputfile,IpMatefile, Multiple);
             }
 
             // write out gene mutation records of each experiment

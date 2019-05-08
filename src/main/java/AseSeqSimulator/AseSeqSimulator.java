@@ -14,7 +14,7 @@ public class AseSeqSimulator {
                           repeat = 1, minimumMut = 5, maximumMut = 15, peakLength = 500;
         // default 20% gene has SNP site;
         double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
-        String gtfFile, twoBitFile, vcfFile = null;
+        String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
         boolean overlap = false, singleEnd = true;
         File outputDir = new File("./AseSeqReads");
 
@@ -22,6 +22,8 @@ public class AseSeqSimulator {
         twoBitFile = commandLine.getOptionValue('t');
         if (commandLine.hasOption('v'))
             vcfFile = commandLine.getOptionValue('v');
+        if (commandLine.hasOption("exp"))
+            geneExpFile = commandLine.getOptionValue("exp");
         if (commandLine.hasOption('o'))
             outputDir = new File(commandLine.getOptionValue('o'));
         if (commandLine.hasOption("ls"))
@@ -76,7 +78,8 @@ public class AseSeqSimulator {
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, peakLength, readLength, minimumMut,
-                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb, overlap, singleEnd);
+                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb,
+                                          overlap, singleEnd, geneExpFile);
 
     }
 
@@ -92,6 +95,10 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("v", "vcf_file", true, "vcf file path used for generate SNP, default null");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("exp", "gene_express", true, "cellLineExpFile downloading file from http://medicalgenomics.org/rna_seq_atlas/download");
         option.setRequired(false);
         options.addOption(option);
 

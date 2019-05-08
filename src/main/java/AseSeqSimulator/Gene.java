@@ -14,7 +14,7 @@ import java.util.*;
  * random fragment a gene transcript sequence, the fragment length obeys normal distribution
  */
 public class Gene {
-    private String geneId, strand;
+    private String geneId, strand, geneName;
     private TranscriptRecord longestTranscriptRecord;
     private int geneStart, geneEnd;
     private double RPKM;
@@ -23,11 +23,12 @@ public class Gene {
     private double[] pmRange;
     private ElementRecord exonList = null;
     private LinkedList<Peak> peakList;
-    public Gene(String geneId, int geneStart, int geneEnd, String strand, String chr) {
+    public Gene(String geneId, int geneStart, String geneName, int geneEnd, String strand, String chr) {
         this.geneId = geneId;
         this.geneStart = geneStart;
         this.geneEnd = geneEnd;
         this.strand = strand;
+        this.geneName = geneName;
         this.chr = chr;
     }
 
@@ -61,6 +62,10 @@ public class Gene {
 
     public String getGeneId() {
         return this.geneId;
+    }
+
+    public String getGeneName() {
+        return this.geneName;
     }
 
     public String getStrand() {
