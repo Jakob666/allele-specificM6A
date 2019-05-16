@@ -1,12 +1,7 @@
 package PeakSimulator;
 
 import AseSeqSimulator.Fragmentation;
-import AseSeqSimulator.Gene;
-import org.apache.commons.math3.distribution.NormalDistribution;
-import org.apache.commons.math3.distribution.UniformRealDistribution;
 
-import java.io.*;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -20,7 +15,6 @@ public class Peak {
     private String PeakString;
     private double PM;
     private int m6A_reads_count;
-    private LinkedList<Fragmentation> FragmentList = new LinkedList<Fragmentation>();
     private String controlString;
     private String GeneID;
     private String strand;
@@ -65,13 +59,13 @@ public class Peak {
         return PeakString;
     }
 
-    public LinkedList<Fragmentation> getFragmentList() {
-        return FragmentList;
-    }
+//    public LinkedList<Fragmentation> getFragmentList() {
+//        return FragmentList;
+//    }
 
-    public void releaseFragmentList(){
-        this.FragmentList.clear();
-    }
+//    public void releaseFragmentList(){
+//        this.FragmentList.clear();
+//    }
 
     public void setPM(double PM) {
         this.PM = PM;
@@ -117,9 +111,9 @@ public class Peak {
         return peak_end;
     }
 
-    public void addFragments(Fragmentation fragment){
-        FragmentList.add(fragment);
-    }
+//    public void addFragments(Fragmentation fragment){
+//        FragmentList.add(fragment);
+//    }
 
     public void setM6A_reads_count(double RPKM, long library_size) {
         int Input_reads = (int) ((PeakString.length() * library_size * RPKM) / Math.pow(10, 9));

@@ -11,7 +11,7 @@ import java.util.*;
 public class ReadsGenerator {
     private HashMap<String, LinkedList<Gene>> ChrGeneMap = new HashMap<String, LinkedList<Gene>>();
     private GTFReader readGTF = new GTFReader();
-    private int readLength, peakLength;
+    private int readLength, peakLength, sequencingDepth;
     private double geneProp;
     private TwoBitParser twoBit;
     private long librarySize;
@@ -37,6 +37,10 @@ public class ReadsGenerator {
 
     public void setLibrarySize(long librarySize) {
         this.librarySize = librarySize;
+    }
+
+    public void setSequencingDepth(int sequencingDepth) {
+        this.sequencingDepth = sequencingDepth;
     }
 
     public void setReadLength(int readLength) {
@@ -217,7 +221,7 @@ public class ReadsGenerator {
      * @param outputfile output file path
      */
     public void transcriptionParameter(String outputfile, String geneExpFile) {
-        double chr_pm_range = 0.95 / ChrGeneMap.keySet().size();
+        double chr_pm_range = 0.95 / this.ChrGeneMap.keySet().size();
         double lower;
         double upper = 0;
         UniformRealDistribution unidiform = new UniformRealDistribution(10, 1000);
@@ -227,7 +231,8 @@ public class ReadsGenerator {
             geneExpValue = geneExp.experimentalGeneExp(geneExpFile);
         try {
             FileWriter fw = new FileWriter(outputfile);
-            for (Map.Entry<String, LinkedList<Gene>> entry : ChrGeneMap.entrySet()) {
+            fw.write("chr\tgeneId\tgeneName\tRPKM\texonLength\treadsCount\n");
+            for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> GeneList = entry.getValue();
                 String chr = entry.getKey();
                 double gene_pm_range = chr_pm_range / GeneList.size();
@@ -236,20 +241,26 @@ public class ReadsGenerator {
                     upper = upper + gene_pm_range;
                     gene.setPmRange(lower, upper);
                     double RPKM;
-                    if (geneExpValue == null)
-                        RPKM = unidiform.sample();
-                    else {
-                        double[] expData = geneExpValue.getOrDefault(gene.getGeneName(), null);
-                        if (expData == null)
+                    if (this.sequencingDepth == 0) {
+                        if (geneExpValue == null)
                             RPKM = unidiform.sample();
                         else {
-                            NormalDistribution dist = new NormalDistribution(expData[0], expData[1]+0.0001);
-                            RPKM = Math.abs(dist.sample());
-                            dist = null;
+                            double[] expData = geneExpValue.getOrDefault(gene.getGeneName(), null);
+                            if (expData == null)
+                                RPKM = unidiform.sample();
+                            else {
+                                NormalDistribution dist = new NormalDistribution(expData[0], expData[1]+0.0001);
+                                RPKM = Math.abs(dist.sample());
+                                dist = null;
+                            }
                         }
+                        gene.setRPKM(RPKM);
+                        gene.calculateReadsCountViaLibrarySize(this.librarySize);
+                    } else {
+                        gene.calculateReadsCountViaSequencingDepth(this.sequencingDepth, this.readLength, this.librarySize);
+                        RPKM = gene.getRPKM();
                     }
-                    gene.setRPKM(RPKM);
-                    fw.write(chr + "\t" + gene.getGeneId() + "\t" + gene.getGeneName() + "\t" + RPKM + "\n");
+                    fw.write(chr + "\t" + gene.getGeneId() + "\t" + gene.getGeneName() + "\t" + RPKM + "\t" + gene.getExonSeq().length() + "\t" + gene.getReadsCount() + "\n");
                 }
             }
             fw.close();
@@ -369,7 +380,6 @@ public class ReadsGenerator {
                         ref = urd.sample();
                         mutExonSeq = this.genesMutatedExonSeq.get(geneId);
                     }
-                    gene.calculateReadsCount(librarySize);
 
                     gene.generateInputReads(fragmentMean, fragmentTheta, mate1File, mate2File, this.readLength, inputMultiple,
                                             ref, mutExonSeq, direct, this.seqErrorModel);
@@ -433,8 +443,10 @@ public class ReadsGenerator {
                         ref = urd.sample();
                         mutExonSeq = this.genesMutatedExonSeq.get(geneId);
                     }
-
-                    gene.calculateReadsCount(librarySize);
+                    if (this.sequencingDepth != 0)
+                        gene.calculateReadsCountViaSequencingDepth(this.sequencingDepth, this.readLength, this.librarySize);
+                    else
+                        gene.calculateReadsCountViaLibrarySize(this.librarySize);
 
                     gene.generateIpReads(fragmentMean, fragmentTheta, mate1File, mate2File, this.readLength, ipMultiple,
                                          ref, mutExonSeq, direct, this.seqErrorModel);
@@ -466,13 +478,14 @@ public class ReadsGenerator {
     /**
      * sequencing reads simulating
      */
-    public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int peakLength, int readLength,
+    public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int sequencingDepth, int peakLength, int readLength,
                                    int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, double mutProp,
                                    int Multiple, int repeat, double pcrErrorProb, boolean overlap, boolean singleEnd,
                                    String geneExpFile) {
 
         this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
+        this.setSequencingDepth(sequencingDepth);
         this.setPeakLength(peakLength);
         this.setReadLength(readLength);
         this.selectGene(overlap);
@@ -480,6 +493,7 @@ public class ReadsGenerator {
 
         // randomly generate mutations on selected genes' exon sequence
         SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutProp, vcfFile, minimumMut, maximumMut);
+        snpGenerator.generateSNP();
         System.out.println("complete variant");
         this.genesOriginExonSeq = snpGenerator.getOriginExonSequence();
         this.genesMutatedExonSeq = snpGenerator.getMutatedExonSeqence();
@@ -489,13 +503,13 @@ public class ReadsGenerator {
         String outputDir = new File(dataPath).getAbsolutePath();
 
         // randomly generate m6A peak, write out the simulated peak record
-//        this.simulateM6aPeaks();
-//        File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
-//        PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
-//        File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
-//        PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
-//        File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
-//        PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, readLength / 2);
+        this.simulateM6aPeaks();
+        File simulatedPeakFile = new File(outputDir, "simulatedPeak.txt");
+        PeakSimulator.storeSimulatedPeaksRecord(this.ChrGeneMap, simulatedPeakFile);
+        File simulatedPeakBedFile = new File(outputDir, "simulatedPeak.bed");
+        PeakSimulator.Trans2bed(simulatedPeakFile, simulatedPeakBedFile);
+        File simulatedPeakCenterFile = new File(outputDir, "simulatedPeakCenter.bed");
+        PeakSimulator.Trans2bed_peaksite(simulatedPeakFile, simulatedPeakCenterFile, readLength / 2);
 
         // generate a simplified GTF file
         this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());
@@ -510,12 +524,12 @@ public class ReadsGenerator {
             // single-end sequencing
             if (singleEnd) {
                 this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
-//                this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile, IpMatefile, Multiple);
+                this.generateIpReads(fragmentMean,fragmentTheta, IpOutputfile, IpMatefile, Multiple);
             } else { // pair-end sequencing
                 InputMatefile = new File(outputDir, "Input_mate"+i+".fasta").getAbsolutePath();
                 IpMatefile = new File(outputDir, "Ip_mate"+i+".fasta").getAbsolutePath();
                 this.generateInputReads(fragmentMean,fragmentTheta, InputOutputfile,InputMatefile, Multiple);
-//                this.generateIpReads(fragmentMean,fragmentTheta, InputOutputfile,IpMatefile, Multiple);
+                this.generateIpReads(fragmentMean,fragmentTheta, InputOutputfile,IpMatefile, Multiple);
             }
 
             // write out gene mutation records of each experiment

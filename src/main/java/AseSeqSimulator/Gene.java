@@ -147,8 +147,18 @@ public class Gene {
      * calculate sequencing reads count base on library size
      * @param librarySize library size
      */
-    public void calculateReadsCount(long librarySize) {
+    public void calculateReadsCountViaLibrarySize(long librarySize) {
         this.readsCount = (int) ((this.exonSeq.length() * librarySize * this.RPKM) / Math.pow(10, 9));
+    }
+
+    /**
+     * calculate sequencing reads count base on sequencing depth
+     * @param depth sequencing depth
+     * @param readLength read length
+     */
+    public void calculateReadsCountViaSequencingDepth(int depth, int readLength, long librarySize) {
+        this.readsCount = this.exonSeq.length() * depth / readLength;
+        this.RPKM = Math.pow(10.0, 9) * this.readsCount / this.exonSeq.length() / librarySize;
     }
 
     /**
@@ -164,82 +174,207 @@ public class Gene {
     public void generateInputReads(int fragmentMean, int fragmentTheta, BufferedWriter mateFile1, BufferedWriter mateFile2,
                                    int readLength, int multiple, double refProp, String mutExonSeq, String direct,
                                    SequencingError seqErrorModel) {
-        this.refReadsCount = (int) (this.readsCount * refProp / multiple);
-        this.altReadsCount = this.readsCount / multiple - refReadsCount;
-        int maxReadCount = Math.max(this.refReadsCount, this.altReadsCount);
+        // 位置相同的reads的数目
+        HashMap<String, Integer> readsDistribution = new HashMap<>();
+        // 位置相同的reads的fragment在exon上面起始、终止位点
+        HashMap<String, ArrayList<Integer>> fragmentEndSites = new HashMap<>();
         // used to randomly generate fragment length
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0;
-        String fragmentString;
-        Fragmentation fragment;
+        String refFragmentString, altFragmentString;
+        Fragmentation refFragment, altFragment;
         try {
             int break_point, end_point, fragmentLength;
-            // generate alternative reads
-            while (curReadsCount < maxReadCount) {
+            int readStart, readEnd;
+            String readRecord;
+
+            while (curReadsCount < this.readsCount) {
                 // randomly generate a fragment length and form exon fragment
                 fragmentLength = Math.abs((int) nordi.sample());
                 // measure the start and end position of fragment on exon sequence
                 int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
                 break_point = breakAndEndPoint[0];
                 end_point = breakAndEndPoint[1];
-                // generate reference reads
-                if (curReadsCount < this.refReadsCount) {
-                    fragmentString = this.exonSeq.substring(break_point, end_point);
-                    fragment = this.getSequencingReads(fragmentString, break_point, end_point, readLength, direct);
-                    if (direct.equals("SE"))
-                        this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, end_point, "ref");
-                    else
-                        this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, end_point, "ref");
 
-                }
-                // generate alternative reads
-                if (curReadsCount < this.altReadsCount) {
-                    fragmentString = mutExonSeq.substring(break_point, end_point);
-                    fragment = this.getSequencingReads(fragmentString, break_point, end_point, readLength, direct);
-                    if (direct.equals("SE"))
-                        this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, end_point, "alt");
-                    else
-                        this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, end_point, "alt");
+                readStart = break_point;
+                readEnd = (end_point - break_point >= readLength)? (break_point+readLength):end_point;
+                readRecord = readStart + "-" + readEnd;
 
-                }
-                fragment = null;
-
+                Integer countRecord = readsDistribution.getOrDefault(readRecord, 0);
+                ArrayList<Integer> fragmentRecord = fragmentEndSites.getOrDefault(readRecord, new ArrayList<>());
+                fragmentRecord.add(end_point);
+                fragmentEndSites.put(readRecord, fragmentRecord);
+                readsDistribution.put(readRecord, countRecord+1);
                 curReadsCount++;
             }
+
+            for (String readRange: readsDistribution.keySet()) {
+                String[] points = readRange.split("-");
+                // get break point and read end point
+                break_point = Integer.parseInt(points[0]);
+                readEnd = Integer.parseInt(points[1]);
+
+                // end position of each fragment
+                ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
+                Iterator<Integer> endPointIterator = endPoints.iterator();
+
+                // count of reads in the same position
+                int count = readsDistribution.get(readRange);
+                int refCount = (int) (count * refProp);
+                int altCount = count - refCount;
+
+                int i = 0;
+                while (endPointIterator.hasNext()) {
+                    Integer endPoint = endPointIterator.next();
+                    refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                    refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
+
+                    // if gene contains SNP
+                    if (mutExonSeq != null) {
+                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
+                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
+
+                        // generate reference and motif reads
+                        if (i < refCount) {
+                            if (direct.equals("SE"))
+                                this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                            else
+                                this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        }
+                        if (i < altCount) {
+                            if (direct.equals("SE"))
+                                this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "alt");
+                            else
+                                this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "alt");
+                        }
+                    } else { // if is not mutated gene
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                    }
+
+                    i ++;
+
+                    // release memory
+                    altFragment = null;
+                    refFragment = null;
+                    refFragmentString = null;
+                    altFragmentString = null;
+                }
+            }
+
         } catch (Exception io) {
             io.printStackTrace();
         }
     }
 
+    /**
+     * if a sequencing reads covers SNP site on exon sequence
+     * @param start start position
+     * @param end end position
+     * @param mutationSites site of mutate positions
+     * @return boolean
+     */
+    private boolean ifCoverMutation(int start, int end, HashSet<Integer> mutationSites) {
+        for (Integer site: mutationSites) {
+            if (start <= site && site <= end)
+                return true;
+        }
+        return false;
+    }
+
     public void generateIpReads(int fragmentMean, int fragmentTheta, BufferedWriter mateFile1, BufferedWriter mateFile2,
-                                int readLength, int multiple, double refProp, String mutExonSeq, String direct,
-                                SequencingError seqErrorModel) {
-        this.refReadsCount = (int) (this.readsCount * refProp / multiple);
-        this.altReadsCount = this.readsCount / multiple - refReadsCount;
-        int maxReadCount = Math.max(this.refReadsCount, this.altReadsCount);
+                                int readLength, int multiple, double refProp, String mutExonSeq,
+                                String direct, SequencingError seqErrorModel) {
+        // 位置相同的reads的数目
+        HashMap<String, Integer> readsDistribution = new HashMap<>();
+        // 位置相同的reads的fragment在exon上面起始、终止位点
+        HashMap<String, ArrayList<Integer>> fragmentEndSites = new HashMap<>();
         // used to randomly generate fragment length
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0;
-        String fragmentString;
-        Fragmentation fragment;
+        String refFragmentString, altFragmentString;
+        Fragmentation refFragment, altFragment;
+
         try {
             int break_point, end_point, fragmentLength;
-            // generate alternative reads
-            while (curReadsCount < maxReadCount) {
+            int readStart, readEnd;
+            String readRecord;
+            while (curReadsCount < this.readsCount) {
                 // randomly generate a fragment length and form exon fragment
                 fragmentLength = Math.abs((int) nordi.sample());
                 // measure the start and end position of fragment on exon sequence
                 int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
                 break_point = breakAndEndPoint[0];
                 end_point = breakAndEndPoint[1];
-                // generate reference reads
-                if (curReadsCount < this.refReadsCount) {
-                    fragmentString = this.exonSeq.substring(break_point, end_point);
-                    fragment = this.getSequencingReads(fragmentString, break_point, end_point, readLength, direct);
-                    if (direct.equals("SE"))
-                        this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, end_point, "ref");
-                    else
-                        this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, end_point, "ref");
+
+                readStart = break_point;
+                readEnd = (end_point - break_point >= readLength)? (break_point+readLength):end_point;
+                readRecord = readStart + "-" + readEnd;
+
+                Integer countRecord = readsDistribution.getOrDefault(readRecord, 0);
+                ArrayList<Integer> fragmentRecord = fragmentEndSites.getOrDefault(readRecord, new ArrayList<>());
+                fragmentRecord.add(end_point);
+                fragmentEndSites.put(readRecord, fragmentRecord);
+                readsDistribution.put(readRecord, countRecord+1);
+                curReadsCount++;
+            }
+
+            for (String readRange: readsDistribution.keySet()) {
+                String[] points = readRange.split("-");
+                // get break point and read end point
+                break_point = Integer.parseInt(points[0]);
+                readEnd = Integer.parseInt(points[1]);
+                // end position of each fragment
+                ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
+                Iterator<Integer> endPointIterator = endPoints.iterator();
+
+                // count of reads in the same position
+                int count = readsDistribution.get(readRange);
+                int refCount = (int) (count * refProp);
+                int altCount = count - refCount;
+
+                int i = 0;
+                while (endPointIterator.hasNext()) {
+                    Integer endPoint = endPointIterator.next();
+                    refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                    refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
+                    // if gene contains SNP
+                    if (mutExonSeq != null) {
+                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
+                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
+                        // generate reference and motif reads
+                        if (i < refCount) {
+                            if (direct.equals("SE"))
+                                this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                            else
+                                this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        }
+                        if (i < altCount) {
+                            if (direct.equals("SE"))
+                                this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "alt");
+                            else
+                                this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "alt");
+                        }
+                    } else { // if is not mutated gene
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                    }
+
+                    i ++;
+                    // release memory
+                    altFragment = null;
+                    refFragment = null;
+                    refFragmentString = null;
+                    altFragmentString = null;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 //                    for (Peak peak: this.peakList) {
 //                        int peakStart = peak.getPeak_start();
 //                        int peakEnd = peak.getPeak_end();
@@ -248,22 +383,6 @@ public class Gene {
 //                            peak.addFragments(fragment);
 //                        }
 //                    }
-                }
-                // generate alternative reads
-                if (curReadsCount < this.altReadsCount) {
-                    fragmentString = mutExonSeq.substring(break_point, end_point);
-                    fragment = this.getSequencingReads(fragmentString, break_point, end_point, readLength, direct);
-                    if (direct.equals("SE"))
-                        this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, end_point, "alt");
-                    else
-                        this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, end_point, "alt");
-                }
-
-                curReadsCount++;
-            }
-        } catch (Exception ie) {
-            ie.printStackTrace();
-        }
     }
 
     /**

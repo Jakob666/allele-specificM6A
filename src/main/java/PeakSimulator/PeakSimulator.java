@@ -3,18 +3,37 @@ package PeakSimulator;
 import AseSeqSimulator.Fragmentation;
 import AseSeqSimulator.Gene;
 import GTFComponent.ElementRecord;
+import GTFComponent.TranscriptRecord;
+import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
+import java.util.*;
 
 public class PeakSimulator {
 
-    //设置Peak区域
-    public static LinkedList<Peak> peakSimulation(int peak_num, int peakLength, String exonSeq, String chrNum,
-                                                  String geneId, LinkedList<ElementRecord> exonList) {
+    /**
+     * get Gene instance peakList property, which record the information of each peak on reference gene
+     * @param peakLength peak length
+     * @return LinkedList Peak instance
+     */
+    public static LinkedList<Peak> refGenePeakSimulation(int peakLength, Gene gene) {
+
+        String exonSeq = gene.getExonSeq();
+        String chrNum = gene.getChr();
+        String geneId = gene.getGeneId();
+        ElementRecord exonList = gene.getExonList();
+        // get the maximum peak number exists on exon region and randomly choose a value between 1 to maximum peak
+        int max_peak_num = exonSeq.length() / peakLength;
+        if (max_peak_num == 0)
+            max_peak_num = 1;
+        ArrayList<Integer> peakNumArray = new ArrayList<>();
+        for (int i = 1; i <= max_peak_num; i++) {
+            peakNumArray.add(i);
+        }
+        Collections.shuffle(peakNumArray);
+        int peak_num = peakNumArray.get(0);
+
         LinkedList<Peak> peakList;
         LinkedList<Integer> peakStartList = new LinkedList<Integer>();
         if (exonSeq.length() > peakLength) {
@@ -24,25 +43,9 @@ public class PeakSimulator {
             while (peakStartList.size() < peak_num && count <= 100) {
                 count++;
                 int peak_start = (int) (Math.random() * start_range);
-                int temp_length = peakLength;
-                if(peak_start + peakLength > exonSeq.length()){
-                    temp_length = exonSeq.length() - peak_start;
-                }
+
                 // 选取的peak不能相互重叠
-                boolean coverage = false;
-                for (Iterator<Integer> iterator = peakStartList.iterator(); iterator.hasNext(); ) {
-                    int prev_start = iterator.next();
-                    int prev_length = peakLength;
-                    if(prev_start + peakLength > exonSeq.length()){
-                        prev_length = exonSeq.length() - prev_start;
-                    }
-                    int start_max = Math.max(prev_start, peak_start);
-                    int end_min = Math.min((prev_start + prev_length), (peak_start + temp_length));
-                    if (start_max < end_min) {
-                        coverage = true;
-                        break;
-                    }
-                }
+                boolean coverage = PeakSimulator.ifOverlap(peakStartList, peak_start, peakLength, exonSeq.length());
                 // 如果当前生成的peak与其他peak不重叠，则将起始位点加入到peakStartList中
                 if (!coverage) {
                     peakStartList.add(peak_start);
@@ -57,23 +60,105 @@ public class PeakSimulator {
         return peakList;
     }
 
+    /**
+     * get Gene instance peakList property, which record the information of each peak on alternative gene
+     * @param peakLength peak length
+     * @return LinkedList Peak instance
+     */
+    public static LinkedList<Peak> altGenePeakSimulation(int peakLength, Gene gene, HashSet<Integer> mutPosition) {
+        ElementRecord exonList = gene.getExonList();
+        String chrNum = gene.getChr();
+        String exonSeq = gene.getExonSeq();
+        String geneId = gene.getGeneId();
+
+        int head = Collections.min(mutPosition);
+        head = (head - 100 >= 0)? (head - 100): 0;
+        int tail = Collections.max(mutPosition);
+        tail = (tail + 100 <= exonSeq.length())? (tail + 100): exonSeq.length() - 1;
+        UniformIntegerDistribution uid = new UniformIntegerDistribution(head, tail);
+
+        int intervalLength = (tail - head) + 1;
+        // get the maximum peak number exists on exon region and meature the peak can cover SNP sites
+        int max_peak_num = intervalLength / peakLength;
+        if (max_peak_num == 0)
+            max_peak_num = 1;
+        ArrayList<Integer> peakNumArray = new ArrayList<>();
+        for (int i = 1; i <= max_peak_num; i++) {
+            peakNumArray.add(i);
+        }
+        Collections.shuffle(peakNumArray);
+        int peak_num = peakNumArray.get(0);
+        peakNumArray = null;
+
+        LinkedList<Peak> peakList;
+        LinkedList<Integer> peakStartList = new LinkedList<Integer>();
+        if (intervalLength > peakLength) {
+            int count = 0;
+            while (peakStartList.size() < peak_num && count <= 100) {
+                count++;
+                int peak_start = uid.sample();
+
+                // 选取的peak不能相互重叠
+                boolean coverage = PeakSimulator.ifOverlap(peakStartList, peak_start, peakLength, intervalLength);
+                // 如果当前生成的peak与其他peak不重叠，则将起始位点加入到peakStartList中
+                if (!coverage) {
+                    peakStartList.add(peak_start);
+                }
+            }
+        }else{  // 如果设定的peak length比exon区域长度长，则将0加入到peakStartList中
+            peakStartList.add(0);
+        }
+
+        peakList = PeakSimulator.peakLocation(exonList, peakStartList, peakLength, chrNum, exonSeq, geneId);
+
+        return peakList;
+    }
+
+    /**
+     * judge whether the random peaks overlap with each other
+     * @return true if 2 peaks overlapped
+     */
+    private static boolean ifOverlap(LinkedList<Integer> peakStartList, int peak_start, int peakLength, int exonSeqLength) {
+        int temp_length = peakLength;
+        if(peak_start + peakLength > exonSeqLength){
+            temp_length = exonSeqLength - peak_start;
+        }
+        boolean coverage = false;
+        for (Integer prev_start: peakStartList) {
+            int prev_length = peakLength;
+            if(prev_start + peakLength > exonSeqLength) {
+                prev_length = exonSeqLength - prev_start;
+            }
+            int start_max = Math.max(prev_start, peak_start);
+            int end_min = Math.min((prev_start + prev_length), (peak_start + temp_length));
+            if (start_max < end_min) {
+                coverage = true;
+                break;
+            }
+        }
+
+        return coverage;
+    }
+
     //确定peak区域在染色体上的位置，将结果赋予Gene类对象的peakList属性
-    private static LinkedList<Peak> peakLocation(LinkedList<ElementRecord> exonList, LinkedList<Integer> peakStartList,
+    private static LinkedList<Peak> peakLocation(ElementRecord exon, LinkedList<Integer> peakStartList,
                                                  int peakLength, String chr, String exonSeq, String geneID) {
         LinkedList<Peak> PeakList = new LinkedList<Peak>();
         try {
-            for (Iterator<Integer> iterator = peakStartList.iterator(); iterator.hasNext(); ) {
+            // peak start position
+            for (Integer peak_start: peakStartList) {
                 int accumulation = 0;
-                int peak_start = iterator.next();
                 int peak_end;
+                String PeakString;
                 // 由起始位点和peak length确定peak的终止位点
                 if ((exonSeq.length() - peak_start) > peakLength) {
                     peak_end = peak_start + peakLength;
+                    PeakString = exonSeq.substring(peak_start, peak_end);
                 } else {
-                    peak_end = exonSeq.length() - 1;
+                    peak_end = exonSeq.length();
+                    PeakString = exonSeq.substring(peak_start);
                 }
-                // 截取peak的序列
-                String PeakString = exonSeq.substring(peak_start, peak_end);
+
                 Peak peak = new Peak();
                 peak.setChr(chr);
                 peak.setPeakString(PeakString);
@@ -82,8 +167,7 @@ public class PeakSimulator {
                 peak.setGeneID(geneID);
                 boolean first_region = true;
                 String region_string = "";
-                for (Iterator<ElementRecord> exon_iterator = exonList.iterator(); exon_iterator.hasNext(); ) {
-                    ElementRecord exon = exon_iterator.next();
+                while (exon != null) {
                     int exon_start = exon.getElementStart();
                     int exon_end = exon.getElementEnd();
                     String strand = exon.getStrand();
@@ -143,6 +227,7 @@ public class PeakSimulator {
                             first_region = false;
                         }
                     }
+                    exon = exon.getNextElement();
                 }
                 PeakList.add(peak);
             }
@@ -153,13 +238,13 @@ public class PeakSimulator {
     }
 
     /**
-     * write simulated peaks into bed file
+     * write simulated peaks into text file
      */
-    public static void storeSimulatedPeaksRecord(HashMap<String, LinkedList<Gene>> selectedGenes, File simulatedPeakBedFile) {
+    public static void storeSimulatedPeaksRecord(HashMap<String, LinkedList<Gene>> selectedGenes, File simulatedPeakTextFile) {
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(
-                    new OutputStreamWriter(new FileOutputStream(simulatedPeakBedFile))
+                    new OutputStreamWriter(new FileOutputStream(simulatedPeakTextFile))
             );
             bfw.write("# chr\tgene ID\tPeak Region\tPeak Length\tPM\tRPKM\tInput Reads\tm6A reads");
             bfw.newLine();
@@ -192,7 +277,7 @@ public class PeakSimulator {
     }
 
     /**
-     * trans the peak records into bed format record
+     * trans the simulated peak records into bed format record
      * @param peakfile output file of storeSimulatedPeaksRecord method
      * @param bedfile output BED file
      */
@@ -244,7 +329,7 @@ public class PeakSimulator {
     }
 
     /**
-     * trans the peak records into bed format peak center format
+     * trans the simulated peak records into bed format peak center format
      * @param peakfile output file of storeSimulatedPeaksRecord method
      * @param bedfile output BED file
      * @param centre peak center
