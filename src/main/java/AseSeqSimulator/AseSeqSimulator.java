@@ -11,7 +11,7 @@ public class AseSeqSimulator {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 1000000, readLength = 50, fragmentMean = 250, fragmentStd = 25, multiple = 1,
-                          repeat = 1, minimumMut = 5, maximumMut = 15, peakLength = 500;
+            repeat = 1, minimumMut = 5, maximumMut = 15, peakLength = 500, depth = 0;
         // default 20% gene has SNP site;
         double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
@@ -30,6 +30,13 @@ public class AseSeqSimulator {
             librarySize = Integer.parseInt(commandLine.getOptionValue("ls"));
         if (commandLine.hasOption("pl"))
             peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
+        if (commandLine.hasOption("dep")) {
+            depth = Integer.parseInt(commandLine.getOptionValue("dep"));
+            if (depth < 0) {
+                System.out.println("depth must larger than 0");
+                System.exit(-1);
+            }
+        }
         if (commandLine.hasOption("rl"))
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
         if (commandLine.hasOption("mi"))
@@ -76,8 +83,13 @@ public class AseSeqSimulator {
             }
         }
 
+        // if depth is assigned, generate reads
+        if (depth != 0) {
+            geneExpFile = null;
+        }
+
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
-        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, peakLength, readLength, minimumMut,
+        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, peakLength, readLength, minimumMut,
                                           maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb,
                                           overlap, singleEnd, geneExpFile);
 
@@ -107,6 +119,10 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("ls", "library_size", true, "cDNA library size, default 1000000");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("dep", "depth", true, "sequencing depth, default 0.");
         option.setRequired(false);
         options.addOption(option);
 

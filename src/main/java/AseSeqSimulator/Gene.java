@@ -189,9 +189,9 @@ public class Gene {
             String readRecord;
 
             while (curReadsCount < this.readsCount) {
-                // randomly generate a fragment length and form exon fragment
+                // 随机生成fragment的长度
                 fragmentLength = Math.abs((int) nordi.sample());
-                // measure the start and end position of fragment on exon sequence
+                // 通过fragment长度确定确定fragment在外显子序列上的起始终止位点
                 int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
                 break_point = breakAndEndPoint[0];
                 end_point = breakAndEndPoint[1];
@@ -210,57 +210,56 @@ public class Gene {
 
             for (String readRange: readsDistribution.keySet()) {
                 String[] points = readRange.split("-");
-                // get break point and read end point
+                // 获取reads的起始、终止位点
                 break_point = Integer.parseInt(points[0]);
                 readEnd = Integer.parseInt(points[1]);
-
-                // end position of each fragment
+                // 获取reads对应的fragment的终止位点
                 ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
-                Iterator<Integer> endPointIterator = endPoints.iterator();
+                Collections.shuffle(endPoints);
 
-                // count of reads in the same position
+                // 相同位置的reads数目，计算存在ASE时，major allele的reads数目
                 int count = readsDistribution.get(readRange);
                 int refCount = (int) (count * refProp);
-                int altCount = count - refCount;
 
-                int i = 0;
-                while (endPointIterator.hasNext()) {
-                    Integer endPoint = endPointIterator.next();
-                    refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                    refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-
-                    // if gene contains SNP
-                    if (mutExonSeq != null) {
-                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
-                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
-
-                        // generate reference and motif reads
-                        if (i < refCount) {
-                            if (direct.equals("SE"))
-                                this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                            else
-                                this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        }
-                        if (i < altCount) {
-                            if (direct.equals("SE"))
-                                this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "alt");
-                            else
-                                this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "alt");
-                        }
-                    } else { // if is not mutated gene
+                // 如果基因含有ASE位点
+                if (mutExonSeq != null) {
+                    List<Integer> majorAlleleFragmentEnds = endPoints.subList(0, refCount);
+                    List<Integer> minorAlleleFragmentEnds = endPoints.subList(refCount, endPoints.size());
+                    // 生成major allele的reads
+                    for (Integer endPoint: majorAlleleFragmentEnds) {
+                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
                         if (direct.equals("SE"))
                             this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
                         else
                             this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        refFragment = null;
+                        refFragmentString = null;
                     }
+                    // 生成minor allele的reads
+                    for (Integer endPoint: minorAlleleFragmentEnds) {
+                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
+                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        altFragment = null;
+                        altFragmentString = null;
+                    }
+                } else { // 如果基因不包含SNP位点
+                    for (Integer endPoint: endPoints) {
+                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
 
-                    i ++;
-
-                    // release memory
-                    altFragment = null;
-                    refFragment = null;
-                    refFragmentString = null;
-                    altFragmentString = null;
+                        // release memory
+                        refFragment = null;
+                        refFragmentString = null;
+                    }
                 }
             }
 
@@ -273,11 +272,11 @@ public class Gene {
      * if a sequencing reads covers SNP site on exon sequence
      * @param start start position
      * @param end end position
-     * @param mutationSites site of mutate positions
+     * @param sites set of sites
      * @return boolean
      */
-    private boolean ifCoverMutation(int start, int end, HashSet<Integer> mutationSites) {
-        for (Integer site: mutationSites) {
+    private boolean ifCoverSite(int start, int end, Set<Integer> sites) {
+        for (Integer site: sites) {
             if (start <= site && site <= end)
                 return true;
         }
@@ -285,13 +284,16 @@ public class Gene {
     }
 
     public void generateIpReads(int fragmentMean, int fragmentTheta, BufferedWriter mateFile1, BufferedWriter mateFile2,
-                                int readLength, int multiple, double refProp, String mutExonSeq,
+                                int readLength, Set<Integer> geneM6aSites, int multiple, double refProp, String mutExonSeq,
                                 String direct, SequencingError seqErrorModel) {
-        // 位置相同的reads的数目
+        // 如果基因外显子区域不存在m6A修饰位点，则跳过该基因
+        if (geneM6aSites.size() == 0)
+            return;
+        // 记录位置相同的reads的数目
         HashMap<String, Integer> readsDistribution = new HashMap<>();
         // 位置相同的reads的fragment在exon上面起始、终止位点
         HashMap<String, ArrayList<Integer>> fragmentEndSites = new HashMap<>();
-        // used to randomly generate fragment length
+        // 用于随机生成fragment的长度
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0;
         String refFragmentString, altFragmentString;
@@ -301,14 +303,22 @@ public class Gene {
             int break_point, end_point, fragmentLength;
             int readStart, readEnd;
             String readRecord;
+            boolean cover;
             while (curReadsCount < this.readsCount) {
-                // randomly generate a fragment length and form exon fragment
+                // 随机生成一个fragment长度
                 fragmentLength = Math.abs((int) nordi.sample());
-                // measure the start and end position of fragment on exon sequence
+                // 根据生成的fragment长度得到该fragment在外显子序列上的起始、终止位点
                 int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
                 break_point = breakAndEndPoint[0];
                 end_point = breakAndEndPoint[1];
+                // 检查这段区域是否覆盖m6A位点，如果没有覆盖则跳过该fragment
+                cover = this.ifCoverSite(break_point, end_point, geneM6aSites);
+                if (!cover) {
+                    curReadsCount++;
+                    continue;
+                }
 
+                // 得到fragment对应read的起始、终止位点
                 readStart = break_point;
                 readEnd = (end_point - break_point >= readLength)? (break_point+readLength):end_point;
                 readRecord = readStart + "-" + readEnd;
@@ -323,53 +333,56 @@ public class Gene {
 
             for (String readRange: readsDistribution.keySet()) {
                 String[] points = readRange.split("-");
-                // get break point and read end point
+                // 获取reads的起始、终止位点
                 break_point = Integer.parseInt(points[0]);
                 readEnd = Integer.parseInt(points[1]);
-                // end position of each fragment
+                // 获取reads对应的fragment的终止位点
                 ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
-                Iterator<Integer> endPointIterator = endPoints.iterator();
+                Collections.shuffle(endPoints);
 
-                // count of reads in the same position
+                // 相同位置的reads数目，计算存在ASE时，major allele的reads数目
                 int count = readsDistribution.get(readRange);
                 int refCount = (int) (count * refProp);
-                int altCount = count - refCount;
 
-                int i = 0;
-                while (endPointIterator.hasNext()) {
-                    Integer endPoint = endPointIterator.next();
-                    refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                    refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-                    // if gene contains SNP
-                    if (mutExonSeq != null) {
-                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
-                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
-                        // generate reference and motif reads
-                        if (i < refCount) {
-                            if (direct.equals("SE"))
-                                this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                            else
-                                this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        }
-                        if (i < altCount) {
-                            if (direct.equals("SE"))
-                                this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "alt");
-                            else
-                                this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "alt");
-                        }
-                    } else { // if is not mutated gene
+                // 如果基因含有ASE位点
+                if (mutExonSeq != null) {
+                    List<Integer> majorAlleleFragmentEnds = endPoints.subList(0, refCount);
+                    List<Integer> minorAlleleFragmentEnds = endPoints.subList(refCount, endPoints.size());
+                    // 生成major allele的reads
+                    for (Integer endPoint: majorAlleleFragmentEnds) {
+                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
                         if (direct.equals("SE"))
                             this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
                         else
                             this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        refFragment = null;
+                        refFragmentString = null;
                     }
+                    // 生成minor allele的reads
+                    for (Integer endPoint: minorAlleleFragmentEnds) {
+                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
+                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
+                        altFragment = null;
+                        altFragmentString = null;
+                    }
+                } else { // 如果基因不包含SNP位点
+                    for (Integer endPoint: endPoints) {
+                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
+                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
+                        if (direct.equals("SE"))
+                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
+                        else
+                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
 
-                    i ++;
-                    // release memory
-                    altFragment = null;
-                    refFragment = null;
-                    refFragmentString = null;
-                    altFragmentString = null;
+                        // release memory
+                        refFragment = null;
+                        refFragmentString = null;
+                    }
                 }
             }
         } catch (Exception e) {

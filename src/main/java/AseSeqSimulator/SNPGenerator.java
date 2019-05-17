@@ -7,7 +7,7 @@ import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 import java.util.*;
 
 /**
- * generate SNP on simulated sequencing reads
+ * 在选取的基因外显子序列上随机生成SNP位点
  */
 public class SNPGenerator {
     private ArrayList<String> bases = new ArrayList<String>(Arrays.asList("A", "C", "T", "G"));
@@ -22,13 +22,24 @@ public class SNPGenerator {
     private String vcfFile;
 
     /**
-     * Constructor
+     * 构造方法
+     * @param selectedGenes 传入各个染色体上选取的基因，HashMap<String, LinkedList<Gene>> 键是染色体号，值是Gene对象链表
+     * @param mutateProportion 突变基因占选取基因总数的比例
+     * @param vcfFile 如果通过已有的VCF文件生成SNP。如果没有VCF文件，参数值为null
+     * @param minMutNum 最少突变数
+     * @param maxMutNum 最多突变数
      */
     public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, double mutateProportion, String vcfFile, int minMutNum, int maxMutNum) {
         this.selectedGenes = selectedGenes;
         this.mutateProp = mutateProportion;
         this.setMutSiteNum(minMutNum, maxMutNum);
         this.vcfFile = vcfFile;
+    }
+
+    /**
+     * 随机生成SNP的方法，该方法是公有方法，供外界调用
+     */
+    public void generateSNP() {
         // if no VCF file support, randomly generate SNP on exon sequence
         if (this.vcfFile == null) {
             this.randomMutateGene();
@@ -38,7 +49,7 @@ public class SNPGenerator {
     }
 
     /**
-     * set the maximum mutation site number on fragments
+     * 设置基因外显子序列上突变位点的数目
      */
     private void setMutSiteNum(int minNum, int maxNum) {
         ArrayList<Integer> mutNum = new ArrayList<>();
@@ -50,10 +61,9 @@ public class SNPGenerator {
     }
 
     /**
-     * randomly select mutated genes from selected genes on each chromosome, and randomly select several
-     * SNP site on its exon sequence
+     * 在选取的所有基因中，选取一定比例的基因作为突变基因。在这些基因的外显子区域挑选随机数目的突变位点
      */
-    private void randomMutateGene() {
+    protected void randomMutateGene() {
         HashMap<String, HashSet<Integer>> mutatedGene = new HashMap<>();
         for (LinkedList<Gene> chrGenes: selectedGenes.values()) {
             // measure the number of mutate gene on current chromosome and randomly select from list
@@ -88,10 +98,10 @@ public class SNPGenerator {
     }
 
     /**
-     * trans the exon sequence position to genome position
-     * @param gene Gene instance
-     * @param exonMutPos mutate exon sequence position
-     * @return genome position
+     * 将外显子序列的突变位点转换为基因组上对应的位置
+     * @param gene Gene对象
+     * @param exonMutPos 外显子序列的突变位点
+     * @return 基因组对应的位置
      */
     private int getGenomePosition(Gene gene, int exonMutPos) {
         ElementRecord exon = gene.getExonList();
@@ -116,9 +126,9 @@ public class SNPGenerator {
     }
 
     /**
-     * get SNP site from user VCF file
+     * 通过VCF文件生成基因的SNP位点
      */
-    private void vcfFileMutateGene() {
+    protected void vcfFileMutateGene() {
         HashMap<String, HashSet<Integer>> mutatedGenePos = new HashMap<>();
         HashMap<String, IntervalTree> chrExonTrees = this.generateChrExonTrees();
         HashMap<String, LinkedList<VcfRecord>> chrVcfs = this.getVcfFromFile();
@@ -152,7 +162,7 @@ public class SNPGenerator {
     }
 
     /**
-     * use gene exons to establish interval trees
+     * 构建基因的外显子区域的区间树
      * @return Interval trees
      */
     private HashMap<String, IntervalTree> generateChrExonTrees() {
@@ -176,7 +186,7 @@ public class SNPGenerator {
     }
 
     /**
-     * get vcf sites of each chromosome from VCF file
+     * 从VCF文件中获取每条染色体上的SNP位点
      * @return HashMap
      */
     private HashMap<String, LinkedList<VcfRecord>> getVcfFromFile() {
@@ -188,7 +198,7 @@ public class SNPGenerator {
     }
 
     /**
-     * randomly mutate nucleotide sequence of each mutate gene
+     * 依据之前生成的随机位点对外显子序列进行突变
      */
     private void randomMutatedExonSequence() {
         for (String geneId: this.mutGenePosition.keySet()) {
@@ -201,7 +211,7 @@ public class SNPGenerator {
     }
 
     /**
-     * mutate the exonic sequence according to the records in VCF file
+     * 依据VCF文件的信息对基因的外显子序列进行突变
      */
     private void mutateViaVcfRecord(String chrNum, String geneId, int mutatePosition, String alt) {
         LinkedList<Gene> chrGenes = this.selectedGenes.get(chrNum);
@@ -229,7 +239,9 @@ public class SNPGenerator {
     }
 
     /**
-     * site mutation on sequencing read
+     * 单核苷酸多态性的模拟过程
+     * @param geneId 基因的 geneID
+     * @param mutPosition 突变位点
      */
     private void singleSiteMutation(String geneId, int mutPosition) {
         HashMap<Integer, String[]> mutationType = this.mutationRefAlt.getOrDefault(geneId, new HashMap<>());
@@ -266,6 +278,14 @@ public class SNPGenerator {
 
     public HashMap<String, HashMap<Integer, Integer>> getMutGenomePosition() {
         return this.mutGenomePosition;
+    }
+
+    public String getVcfFile() {
+        return this.vcfFile;
+    }
+
+    public ArrayList<String> getBases() {
+        return this.bases;
     }
 
 }
