@@ -2,9 +2,9 @@ package AseSeqSimulator;
 
 import GTFComponent.ElementRecord;
 import GTFComponent.TranscriptRecord;
-import PeakSimulator.Peak;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformIntegerDistribution;
+import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -16,17 +16,20 @@ import java.util.*;
 public class Gene {
     private String geneId, strand, geneName;
     private TranscriptRecord longestTranscriptRecord;
-    private int geneStart, geneEnd;
     private double RPKM;
     private String chr, exonSeq;
-    private int readsCount, refReadsCount = 0, altReadsCount = 0;
-    private double[] pmRange;
+    private int readsCount;
+    private double[] pmRange = new double[]{0.05, 0.9};
     private ElementRecord exonList = null;
-    private LinkedList<Peak> peakList;
-    public Gene(String geneId, int geneStart, String geneName, int geneEnd, String strand, String chr) {
+    private HashMap<Integer, ArrayList<int[]>> m6aSiteFragments = new HashMap<>(), m6aSiteMutateFragments = new HashMap<>();
+    // 对应的read覆盖SNP位点的fragment
+    private HashMap<Integer, ArrayList<int[]>> inputMutateFragments = new HashMap<>(), ipMutateFragments = new HashMap<>();
+
+    // 位置相同的reads的fragment在exon上面终止位点
+    private ArrayList<int[]> inputFragment = new ArrayList<>(), ipFragment = new ArrayList<>(), m6aSiteNormalFragments = new ArrayList<>();
+
+    public Gene(String geneId, String geneName, String strand, String chr) {
         this.geneId = geneId;
-        this.geneStart = geneStart;
-        this.geneEnd = geneEnd;
         this.strand = strand;
         this.geneName = geneName;
         this.chr = chr;
@@ -41,23 +44,11 @@ public class Gene {
     }
 
     public void setPmRange(double lower, double upper) {
-        pmRange = new double[]{lower, upper};
+        this.pmRange = new double[]{lower, upper};
     }
 
     public void setRPKM(double RPKM) {
         this.RPKM = RPKM;
-    }
-
-    public void setPeakList(LinkedList<Peak> peakList) {
-        this.peakList = peakList;
-    }
-
-    public int getGeneStart() {
-        return this.geneStart;
-    }
-
-    public int getGeneEnd() {
-        return this.geneEnd;
     }
 
     public String getGeneId() {
@@ -80,28 +71,12 @@ public class Gene {
         return this.readsCount;
     }
 
-    public int getRefReadsCount() {
-        return this.refReadsCount;
-    }
-
-    public int getAltReadsCount() {
-        return this.altReadsCount;
-    }
-
     public double getRPKM() {
         return this.RPKM;
     }
 
-    public double[] getPmRange() {
-        return this.pmRange;
-    }
-
     public ElementRecord getExonList() {
         return this.exonList;
-    }
-
-    public LinkedList<Peak> getPeakList() {
-        return this.peakList;
     }
 
     public String getExonSeq() {
@@ -113,7 +88,7 @@ public class Gene {
     }
 
     /**
-     * join all exon region of a gene together and form the exon sequence
+     * 将基因的外显子区域拼合得到完整的外显子序列
      * @param twoBit TwoBitParser instance
      */
     public void splicing(TwoBitParser twoBit) {
@@ -144,7 +119,7 @@ public class Gene {
     }
 
     /**
-     * calculate sequencing reads count base on library size
+     * 依据RPKM值和文库大小计算该基因的reads count
      * @param librarySize library size
      */
     public void calculateReadsCountViaLibrarySize(long librarySize) {
@@ -152,7 +127,7 @@ public class Gene {
     }
 
     /**
-     * calculate sequencing reads count base on sequencing depth
+     * 通过设定的测序深度和文库大小计算该基因的reads count
      * @param depth sequencing depth
      * @param readLength read length
      */
@@ -162,105 +137,130 @@ public class Gene {
     }
 
     /**
-     * generate reads in exonic regions and form fragment sequence, the length of which obeys a normal distribution
-     * and the reads count is calculated based on the library size exonic region length and RPKM value
-     * @param fragmentMean the mean length of fragments
-     * @param fragmentTheta fragment length std
-     * @param mateFile1 BufferedWriter instance
-     * @param mateFile2 BufferedWriter instance
-     * @param readLength sequencing read length
-     * @param multiple replication of the experiment
+     * 依据m6A的富集率计算IP样本的reads count
+     * @param pm m6A富集率
+     * @param backgroundSize 背景大小
      */
-    public void generateInputReads(int fragmentMean, int fragmentTheta, BufferedWriter mateFile1, BufferedWriter mateFile2,
-                                   int readLength, int multiple, double refProp, String mutExonSeq, String direct,
-                                   SequencingError seqErrorModel) {
-        // 位置相同的reads的数目
-        HashMap<String, Integer> readsDistribution = new HashMap<>();
-        // 位置相同的reads的fragment在exon上面起始、终止位点
-        HashMap<String, ArrayList<Integer>> fragmentEndSites = new HashMap<>();
-        // used to randomly generate fragment length
+    private int m6aReadsCount(double pm, int backgroundSize) {
+        return  (int) (backgroundSize * (pm / (1 - pm)));
+    }
+
+    /**
+     * 随机抽取reads count条fragment，将其富集到INPUT组
+     * @param fragmentMean fragment平均长度
+     * @param fragmentTheta fragment长度标准差
+     */
+    public void enrichInputFragment(int fragmentMean, int fragmentTheta, int readLength, Set<Integer> mutatePositions) {
+        List<Integer> mutations = null;
+        if (mutatePositions != null) {
+            mutations = new ArrayList<>(mutatePositions);
+            Collections.sort(mutations);
+        }
+        // 用于随机生成fragment的长度
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
-        int curReadsCount = 0;
-        String refFragmentString, altFragmentString;
-        Fragmentation refFragment, altFragment;
+        int curReadsCount = 0, fragmentLength, breakPoint, endPoint;
+        boolean cover;
+        while (curReadsCount < this.readsCount) {
+            cover = false;
+            // 随机生成fragment的长度并确定fragment在外显子序列上的起始终止位点
+            fragmentLength = Math.abs((int) nordi.sample());
+            int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
+            breakPoint = breakAndEndPoint[0];
+            endPoint = breakAndEndPoint[1];
+
+            // 检验fragment对应的read是否覆盖ASE位点，如果覆盖则需对其进行记录
+            if (mutations != null)
+                cover = this.ifCoverMutateStie(breakPoint, endPoint, readLength, mutations, this.inputMutateFragments);
+            if (!cover)
+                this.inputFragment.add(breakAndEndPoint);
+            curReadsCount++;
+        }
+        mutations = null;
+        nordi = null;
+    }
+
+    /**
+     * 随机抽取reads count条fragment，将其富集到IP组
+     * @param fragmentMean fragment平均长度
+     * @param fragmentTheta fragment长度标准差
+     * @param geneM6aSites 该基因上m6A修饰位点
+     */
+    public void enrichIpFragment(int fragmentMean, int fragmentTheta, int readLength, Set<Integer> geneM6aSites,
+                                 Set<Integer> mutatePositions) {
+        List<Integer> mutations = null;
+        if (mutatePositions != null) {
+            mutations = new ArrayList<>(mutatePositions);
+            Collections.sort(mutations);
+        }
+        List<Integer> m6aSites = new ArrayList<>(geneM6aSites);
+        Collections.sort(m6aSites);
+        NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
+        int curReadsCount = 0, fragmentLength, break_point, end_point;
+        boolean cover;
+        while (curReadsCount < this.readsCount) {
+            cover = false;
+            // 随机生成fragment的长度并确定fragment在外显子序列上的起始终止位点
+            fragmentLength = Math.abs((int) nordi.sample());
+            int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
+            break_point = breakAndEndPoint[0];
+            end_point = breakAndEndPoint[1];
+
+            // 检查fragment对应的read是否覆盖ASE位点，如果覆盖则需对其进行记录
+            if (mutations != null)
+                cover = this.ifCoverMutateStie(break_point, end_point, readLength, mutations, this.ipMutateFragments);
+            if (!cover)
+                this.ipFragment.add(breakAndEndPoint);
+
+            // 检查Fragment是否覆盖了甲基化位点，如果覆盖则富集到IP样本中；反之，则抛弃
+            if (geneM6aSites.size() != 0)
+                this.ifCoverM6aSite(break_point, end_point, m6aSites);
+            curReadsCount++;
+        }
+        m6aSites = null;
+        mutations = null;
+        nordi = null;
+    }
+
+    /**
+     * 生成测序样本
+     * @param mateFile1 测序文件
+     * @param mateFile2 测序文件(只有在pair-end时候指定，否则为null)
+     * @param readLength 测序read length
+     * @param multiple 实验重复次数
+     * @param direct 测序方式 single-end 或 pair-end
+     * @param mutExonSeq 当基因具有ASE位点时传入突变的序列，不存在时为null
+     * @param refProp major allele的频率
+     * @param seqErrorModel 测序误差模型
+     * @param sample ip或input
+     */
+    public void generateReads(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int multiple,
+                                   double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
+                                   String sample) {
+        ArrayList<int[]> fragmentRanges;
+        HashMap<Integer, ArrayList<int[]>> mutateFragmentRanges;
+        fragmentRanges = (sample.equals("ip"))? this.ipFragment : this.inputFragment;
+        mutateFragmentRanges = (sample.equals("ip"))? this.ipMutateFragments : this.inputMutateFragments;
+
         try {
-            int break_point, end_point, fragmentLength;
-            int readStart, readEnd;
-            String readRecord;
+            // 生成一般fragment的reads(reads不覆盖SNP位点)
+            this.writeIn(fragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "ref");
 
-            while (curReadsCount < this.readsCount) {
-                // 随机生成fragment的长度
-                fragmentLength = Math.abs((int) nordi.sample());
-                // 通过fragment长度确定确定fragment在外显子序列上的起始终止位点
-                int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
-                break_point = breakAndEndPoint[0];
-                end_point = breakAndEndPoint[1];
-
-                readStart = break_point;
-                readEnd = (end_point - break_point >= readLength)? (break_point+readLength):end_point;
-                readRecord = readStart + "-" + readEnd;
-
-                Integer countRecord = readsDistribution.getOrDefault(readRecord, 0);
-                ArrayList<Integer> fragmentRecord = fragmentEndSites.getOrDefault(readRecord, new ArrayList<>());
-                fragmentRecord.add(end_point);
-                fragmentEndSites.put(readRecord, fragmentRecord);
-                readsDistribution.put(readRecord, countRecord+1);
-                curReadsCount++;
-            }
-
-            for (String readRange: readsDistribution.keySet()) {
-                String[] points = readRange.split("-");
-                // 获取reads的起始、终止位点
-                break_point = Integer.parseInt(points[0]);
-                readEnd = Integer.parseInt(points[1]);
-                // 获取reads对应的fragment的终止位点
-                ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
-                Collections.shuffle(endPoints);
-
-                // 相同位置的reads数目，计算存在ASE时，major allele的reads数目
-                int count = readsDistribution.get(readRange);
-                int refCount = (int) (count * refProp);
-
-                // 如果基因含有ASE位点
-                if (mutExonSeq != null) {
-                    List<Integer> majorAlleleFragmentEnds = endPoints.subList(0, refCount);
-                    List<Integer> minorAlleleFragmentEnds = endPoints.subList(refCount, endPoints.size());
-                    // 生成major allele的reads
-                    for (Integer endPoint: majorAlleleFragmentEnds) {
-                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        refFragment = null;
-                        refFragmentString = null;
-                    }
-                    // 生成minor allele的reads
-                    for (Integer endPoint: minorAlleleFragmentEnds) {
-                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
-                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        altFragment = null;
-                        altFragmentString = null;
-                    }
-                } else { // 如果基因不包含SNP位点
-                    for (Integer endPoint: endPoints) {
-                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-
-                        // release memory
-                        refFragment = null;
-                        refFragmentString = null;
-                    }
-                }
+            // 生成覆盖突变位点的fragment的reads
+            ArrayList<int[]> mutateFragments;
+            int count, majorAlleleCount;
+            List<int[]> majorAlleleFragmentRanges, minorAlleleFragmentRanges;
+            for (Integer mutateSite: mutateFragmentRanges.keySet()) {
+                // 获取每个ASE位点覆盖的fragment的范围
+                mutateFragments = mutateFragmentRanges.get(mutateSite);
+                count = mutateFragments.size();
+                majorAlleleCount = (int) (count * refProp);
+                Collections.shuffle(mutateFragments);
+                majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
+                minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
+                this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "major");
+                majorAlleleFragmentRanges = null;
+                this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq,"minor");
+                minorAlleleFragmentRanges = null;
             }
 
         } catch (Exception io) {
@@ -269,133 +269,117 @@ public class Gene {
     }
 
     /**
-     * if a sequencing reads covers SNP site on exon sequence
-     * @param start start position
-     * @param end end position
-     * @param sites set of sites
-     * @return boolean
+     * m6a peak 的reads富集
+     * @param mateFile1 测序文件
+     * @param mateFile2 测序文件(只有在pair-end时候指定，否则为null)
+     * @param readLength 测序read length
+     * @param multiple 实验重复次数
+     * @param direct 测序方式 single-end 或 pair-end
+     * @param mutExonSeq 当基因具有ASE位点时传入突变的序列，不存在时为null
+     * @param refProp major allele的频率
+     * @param seqErrorModel 测序误差模型
      */
-    private boolean ifCoverSite(int start, int end, Set<Integer> sites) {
-        for (Integer site: sites) {
-            if (start <= site && site <= end)
-                return true;
+    public void peakFragmentFromBackground(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int multiple,
+                                           double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
+                                           Set<Integer> geneMutateSites) {
+        List<Integer> mutations = null;
+        if (geneMutateSites != null) {
+            mutations = new ArrayList<>(geneMutateSites);
+            Collections.sort(mutations);
         }
-        return false;
-    }
-
-    public void generateIpReads(int fragmentMean, int fragmentTheta, BufferedWriter mateFile1, BufferedWriter mateFile2,
-                                int readLength, Set<Integer> geneM6aSites, int multiple, double refProp, String mutExonSeq,
-                                String direct, SequencingError seqErrorModel) {
-        // 如果基因外显子区域不存在m6A修饰位点，则跳过该基因
-        if (geneM6aSites.size() == 0)
-            return;
-        // 记录位置相同的reads的数目
-        HashMap<String, Integer> readsDistribution = new HashMap<>();
-        // 位置相同的reads的fragment在exon上面起始、终止位点
-        HashMap<String, ArrayList<Integer>> fragmentEndSites = new HashMap<>();
-        // 用于随机生成fragment的长度
-        NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
-        int curReadsCount = 0;
-        String refFragmentString, altFragmentString;
-        Fragmentation refFragment, altFragment;
-
+        int peakReadsCount, peakFragmentCount;
+        UniformRealDistribution urd = new UniformRealDistribution(this.pmRange[0], this.pmRange[1]);
+        ArrayList<int[]> fragmentRanges;
+        List<int[]> randomFragmentRanges = new ArrayList<>();
         try {
-            int break_point, end_point, fragmentLength;
-            int readStart, readEnd;
-            String readRecord;
-            boolean cover;
-            while (curReadsCount < this.readsCount) {
-                // 随机生成一个fragment长度
-                fragmentLength = Math.abs((int) nordi.sample());
-                // 根据生成的fragment长度得到该fragment在外显子序列上的起始、终止位点
-                int[] breakAndEndPoint = this.getBreakEndPoint(fragmentLength);
-                break_point = breakAndEndPoint[0];
-                end_point = breakAndEndPoint[1];
-                // 检查这段区域是否覆盖m6A位点，如果没有覆盖则跳过该fragment
-                cover = this.ifCoverSite(break_point, end_point, geneM6aSites);
-                if (!cover) {
-                    curReadsCount++;
+            for (Integer m6aSite: this.m6aSiteFragments.keySet()) {
+                fragmentRanges = this.m6aSiteFragments.getOrDefault(m6aSite, null);
+                if (fragmentRanges == null)
                     continue;
+                peakFragmentCount = fragmentRanges.size();
+                // 计算每个m6A位点富集的reads数目并从所有覆盖甲基化的fragment中抽取
+                peakReadsCount = this.m6aReadsCount(urd.sample(), peakFragmentCount);
+                for (int i = 0; i < peakReadsCount; i++) {
+                    int[] range = fragmentRanges.get((int) (Math.random() * fragmentRanges.size()));
+                    randomFragmentRanges.add(range);
                 }
 
-                // 得到fragment对应read的起始、终止位点
-                readStart = break_point;
-                readEnd = (end_point - break_point >= readLength)? (break_point+readLength):end_point;
-                readRecord = readStart + "-" + readEnd;
-
-                Integer countRecord = readsDistribution.getOrDefault(readRecord, 0);
-                ArrayList<Integer> fragmentRecord = fragmentEndSites.getOrDefault(readRecord, new ArrayList<>());
-                fragmentRecord.add(end_point);
-                fragmentEndSites.put(readRecord, fragmentRecord);
-                readsDistribution.put(readRecord, countRecord+1);
-                curReadsCount++;
-            }
-
-            for (String readRange: readsDistribution.keySet()) {
-                String[] points = readRange.split("-");
-                // 获取reads的起始、终止位点
-                break_point = Integer.parseInt(points[0]);
-                readEnd = Integer.parseInt(points[1]);
-                // 获取reads对应的fragment的终止位点
-                ArrayList<Integer> endPoints = fragmentEndSites.get(readRange);
-                Collections.shuffle(endPoints);
-
-                // 相同位置的reads数目，计算存在ASE时，major allele的reads数目
-                int count = readsDistribution.get(readRange);
-                int refCount = (int) (count * refProp);
-
-                // 如果基因含有ASE位点
-                if (mutExonSeq != null) {
-                    List<Integer> majorAlleleFragmentEnds = endPoints.subList(0, refCount);
-                    List<Integer> minorAlleleFragmentEnds = endPoints.subList(refCount, endPoints.size());
-                    // 生成major allele的reads
-                    for (Integer endPoint: majorAlleleFragmentEnds) {
-                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        refFragment = null;
-                        refFragmentString = null;
-                    }
-                    // 生成minor allele的reads
-                    for (Integer endPoint: minorAlleleFragmentEnds) {
-                        altFragmentString = mutExonSeq.substring(break_point, endPoint);
-                        altFragment = this.getSequencingReads(altFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(altFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(altFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-                        altFragment = null;
-                        altFragmentString = null;
-                    }
-                } else { // 如果基因不包含SNP位点
-                    for (Integer endPoint: endPoints) {
-                        refFragmentString = this.exonSeq.substring(break_point, endPoint);
-                        refFragment = this.getSequencingReads(refFragmentString, break_point, endPoint, readLength, direct);
-                        if (direct.equals("SE"))
-                            this.writeReadInFile(refFragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, "ref");
-                        else
-                            this.pairReadToFile(refFragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, "ref");
-
-                        // release memory
-                        refFragment = null;
-                        refFragmentString = null;
-                    }
+                // 检验随机抽取的富集到peak的Fragment对应read是否覆盖ASE位点，如果覆盖则需对其进行记录
+                boolean cover;
+                for (int[] fragmentRange: randomFragmentRanges) {
+                    cover = false;
+                    if (mutations != null)
+                        cover = this.ifCoverMutateStie(fragmentRange[0], fragmentRange[1], readLength, mutations,
+                                                       this.m6aSiteMutateFragments);
+                    if (!cover)
+                        this.m6aSiteNormalFragments.add(fragmentRange);
                 }
+                randomFragmentRanges.clear();
+                // 生成未覆盖ASE位点的reads
+                this.writeIn(this.m6aSiteNormalFragments, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "ref");
+                // 生成覆盖ASE位点的reads
+                ArrayList<int[]> mutateFragments;
+                int count, majorAlleleCount;
+                List<int[]> majorAlleleFragmentRanges, minorAlleleFragmentRanges;
+                for (Integer mutateSite: this.m6aSiteMutateFragments.keySet()) {
+                    mutateFragments = this.m6aSiteMutateFragments.get(mutateSite);
+                    count = mutateFragments.size();
+                    majorAlleleCount = (int) (count * refProp);
+                    Collections.shuffle(mutateFragments);
+                    majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
+                    minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
+                    this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "major");
+                    majorAlleleFragmentRanges = null;
+                    this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq,"minor");
+                    minorAlleleFragmentRanges = null;
+                }
+                this.m6aSiteNormalFragments.clear();
+                this.m6aSiteMutateFragments.clear();
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-//                    for (Peak peak: this.peakList) {
-//                        int peakStart = peak.getPeak_start();
-//                        int peakEnd = peak.getPeak_end();
-//                        int centre = (peakStart + peakEnd)/2;
-//                        if (break_point <= centre && centre <= end_point) {
-//                            peak.addFragments(fragment);
-//                        }
-//                    }
+        this.m6aSiteFragments = null;
+    }
+
+    /**
+     * 检查fragment对应的reads是否覆盖m6A位点
+     * @param start fragment起始位点
+     * @param end fragment终止位点
+     * @param sites 该基因m6A位点的集合
+     */
+    private void ifCoverM6aSite(int start, int end, List<Integer> sites) {
+        ArrayList<int[]> fragmentRange;
+        for (Integer site: sites) {
+            if (start <= site && site <= end) {
+                fragmentRange = this.m6aSiteFragments.getOrDefault(site, new ArrayList<>());
+                fragmentRange.add(new int[]{start, end});
+                this.m6aSiteFragments.put(site, fragmentRange);
+                break;
+            }
+        }
+    }
+
+    /**
+     * 检查fragment对应的read是否覆盖突变位点
+     * @param start fragment起始位点
+     * @param end fragment终止位点
+     * @param sites 该基因突变位点集合
+     * @return 是否覆盖
+     */
+    private boolean ifCoverMutateStie(int start, int end, int readLength, List<Integer> sites,
+                                      HashMap<Integer, ArrayList<int[]>> fragments) {
+        ArrayList<int[]> fragmentRange;
+        int readEnd = ((start + readLength -1) > this.exonSeq.length())? end: (start + readLength);
+        for (Integer site: sites) {
+            if (start <= site && site <= readEnd) {
+                fragmentRange = fragments.getOrDefault(site, new ArrayList<>());
+                fragmentRange.add(new int[]{start, end});
+                fragments.put(site, fragmentRange);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -419,15 +403,37 @@ public class Gene {
         return new int[]{break_point, end_point};
     }
 
+    private void writeIn(List<int[]> fragmentRanges, String direct, int readLength, SequencingError seqErrorModel,
+                         BufferedWriter mateFile1, BufferedWriter mateFile2, String exonSequence,  String type) {
+        String fragmentString;
+        Fragmentation fragment;
+        int break_point, endPoint;
+        // 生成一般fragment的reads
+        for (int[] fragmentRange: fragmentRanges) {
+            // 获取fragment的起始、终止位点
+            break_point = fragmentRange[0];
+            endPoint = fragmentRange[1];
+            // 如果基因含有ASE位点，则随机选取refCount个fragment作为major allele，其余的是minor allele
+            fragmentString = exonSequence.substring(break_point, endPoint);
+            fragment = this.getSequencingReads(fragmentString, break_point, endPoint, readLength, direct);
+            if (direct.equals("SE"))
+                this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, type);
+            else
+                this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, type);
+            fragment = null;
+            fragmentString = null;
+        }
+    }
+
     /**
-     * write generated reads into file
-     * @param fragment Fragmentation instance
-     * @param seqErrorModel sequencing error model
+     * 单端测序的read写入文件
+     * @param fragment Fragmentation 对象
+     * @param seqErrorModel sequencing error model对象
      * @param fw BufferedWriter
-     * @param readLength readLength
-     * @param break_point fragment start position on exon sequence
-     * @param end_point fragment end position on exon sequence
-     * @param type ref or alt
+     * @param readLength read长度
+     * @param break_point fragment 在外显子序列上的起始位点
+     * @param end_point fragment 在外显子序列上的终止位点
+     * @param type major or minor
      */
     private void writeReadInFile(Fragmentation fragment, SequencingError seqErrorModel, BufferedWriter fw,
                                  int readLength, int break_point, int end_point, String type) {
@@ -450,6 +456,17 @@ public class Gene {
         }
     }
 
+    /**
+     * 双端测序的read写入文件
+     * @param fragment Fragmentation 对象
+     * @param seqErrorModel sequencing error model对象
+     * @param mateFile1 输出文件1
+     * @param mateFile2 输出文件2
+     * @param readLength read长度
+     * @param break_point fragment 在外显子序列上的起始位点
+     * @param end_point fragment 在外显子序列上的终止位点
+     * @param type major or minor
+     */
     private void pairReadToFile(Fragmentation fragment, SequencingError seqErrorModel, BufferedWriter mateFile1,
                                 BufferedWriter mateFile2, int readLength, int break_point, int end_point, String type) {
         try {
@@ -514,5 +531,14 @@ public class Gene {
         return fragment;
     }
 
+    /**
+     * 释放内存
+     */
+    public void release() {
+        this.ipFragment = null;
+        this.inputFragment = null;
+        this.inputMutateFragments = null;
+        this.ipMutateFragments = null;
+    }
 }
 

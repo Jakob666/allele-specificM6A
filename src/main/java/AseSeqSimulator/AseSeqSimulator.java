@@ -11,7 +11,7 @@ public class AseSeqSimulator {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 1000000, readLength = 50, fragmentMean = 250, fragmentStd = 25, multiple = 1,
-            repeat = 1, minimumMut = 5, maximumMut = 15, peakLength = 500, depth = 0;
+            repeat = 1, minimumMut = 5, maximumMut = 15, depth = 0;
         // default 20% gene has SNP site;
         double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
@@ -28,8 +28,6 @@ public class AseSeqSimulator {
             outputDir = new File(commandLine.getOptionValue('o'));
         if (commandLine.hasOption("ls"))
             librarySize = Integer.parseInt(commandLine.getOptionValue("ls"));
-        if (commandLine.hasOption("pl"))
-            peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
         if (commandLine.hasOption("dep")) {
             depth = Integer.parseInt(commandLine.getOptionValue("dep"));
             if (depth < 0) {
@@ -89,7 +87,7 @@ public class AseSeqSimulator {
         }
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
-        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, peakLength, readLength, minimumMut,
+        readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, readLength, minimumMut,
                                           maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb,
                                           overlap, singleEnd, geneExpFile);
 
@@ -123,10 +121,6 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("dep", "depth", true, "sequencing depth, default 0.");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("pl", "peak_length", true, "m6A peak length, default 500");
         option.setRequired(false);
         options.addOption(option);
 
