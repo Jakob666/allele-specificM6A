@@ -1,6 +1,6 @@
 package SamtoolsPileupSNPCalling;
 
-import GatkSNPCalling.SNPCalling;
+import ReadsMapping.ReadsMapping ;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -16,7 +16,7 @@ public class ReadsMapping {
      */
     public static void alignment(String refGenomeFile, String gtfFile, File[] fastqFiles, int execThread, Logger logger) {
         String refGenomeDir = new File(refGenomeFile).getParent();
-        int readLength = SNPCalling.getFastqReadLength(fastqFiles[0].getAbsolutePath(), logger);
-        SNPCalling.readsMapping(refGenomeDir, refGenomeFile, gtfFile, fastqFiles, readLength, execThread, logger);
+        int readLength = ReadsMapping.getFastqReadLength(fastqFiles[0].getAbsolutePath(), logger);
+        ReadsMapping.readsMapping(refGenomeDir, refGenomeFile, gtfFile, fastqFiles, readLength, execThread, logger);
     }
 }

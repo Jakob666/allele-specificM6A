@@ -14,93 +14,95 @@ public class GatkSNPCalling {
         CommandLine commandLine = setCommand(args, options);
 
         // initialize the default params
-        String sourceDataDir = "";
-        String fastqTempDir = null;
-        String genomeFile = "";
-        String outputDir = "";
-        String gatkLocalJar = "gatk";
-        String picardLocalJar = "./picard.jar";
+        String sourceDataDir, genomeFile, gtfFile, refVcfFile, fastqTempDir, outputDir, prefix;
+        String gatkJar = "gatk";
+        String picardJar = "picard";
+        String samtools = "samtools";
         String inputFormat = "sra";
         int execThread = 2;
 
-        // change params according to the received arguments
         if (commandLine.hasOption('h')) {
             new HelpFormatter().printHelp("flume-ng agent", options, true);
             return;
         }
-        if (commandLine.hasOption('r')) {
-            genomeFile = commandLine.getOptionValue('r');
-        }
-        if (commandLine.hasOption("fmt")) {
-            inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
-            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq")) {
-                System.out.println("invalid input file format, the format should be sra or fastq");
-                System.exit(2);
-            }
-        }
-        if (commandLine.hasOption('s')) {
-            sourceDataDir = commandLine.getOptionValue('s');
-            if (inputFormat.equals("sra")) {
-                if (commandLine.hasOption("tmp")) {
-                    fastqTempDir = commandLine.getOptionValue("tmp");
-                } else {
-                    try {
-                        File directory = new File("");
-                        fastqTempDir = directory.getCanonicalPath();
-                    } catch (IOException ie) {
-                        ie.printStackTrace();
-                        return;
-                    }
-                }
-            } else {
-                fastqTempDir = sourceDataDir;
-            }
-        }
+        // get reference genome file and GTF file
+        genomeFile = commandLine.getOptionValue('r');
+        gtfFile = commandLine.getOptionValue('g');
+        String genomeFileDir = new File(genomeFile).getParent();
+        refVcfFile = commandLine.getOptionValue("rv");
 
+        // output result directory, default a new directory name "outputResult" in genome file directory
         if (commandLine.hasOption('o')) {
             outputDir = commandLine.getOptionValue('o');
         } else {
-            try {
-                File directory = new File("");
-                outputDir = directory.getCanonicalPath();
-            } catch (IOException ie) {
-                ie.printStackTrace();
-                return;
+            outputDir = new File(genomeFileDir, "outputResult").getAbsolutePath();
+            mkDir(outputDir);
+        }
+        logger = initLog(outputDir);
+
+        // get input file format(support sra, fastq, fasta)
+        if (commandLine.hasOption("fmt")) {
+            inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
+            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq")) {
+                logger.error("invalid input file format, the format should be sra or fastq");
+                System.exit(2);
             }
         }
+
+        // source data directory
+        sourceDataDir = commandLine.getOptionValue('s');
+        if (inputFormat.equals("sra")) {
+            if (commandLine.hasOption("tmp")) {
+                fastqTempDir = commandLine.getOptionValue("tmp");
+            } else {
+                fastqTempDir = new File(genomeFileDir, "temp").getAbsolutePath();
+                mkDir(fastqTempDir);
+            }
+        } else {
+            fastqTempDir = sourceDataDir;
+        }
+
+        if (commandLine.hasOption('p')) {
+            prefix = commandLine.getOptionValue('p');
+        } else {
+            prefix = "AseM6a";
+        }
+        if (commandLine.hasOption("smt")) {
+            samtools = commandLine.getOptionValue("smt");
+        }
         if (commandLine.hasOption("gatk")) {
-            gatkLocalJar = commandLine.getOptionValue("gatk");
+            gatkJar = commandLine.getOptionValue("gatk");
         }
         if (commandLine.hasOption("picard")) {
-            picardLocalJar = commandLine.getOptionValue("picard");
+            picardJar = commandLine.getOptionValue("picard");
         }
         if (commandLine.hasOption('t')) {
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
         }
-
-        logger = initLog(outputDir);
-        mkDir(outputDir);
 
         // make directories for fastq files and alignment result
         if (inputFormat.equals("sra")) {
             mkDir(fastqTempDir);
             boolean sraTransRes = sraToFastq(sourceDataDir, fastqTempDir);
             if (!sraTransRes) {
-                System.out.println("transform failed");
+                logger.error("transform failed");
+                System.exit(2);
             }
         }
 
-        SNPCalling.snpCalling(genomeFile, fastqTempDir, outputDir, picardLocalJar, gatkLocalJar, execThread, logger);
+        SNPCalling.snpCalling(genomeFile, gtfFile, refVcfFile, prefix, fastqTempDir, outputDir, picardJar, gatkJar, samtools, execThread, logger);
 
-        try {
-            Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
-            int exitVal = p.waitFor();
-            if (exitVal != 0) {
-                System.out.println("remove redundant fastq file failed");
-                System.exit(2);
+        if (!fastqTempDir.equals(sourceDataDir)) {
+            try {
+                Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
+                int exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    logger.error("remove redundant fastq file failed");
+                    System.exit(2);
+                }
+            } catch (IOException | InterruptedException ie) {
+                logger.error(ie.getMessage());
             }
-        } catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
         }
     }
 
@@ -117,11 +119,23 @@ public class GatkSNPCalling {
         option.setRequired(true);
         options.addOption(option);
 
+        option = new Option("g", "gtf-file", true, "gene transfer format(GTF) file");
+        option.setRequired(true);
+        options.addOption(option);
+
+        option = new Option("rv", "ref_vcf", true, "reference VCF file, recommend dbSNP");
+        option.setRequired(true);
+        options.addOption(option);
+
         option = new Option("s", "source-dir", true, "sequence source data directory");
         option.setRequired(true);
         options.addOption(option);
 
         option = new Option("fmt", "input-format", true, "input file format, sra or fastq, default sra");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("p", "prefix", true, "output result file prefix, default 'AseM6a'");
         option.setRequired(false);
         options.addOption(option);
 
@@ -133,11 +147,15 @@ public class GatkSNPCalling {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("smt", "smtool", true, "samtools executive file path, default samtools");
+        option.setRequired(false);
+        options.addOption(option);
+
         option = new Option("gatk", "gatk-tool", true, "GATK executive file path, default gatk");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("picard", "picard-tool", true, "PICARD executive file path, default ./picard.jar");
+        option = new Option("picard", "picard-tool", true, "PICARD executive file path, default picard.jar");
         option.setRequired(false);
         options.addOption(option);
 

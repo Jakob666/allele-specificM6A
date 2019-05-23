@@ -1,6 +1,5 @@
 package betaBinomialMetaAnalysis;
 
-//import org.apache.commons.math3.util.CombinatoricsUtils;
 
 public class LogLikelihoodFunc {
 
@@ -40,20 +39,20 @@ public class LogLikelihoodFunc {
             int siteiTotalReadsSNP = this.majorSNPReadsCount[i] + this.minorSNPReadsCount[i];
 
             // a constant during the calculation procedure, skip it can greatly improve the optimization speed
-            // for (int j = 0; j < this.totalSNP; j++) {
-            //     logLikelihoodValue += CombinatoricsUtils.binomialCoefficientLog(siteiTotalReadsSNP, this.majorSNPReadsCount[i]);
-            // }
+//             for (int j = 0; j < this.totalSNP; j++) {
+//                 logLikelihoodValue += CombinatoricsUtils.binomialCoefficientLog(siteiTotalReadsSNP, this.majorSNPReadsCount[i]);
+//             }
 
             for (int k = 0; k < this.majorSNPReadsCount[i]; k++) {
-                logLikelihoodValue += Math.log(rho * k + this.majorProbability);
+                logLikelihoodValue = logLikelihoodValue + Math.log(rho * k + this.majorProbability);
             }
 
             for (int l = 0; l < this.minorSNPReadsCount[i]; l++) {
-                logLikelihoodValue += Math.log(this.minorProbability + l * rho);
+                logLikelihoodValue = logLikelihoodValue + Math.log(this.minorProbability + l * rho);
             }
 
             for (int m = 0; m < siteiTotalReadsSNP; m++) {
-                logLikelihoodValue -= Math.log(1 + m * rho);
+                logLikelihoodValue = logLikelihoodValue - Math.log(1 + m * rho);
             }
         }
         return logLikelihoodValue;

@@ -28,14 +28,19 @@ public class sra2fastq {
     public boolean transFormat() {
         boolean execSuccess;
 
+        // make up fastq data directory if it not existed
         File outputFastqDir = new File(this.fastqDataDir);
+        if (outputFastqDir.exists() && outputFastqDir.isFile()) {
+            this.logger.error("invalid fastq data directory " + this.fastqDataDir + ", need a directory not a file");
+            System.exit(2);
+        }
         if (!outputFastqDir.exists()) {
             this.makeDir(outputFastqDir);
         }
 
         File rawData = new File(this.sraDataDir);
         if (rawData.isFile()) {
-            this.logger.error("invalid sra data directory");
+            this.logger.error("invalid sra data directory " + this.sraDataDir + ", need a directory not a file");
             System.exit(2);
         }
 
@@ -53,10 +58,13 @@ public class sra2fastq {
      * @param sraFileDir directory of sra files
      * @param fastqFileDir directory of fastq files
      */
-    public boolean sra2fastq(File sraFileDir, File fastqFileDir) {
+    private boolean sra2fastq(File sraFileDir, File fastqFileDir) {
         File[] sraFiles = sraFileDir.listFiles();
-        if (sraFiles == null)
+        if (sraFiles == null) {
+            this.logger.error("empty raw data directory " + sraFileDir.getAbsolutePath());
             return false;
+        }
+
         try {
             for (File f : sraFiles) {
                 if (f != null && f.isFile() && f.getName().endsWith(".sra")) {
@@ -77,6 +85,14 @@ public class sra2fastq {
      * @param fastqDir directory of fastq files
      */
     private void transform(String sraFilePath, String fastqDir) {
+        String sraFileName = new File(sraFilePath).getName();
+        String targetFastqFileName = sraFileName.substring(0, sraFileName.lastIndexOf(".")) + ".fastq";
+
+        if (new File(fastqDir, targetFastqFileName).exists()) {
+            logger.debug("already existed file " + targetFastqFileName);
+            return;
+        }
+
         String cmd = "fastq-dump " + sraFilePath + " -O " + fastqDir;
         this.logger.debug("transform sra file " + sraFilePath + ", output in " + fastqDir);
         try {
@@ -85,10 +101,10 @@ public class sra2fastq {
             if (exitVal != 0) {
                 this.logger.error("fail to transform sra file " + sraFilePath);
             }
+            this.logger.debug("complete");
         }catch (IOException | InterruptedException ie) {
-            ie.printStackTrace();
+            this.logger.error(ie.getMessage());
         }
-        this.logger.debug("complete");
     }
 
     private void makeDir(File mkDirectory) {

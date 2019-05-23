@@ -9,18 +9,24 @@ import java.util.LinkedList;
 public class HeterozygoteReadsCount {
     private File peakCoveredSNPFile;
     private Logger log;
+
+    /**
+     * Constructor
+     * @param peakCoveredSnpFile heterozygoteSiteAnalysis.PeakCoveredSNP类生成的文件
+     * @param log 日志对象
+     */
     public HeterozygoteReadsCount(String peakCoveredSnpFile, Logger log) {
         this.peakCoveredSNPFile = new File(peakCoveredSnpFile);
         this.log = log;
     }
 
     /**
-     * get major and minor haplotype SNP reads count for each m6a peak
-     * @return HashMap
+     * 得到每个m6A信号major和minor haplotype上SNP reads count
+     * @return [chr1: [peak1: [major: [count1, count2,...], minor: [count1, count2,...]]], chr2:....]
      */
     public HashMap<String, HashMap<String, HashMap<String, LinkedList<Integer>>>> getMajorMinorHaplotype() {
         HashMap<String, HashMap<String, HashMap<String, LinkedList<Integer>>>> majorMinorHaplotype = new HashMap<>();
-        BufferedReader bfr;
+        BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(
                     new InputStreamReader(new FileInputStream(this.peakCoveredSNPFile))
@@ -32,6 +38,8 @@ public class HeterozygoteReadsCount {
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
+                    if (line.startsWith("#"))
+                        continue;
                     info = line.split("\t");
                     chr = info[0];
                     peakStart = info[3];
@@ -40,18 +48,10 @@ public class HeterozygoteReadsCount {
                     refCount = Integer.parseInt(info[7]);
                     altCount = Integer.parseInt(info[8]);
 
-                    HashMap<String, HashMap<String, LinkedList<Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, null);
-                    if (chrMap == null)
-                        chrMap = new HashMap<String, HashMap<String, LinkedList<Integer>>>();
-                    HashMap<String, LinkedList<Integer>> peakSnp = chrMap.getOrDefault(peakRange, null);
-                    if (peakSnp == null)
-                        peakSnp = new HashMap<String, LinkedList<Integer>>();
-                    LinkedList<Integer> majorHaplotypeReads = peakSnp.getOrDefault("major", null);
-                    if (majorHaplotypeReads == null)
-                        majorHaplotypeReads = new LinkedList<Integer>();
-                    LinkedList<Integer> minorHaplotypeReads = peakSnp.getOrDefault("minor", null);
-                    if (minorHaplotypeReads == null)
-                        minorHaplotypeReads = new LinkedList<Integer>();
+                    HashMap<String, HashMap<String, LinkedList<Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
+                    HashMap<String, LinkedList<Integer>> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());
+                    LinkedList<Integer> majorHaplotypeReads = peakSnp.getOrDefault("major", new LinkedList<Integer>());
+                    LinkedList<Integer> minorHaplotypeReads = peakSnp.getOrDefault("minor", new LinkedList<Integer>());
 
                     majorHaplotypeReads.add(Math.max(refCount, altCount));
                     minorHaplotypeReads.add(Math.min(refCount, altCount));
@@ -65,6 +65,14 @@ public class HeterozygoteReadsCount {
         } catch (IOException ie) {
             this.log.error("load file failed");
             this.log.error(ie.getMessage());
+        } finally {
+            if (bfr != null) {
+                try {
+                    bfr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
         }
 
         return majorMinorHaplotype;
