@@ -30,7 +30,7 @@ public class SignificantTest {
      * @return recalibrated q value
      */
     public static double BHRecalibration(double pValues, int rank, int peakNum) {
-        return pValues * peakNum / rank;
+        return Math.min(pValues * peakNum / rank, 1.0);
     }
 
     /**

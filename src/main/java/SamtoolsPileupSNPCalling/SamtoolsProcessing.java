@@ -1,11 +1,14 @@
 package SamtoolsPileupSNPCalling;
 
-import GatkSNPCalling.SNPCalling;
+import ReadsMapping.ReadsMapping ;
 import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Deprecated
+ */
 public class SamtoolsProcessing {
 
     /**
@@ -90,7 +93,7 @@ public class SamtoolsProcessing {
      */
     private static String deduplicate(String picard, String sortedFile, Logger log) {
         String dedupFile = new File(sortedFile.substring(0, sortedFile.lastIndexOf("_"))+"_dedup.bam").getAbsolutePath();
-        SNPCalling.dropDuplicateReads(picard, sortedFile, dedupFile, log);
+        ReadsMapping.dropDuplicateReads(picard, sortedFile, dedupFile, log);
 
         return dedupFile;
     }
@@ -107,9 +110,9 @@ public class SamtoolsProcessing {
      */
     private static String splitNCigar(String samtools, String picard, String gatk, String refGenomeFile, String dedupFile, Logger log) {
         String splitFile = new File(dedupFile.substring(0, dedupFile.lastIndexOf("_"))+"_split.bam").getAbsolutePath();
-        SNPCalling.refGenomeDict(picard, refGenomeFile, log);
-        SNPCalling.createFastaiFile(samtools, refGenomeFile, log);
-        SNPCalling.readsTrimReassign(gatk, refGenomeFile, dedupFile, splitFile, log);
+        ReadsMapping.refGenomeDict(picard, refGenomeFile, log);
+        ReadsMapping.createFastaiFile(samtools, refGenomeFile, log);
+        ReadsMapping.readsTrimReassign(gatk, refGenomeFile, dedupFile, splitFile, log);
 
         return splitFile;
     }

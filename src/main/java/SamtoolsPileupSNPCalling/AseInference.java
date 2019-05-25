@@ -6,6 +6,9 @@ import org.apache.log4j.Logger;
 import java.io.*;
 import java.util.HashMap;
 
+/**
+ * SamTools SNP calling deprecated
+ */
 public class AseInference {
 
     /**

@@ -51,7 +51,7 @@ public class PeakCoveredSNP {
             String chrNum, refNc, altNc, refCount, altCount;
             int[] refAndAltCount;
             int position;
-            bfw.write("#chr\tstrand\tposition\tpeakStart\tpeakEnd\tref\talt\trefCount\taltCount\n");
+            bfw.write("#chr\tstrand\tposition\tpeakStart\tpeakEnd\tmajorAllele\tminorAllele\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -67,10 +67,10 @@ public class PeakCoveredSNP {
                     // 设置阈值防止出现假阳性位点
                     if (refAndAltCount[0] == 0 | refAndAltCount[1] == 0)
                         continue;
-                    if (refAndAltCount[0] + refAndAltCount[1] <= 3)
+                    if (refAndAltCount[0] + refAndAltCount[1] <= 3 | Math.abs(refAndAltCount[0] - refAndAltCount[1]) >= 20)
                         continue;
-                    refCount = Integer.toString(refAndAltCount[0]);
-                    altCount = Integer.toString(refAndAltCount[1]);
+                    refCount = (refAndAltCount[0] > refAndAltCount[1])? Integer.toString(refAndAltCount[0]):Integer.toString(refAndAltCount[1]);
+                    altCount = (refAndAltCount[0] > refAndAltCount[1])? Integer.toString(refAndAltCount[1]):Integer.toString(refAndAltCount[0]);
 
                     // 获取对应的染色体的区间树并在正负链的peak上搜寻是否被覆盖。如果被覆盖则写入文件
                     HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
