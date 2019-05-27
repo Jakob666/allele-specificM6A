@@ -1,4 +1,4 @@
-package GatkSNPCalling;
+package ReadsMapping;
 
 import org.apache.log4j.Logger;
 
