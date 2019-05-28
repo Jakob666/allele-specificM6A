@@ -1,4 +1,4 @@
-package GatkSNPCalling;
+package ReadsMapping;
 
 import SamtoolsPileupSNPCalling.AseInference;
 import SamtoolsPileupSNPCalling.SnpFilter;
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class SNPCalling {
+public class ReadsMapping {
 
     /**
      * complete snp calling process
@@ -106,6 +106,12 @@ public class SNPCalling {
         }
         if (deduplicatedBamFile.exists()) {
             log.debug("already existed deduplicated bam file " + deduplicatedBamFile.getAbsolutePath());
+            // 如果大于2Gb就不SplitNCigar操作了，容易挂
+            if (deduplicatedBamFile.length() > new Long("2147483648")) {
+                log.debug("Split Reads is not performed by default if the resulting file is too large.");
+                return deduplicatedBamFile.getAbsolutePath();
+            }
+
             refGenomeDict(picardJar, refGenomeFilePath, log);
             createFastaiFile(samtools, refGenomeFilePath, log);
             readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
@@ -115,6 +121,10 @@ public class SNPCalling {
         if (sortedBamFile.exists()) {
             log.debug("already existed sorted bam file " + sortedBamFile.getAbsolutePath());
             dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
+            if (deduplicatedBamFile.length() > new Long("2147483648")) {
+                log.debug("Split Reads is not performed by default if the resulting file is too large.");
+                return deduplicatedBamFile.getAbsolutePath();
+            }
             refGenomeDict(picardJar, refGenomeFilePath, log);
             createFastaiFile(samtools, refGenomeFilePath, log);
             readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
@@ -135,6 +145,9 @@ public class SNPCalling {
             }
         }
         dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
+        if (deduplicatedBamFile.length() > new Long("2147483648"))
+            return deduplicatedBamFile.getAbsolutePath();
+
         refGenomeDict(picardJar, refGenomeFilePath, log);
         createFastaiFile(samtools, refGenomeFilePath, log);
         readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
@@ -144,7 +157,8 @@ public class SNPCalling {
     }
 
     /**
-     * variant calling using gatk and output raw VCF file
+     * Deprecated!
+     * variant calling using gatk and output raw VCF file.
      * @param gatkLocalJar install directory which contains gatk jar package
      * @param genomeFileName reference genome file path
      * @param outputDir output result directory
@@ -171,6 +185,7 @@ public class SNPCalling {
     }
 
     /**
+     * Deprecated!
      * variant calling using gatk and output raw VCF file
      * @param gatkLocalJar install directory which contains gatk jar package
      * @param genomeFileName reference genome file path
@@ -346,11 +361,8 @@ public class SNPCalling {
             int exitVal = p.waitFor();
             HashMap<String, String> cmdOutput = getCommandOutput(p);
             String debugInfo = cmdOutput.get("debug");
-            String errorInfo = cmdOutput.get("error");
             if (!debugInfo.equals(""))
                 log.debug(debugInfo);
-            if (!errorInfo.equals(""))
-                log.error(errorInfo);
             p.destroy();
 
             if (exitVal != 0) {
@@ -388,11 +400,8 @@ public class SNPCalling {
             int exitVal = p.waitFor();
             HashMap<String, String> cmdOutput = getCommandOutput(p);
             String debugInfo = cmdOutput.get("debug");
-            String errorInfo = cmdOutput.get("error");
             if (!debugInfo.equals(""))
                 log.debug(debugInfo);
-            if (!errorInfo.equals(""))
-                log.error(errorInfo);
             if (exitVal != 0) {
                 log.error("picard reads deduplicate process failed.");
                 System.exit(2);
@@ -426,7 +435,7 @@ public class SNPCalling {
         else
             cmd = "java -jar" + gatkJar + " -T  SplitNCigarReads ";
 
-        cmd += " -R " + refGenomeFile + " -I " + dedupBamFile + " -O " + splitBamFile;
+        cmd = cmd + " -R " + refGenomeFile + " -I " + dedupBamFile + " -O " + splitBamFile;
         log.debug("split N cigar sequence, may take a long time");
         log.debug(cmd);
         try {
@@ -434,11 +443,8 @@ public class SNPCalling {
             int exitVal = p.waitFor();
             HashMap<String, String> cmdOutput = getCommandOutput(p);
             String debugInfo = cmdOutput.get("debug");
-            String errorInfo = cmdOutput.get("error");
             if (!debugInfo.equals(""))
                 log.debug(debugInfo);
-            if (!errorInfo.equals(""))
-                log.error(errorInfo);
 
             if (exitVal != 0) {
                 log.error("gatk reads split process failed.");
@@ -547,46 +553,6 @@ public class SNPCalling {
         }
         log.debug("get reads length in file " + fastqFile + ", length: " + length);
         return length;
-    }
-
-    /**
-     * merge the output vcf files in one for further heterozygote site analysis
-     * @param outputDir directory stores vcf calling result
-     * @param gatkLocaljar install directory which contains gatk jar package
-     */
-    public static void mergeVcfFiles(String outputDir, String gatkLocaljar) {
-        File outputDirectory = new File(outputDir);
-        File[] snpCallingRes = outputDirectory.listFiles();
-        File mergeVcfFile = new File(outputDir, "result.vcf");
-        String cmd = gatkLocaljar + " MergeVcfs ";
-        StringBuilder sb = new StringBuilder();
-
-        if (snpCallingRes != null) {
-            for (File f : snpCallingRes) {
-                if (f.getName().endsWith("Select.vcf")) {
-                    sb.append(" -I=");
-                    sb.append(f.getAbsolutePath());
-                }
-            }
-            cmd = cmd + sb.toString();
-            cmd += " -O=" + mergeVcfFile.getAbsolutePath();
-            System.out.println(cmd);
-
-            try {
-                Process p = Runtime.getRuntime().exec(cmd);
-                int exitVal = p.waitFor();
-                if (exitVal == 0) {
-                    for (File f : snpCallingRes) {
-                        if (f.getName().endsWith(".vcf") | f.getName().endsWith(".idx") | f.getName().endsWith(".bai")){
-                            p = Runtime.getRuntime().exec("rm -f " + f.getAbsolutePath());
-                            exitVal = p.waitFor();
-                        }
-                    }
-                }
-            } catch (IOException | InterruptedException ie) {
-                ie.printStackTrace();
-            }
-        }
     }
 
     /**

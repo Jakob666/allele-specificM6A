@@ -62,6 +62,9 @@ public class PeakCoveredSNP {
                     chrNum = info[0];
                     refNc = info[3];
                     altNc = info[4];
+                    // 只保留单核苷酸突变
+                    if (refNc.length() > 1 | altNc.length() > 1)
+                        continue;
                     position = Integer.parseInt(info[1]);
                     refAndAltCount = this.getReadsCountViaDp4(info[7]);
                     // 设置阈值防止出现假阳性位点

@@ -57,7 +57,7 @@ public class betaBinomialDistribution {
         assert (lowerBound < upperBound): "invalid input";
         double cdf = 0.0;
         while (lowerBound <= upperBound) {
-            cdf += betaBinomialDistributionProbability(n, lowerBound, theta, tao);
+            cdf = cdf + this.betaBinomialDistributionProbability(n, lowerBound, theta, tao);
             lowerBound++;
         }
         return cdf;
@@ -77,7 +77,7 @@ public class betaBinomialDistribution {
      * calculate logistic combination value
      *      C(total, part) = total! / (part! * (total-part)!)
      *      log C(total, part) = log total! - log part! - log (total-part)!
-     *                         = sum(1 to total) - sum(1 to part) - sum(1 to total-part)
+     *                         = sum(log 1 to log total) - sum(log 1 to log part) - sum(log 1 to log total-part)
      * use logistic value aims to avoid arithmetic overflow
      * @param total total number
      * @param part sampling number
