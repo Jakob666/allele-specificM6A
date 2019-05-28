@@ -1,4 +1,4 @@
-package GatkSNPCalling;
+package ReadsMapping;
 
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
@@ -6,6 +6,9 @@ import org.apache.log4j.Logger;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Deprecated! Replaced by RnaSeqSnpCalling.RnaSeqSnpCalling
+ */
 public class GatkSNPCalling {
     private static Logger logger;
 
@@ -90,7 +93,7 @@ public class GatkSNPCalling {
             }
         }
 
-        SNPCalling.snpCalling(genomeFile, gtfFile, refVcfFile, prefix, fastqTempDir, outputDir, picardJar, gatkJar, samtools, execThread, logger);
+        ReadsMapping.snpCalling(genomeFile, gtfFile, refVcfFile, prefix, fastqTempDir, outputDir, picardJar, gatkJar, samtools, execThread, logger);
 
         if (!fastqTempDir.equals(sourceDataDir)) {
             try {

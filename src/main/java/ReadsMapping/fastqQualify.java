@@ -1,4 +1,4 @@
-package GatkSNPCalling;
+package ReadsMapping;
 
 import java.io.*;
 import java.util.ArrayList;

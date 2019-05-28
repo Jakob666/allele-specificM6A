@@ -254,7 +254,7 @@ public class ReadsGenerator {
         double lower;
         double upper = 0;
         // 用于随机抽取RPKM值
-        UniformRealDistribution unidiform = new UniformRealDistribution(10, 1000);
+        UniformRealDistribution unidiform = new UniformRealDistribution(10, 100);
         GeneExpDistribution geneExp = GeneExpDistribution.getInstance();
         HashMap<String, double[]> geneExpValue = null;
         Set<String> mutatedGeneId = this.geneMutatedPosition.keySet();

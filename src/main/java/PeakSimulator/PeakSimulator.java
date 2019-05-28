@@ -240,41 +240,41 @@ public class PeakSimulator {
     /**
      * write simulated peaks into text file
      */
-    public static void storeSimulatedPeaksRecord(HashMap<String, LinkedList<Gene>> selectedGenes, File simulatedPeakTextFile) {
-        BufferedWriter bfw = null;
-        try {
-            bfw = new BufferedWriter(
-                    new OutputStreamWriter(new FileOutputStream(simulatedPeakTextFile))
-            );
-            bfw.write("# chr\tgene ID\tPeak Region\tPeak Length\tPM\tRPKM\tInput Reads\tm6A reads");
-            bfw.newLine();
-            for (String chr: selectedGenes.keySet()) {
-                LinkedList<Gene> genes = selectedGenes.get(chr);
-                for (Gene gene: genes) {
-                    String geneID = gene.getGeneId();
-                    LinkedList<Peak> peakList = gene.getPeakList();
-                    for (Peak peak: peakList) {
-                        String peak_region = peak.getRegion();
-                        int peakLength = peak.getPeakLength();
-                        double pm = peak.getPM();
-                        bfw.write(chr + "\t" + geneID + "\t" + peak_region + "\t" + peakLength + "\t" + pm + "\t" + peak.getControlString());
-                        bfw.newLine();
-                    }
-                }
-            }
-            bfw.close();
-        } catch (IOException ie) {
-            ie.printStackTrace();
-        } finally {
-            if (bfw != null) {
-                try {
-                    bfw.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
+//    public static void storeSimulatedPeaksRecord(HashMap<String, LinkedList<Gene>> selectedGenes, File simulatedPeakTextFile) {
+//        BufferedWriter bfw = null;
+//        try {
+//            bfw = new BufferedWriter(
+//                    new OutputStreamWriter(new FileOutputStream(simulatedPeakTextFile))
+//            );
+//            bfw.write("# chr\tgene ID\tPeak Region\tPeak Length\tPM\tRPKM\tInput Reads\tm6A reads");
+//            bfw.newLine();
+//            for (String chr: selectedGenes.keySet()) {
+//                LinkedList<Gene> genes = selectedGenes.get(chr);
+//                for (Gene gene: genes) {
+//                    String geneID = gene.getGeneId();
+//                    LinkedList<Peak> peakList = gene.getPeakList();
+//                    for (Peak peak: peakList) {
+//                        String peak_region = peak.getRegion();
+//                        int peakLength = peak.getPeakLength();
+//                        double pm = peak.getPM();
+//                        bfw.write(chr + "\t" + geneID + "\t" + peak_region + "\t" + peakLength + "\t" + pm + "\t" + peak.getControlString());
+//                        bfw.newLine();
+//                    }
+//                }
+//            }
+//            bfw.close();
+//        } catch (IOException ie) {
+//            ie.printStackTrace();
+//        } finally {
+//            if (bfw != null) {
+//                try {
+//                    bfw.close();
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        }
+//    }
 
     /**
      * trans the simulated peak records into bed format record
