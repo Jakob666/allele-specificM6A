@@ -1,15 +1,13 @@
 package RnaSeqSnpCalling;
 
-import ReadsMapping.ReadsMapping;
+import CommonThreadClass.*;
 import ReadsMapping.sra2fastq;
-import SamtoolsPileupSNPCalling.SamtoolsPileupSNPCalling;
-import meripSeqPeakCalling.peakCaller;
+import CommonThreadClass.RunSnpCalling;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
 
 public class RnaSeqSnpCalling {
 
@@ -54,7 +52,6 @@ public class RnaSeqSnpCalling {
                 System.exit(2);
             }
         }
-
         // source data directory
         if (commandLine.hasOption("ip")) {
             ipDataDir = commandLine.getOptionValue("ip");
@@ -99,116 +96,50 @@ public class RnaSeqSnpCalling {
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
         }
 
-
+        // 开启INPUT样本的分析
         String inputOutputDir = new File(outputDir, "INPUT").getAbsolutePath();
         mkDir(inputOutputDir);
         File[] fastqFiles = getFastqFiles(inputDataDir, inputFormat, fastqTempDir);
-        String inputBamFile = readsMapping(fastqFiles, genomeFile, gtfFile, picardJar, gatkJar, samtools,
-                inputOutputDir, prefix, execThread);
-        if (inputFormat.equals("sra"))
-            cleanUp(fastqTempDir);
-        // 创建线程用于SNP calling
-        RunSnpCalling runSnp = new RunSnpCalling(genomeFile, inputBamFile, samtools, bcftools, logger);
-        Thread snpThread = new Thread(runSnp);
-        snpThread.start();
-
-        // make directories for fastq files and alignment result
-        String ipOutputDir = new File(outputDir, "IP").getAbsolutePath();
-        mkDir(ipOutputDir);
-        fastqFiles = getFastqFiles(ipDataDir, inputFormat, fastqTempDir);
-        if (fastqFiles == null) {
-            logger.error("empty fastq data directory");
-            System.exit(2);
-        }
-        String ipBamFile = readsMapping(fastqFiles, genomeFile, gtfFile, picardJar, gatkJar, samtools,
-                ipOutputDir, prefix, execThread);
-        if (inputFormat.equals("sra"))
-            cleanUp(fastqTempDir);
-
-
-
-
-//        HashMap<String, String> alignRes = alignment(ipDataDir, inputDataDir, inputFormat, fastqTempDir, genomeFile,
-//                                                     gtfFile, gatkJar, picardJar, samtools, outputDir, prefix, execThread);
-//
-//        String ipBamFile = alignRes.get("ip");
-//        String inputBamFile = alignRes.get("input");
-
-        // 创建两个线程，分别用于执行SNP calling和peak calling
-        RunPeakCalling rpc = new RunPeakCalling(ipBamFile, inputBamFile, gtfFile, outputDir, logger);
-        Thread peakThread = new Thread(rpc);
-        peakThread.start();
-        // 主线程等待两个子线程运行完才结束
+        RnaSeqReadsMapping rsrm = new RnaSeqReadsMapping(fastqFiles, genomeFile, gtfFile, picardJar, gatkJar, samtools,
+                                                         inputOutputDir, prefix, execThread, logger);
+        Thread inputThread = new Thread(rsrm);
+        inputThread.start();
         try {
-            snpThread.join();
-            peakThread.join();
+            inputThread.join();
         } catch (InterruptedException ie) {
             logger.error(ie.getMessage());
             System.exit(2);
         }
-
         if (inputFormat.equals("sra")) {
-            try {
-                Process p = Runtime.getRuntime().exec("rm -rf " + fastqTempDir);
-                int exitVal = p.waitFor();
-                if (exitVal != 0) {
-                    logger.error("remove redundant fastq file failed");
-                    System.exit(2);
-                }
-            } catch (IOException | InterruptedException ie) {
-                logger.error(ie.getMessage());
-            }
+            cleanUp(fastqTempDir);
+            mkDir(fastqTempDir);
         }
-    }
 
-    /**
-     * Deprecated!
-     * 比对过程+预处理
-     * @param inputFormat input data format, 'sra', 'fastq' or 'fasta'
-     * @param fastqTempDir fastq data directory, if input format is sra, this directory is a temporary directory
-     * @param refGenomeFile reference genome file
-     * @param gtfFile reference GTF file
-     * @param gatkJar gatk executive jar
-     * @param picardJar picard executive jar
-     * @param samtools samtools executive file
-     * @param outputDir output directory
-     * @param prefix prefix of output result file
-     * @param execThread number of working thread
-     * @return IP alignment bam file
-     */
-    private static HashMap<String, String> alignment(String ipDataDir, String inputDataDir, String inputFormat,
-                                                        String fastqTempDir,String refGenomeFile, String gtfFile,
-                                                        String gatkJar, String picardJar, String samtools, String outputDir,
-                                                        String prefix, int execThread) {
+        // 开启IP样本的分析
         String ipOutputDir = new File(outputDir, "IP").getAbsolutePath();
-        mkDir(ipOutputDir);
-//        String ipPrefix = prefix + "_ip";
-        File[] fastqFiles = getFastqFiles(ipDataDir, inputFormat, fastqTempDir);
+        mkDir(inputOutputDir);
+        fastqFiles = getFastqFiles(ipDataDir, inputFormat, fastqTempDir);
+        rsrm = new RnaSeqReadsMapping(fastqFiles, genomeFile, gtfFile, picardJar, gatkJar, samtools, ipOutputDir,
+                                      prefix, execThread, logger);
+        Thread ipThread = new Thread(rsrm);
 
-        if (fastqFiles == null) {
-            logger.error("empty fastq data directory");
+        // 创建线程用于SNP calling
+        String inputBamFile = new File(inputOutputDir, prefix+"_alignment.bam").getAbsolutePath();
+        RunSnpCalling runSnp = new RunSnpCalling(genomeFile, inputBamFile, samtools, bcftools, logger);
+        Thread snpThread = new Thread(runSnp);
+
+        ipThread.start();
+        snpThread.start();
+        // 主线程等待两个子线程运行完才结束
+        try {
+            ipThread.join();
+            snpThread.join();
+        } catch (InterruptedException ie) {
+            logger.error(ie.getMessage());
             System.exit(2);
         }
-        String ipBamFile = readsMapping(fastqFiles, refGenomeFile, gtfFile, picardJar, gatkJar, samtools,
-                                        ipOutputDir, prefix, execThread);
-        if (inputFormat.equals("sra"))
+        if (inputFormat.toLowerCase().equals("sra"))
             cleanUp(fastqTempDir);
-
-
-        String inputOutputDir = new File(outputDir, "INPUT").getAbsolutePath();
-        mkDir(inputOutputDir);
-//        String inputPrefix = prefix + "_input";
-        fastqFiles = getFastqFiles(inputDataDir, inputFormat, fastqTempDir);
-        String inputBamFile = readsMapping(fastqFiles, refGenomeFile, gtfFile, picardJar, gatkJar, samtools,
-                                           inputOutputDir, prefix, execThread);
-        if (inputFormat.equals("sra"))
-            cleanUp(fastqTempDir);
-
-        HashMap<String, String> map = new HashMap<>();
-        map.put("ip", ipBamFile);
-        map.put("input", inputBamFile);
-
-        return map;
     }
 
     /**
@@ -249,29 +180,6 @@ public class RnaSeqSnpCalling {
         }
 
         return fastqFiles;
-    }
-
-    /**
-     * reads mapping
-     * @param fastqFiles file list of fastq files
-     * @param refGenomeFile reference genome file path
-     * @param gtfFile reference GTF file path
-     * @param picardJar executable picard jar
-     * @param gatkJar executable gatk jar
-     * @param samtools executable samtools jar
-     * @param outputDir output directory
-     * @param prefix output file prefix, the final alignment file names {prefix}_split.bam
-     * @param execThread working thread
-     * @return final alignment file path
-     */
-    private static String readsMapping(File[] fastqFiles, String refGenomeFile, String gtfFile, String picardJar,
-                                       String gatkJar, String samtools, String outputDir, String prefix, int execThread) {
-        String refGenomeDir = new File(refGenomeFile).getParent();
-        int readLength = ReadsMapping.getFastqReadLength(fastqFiles[0].getAbsolutePath(), logger);
-        ReadsMapping.readsMapping(refGenomeDir, refGenomeFile, gtfFile, fastqFiles, readLength, execThread, logger);
-
-        // 返回最终生成的bam文件路径
-        return ReadsMapping.filterMappedReads(refGenomeFile, picardJar, gatkJar, samtools, outputDir, prefix, logger);
     }
 
     /**
@@ -381,61 +289,5 @@ public class RnaSeqSnpCalling {
     private static Logger initLog(String logHome) {
         System.setProperty("log_home", logHome);
         return Logger.getLogger(RnaSeqSnpCalling.class);
-    }
-}
-
-/**
- * 运行SNP calling的线程类
- */
-class RunSnpCalling implements Runnable {
-    private String refGenomeFile, inputBamFile, samtools, bcftools;
-    private Logger logger;
-    RunSnpCalling(String refGenomeFile, String inputBamFile, String samtools, String bcftools, Logger logger) {
-        this.refGenomeFile = refGenomeFile;
-        this.inputBamFile = inputBamFile;
-        this.samtools = samtools;
-        this.bcftools = bcftools;
-        this.logger = logger;
-    }
-    public void run() {
-        snpReadsCount();
-    }
-
-    /**
-     * snp calling and filtration
-     */
-    private void snpReadsCount() {
-        logger.debug("start SNP calling");
-        String outputDir = new File(new File(inputBamFile).getParent()).getParent();
-        SamtoolsPileupSNPCalling.snpCalling(refGenomeFile, outputDir, inputBamFile, samtools, bcftools, logger);
-        logger.debug("SNP calling complete");
-    }
-}
-
-/**
- * 运行peak calling的线程类
- */
-class RunPeakCalling implements Runnable {
-    private String ipBamFile, inputBamFile, gtfFile,  outputDir;
-    private Logger logger;
-
-    RunPeakCalling(String ipBamFile, String inputBamFile, String gtfFile, String outputDir, Logger logger) {
-        this.inputBamFile = inputBamFile;
-        this.ipBamFile = ipBamFile;
-        this.gtfFile = gtfFile;
-        this.outputDir = outputDir;
-        this.logger = logger;
-    }
-
-    public void run() {
-        getM6aPeak();
-    }
-
-    /**
-     * get peak calling result
-     */
-    private void getM6aPeak() {
-        String experimentName = "m6aPeak";
-        peakCaller.peakCalling(gtfFile, outputDir, ipBamFile, inputBamFile, experimentName, logger);
     }
 }

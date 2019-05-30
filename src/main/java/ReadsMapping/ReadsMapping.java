@@ -98,59 +98,63 @@ public class ReadsMapping {
         File starSamFile = new File(refGenomeDir, "Aligned.out.sam");
         File sortedBamFile = new File(outputDir, prefix + "_sorted.bam");
         File deduplicatedBamFile = new File(outputDir, prefix + "_deduplicated.bam");
+        File deduplicatedBaiFile = new File(outputDir, prefix + "_deduplicated.bai");
         File splitBamFile = new File(outputDir, prefix + "_split.bam");
+        File splitBaiFile = new File(outputDir, prefix + "_split.bai");
+        File finalBamFile = new File(outputDir, prefix + "_alignment.bam");
+        File finalBaiFile = new File(outputDir, prefix + "_alignment.bai");
         log.debug("filtering alignment reads");
-        if (splitBamFile.exists()) {
-            log.debug("already existed final bam file " + splitBamFile.getAbsolutePath());
-            return splitBamFile.getAbsolutePath();
-        }
-        if (deduplicatedBamFile.exists()) {
-            log.debug("already existed deduplicated bam file " + deduplicatedBamFile.getAbsolutePath());
-            // 如果大于2Gb就不SplitNCigar操作了，容易挂
-            if (deduplicatedBamFile.length() > new Long("2147483648")) {
-                log.debug("Split Reads is not performed by default if the resulting file is too large.");
-                return deduplicatedBamFile.getAbsolutePath();
-            }
 
-            refGenomeDict(picardJar, refGenomeFilePath, log);
-            createFastaiFile(samtools, refGenomeFilePath, log);
-            readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
-            log.debug("filtration complete");
-            return splitBamFile.getAbsolutePath();
-        }
-        if (sortedBamFile.exists()) {
-            log.debug("already existed sorted bam file " + sortedBamFile.getAbsolutePath());
-            dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
-            if (deduplicatedBamFile.length() > new Long("2147483648")) {
-                log.debug("Split Reads is not performed by default if the resulting file is too large.");
-                return deduplicatedBamFile.getAbsolutePath();
-            }
-            refGenomeDict(picardJar, refGenomeFilePath, log);
-            createFastaiFile(samtools, refGenomeFilePath, log);
-            readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
-            log.debug("filtration complete");
-            return splitBamFile.getAbsolutePath();
-        }
         readsGroup(picardJar, starSamFile.getAbsolutePath(), sortedBamFile.getAbsolutePath(), log);
-        if (starSamFile.exists()) {
-            String cmd = "rm -f " + starSamFile;
+        // 删去STAR比对得到的SAM文件
+        deleteFile(starSamFile, log);
+        dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
+        if (deduplicatedBamFile.length() > new Long("2147483648")) {
+            String cmd1 = "mv " + deduplicatedBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
+            String cmd2 = "mv " + deduplicatedBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
             try {
-                Process p = Runtime.getRuntime().exec(cmd);
-                int exitval = p.waitFor();
-                if (exitval != 0) {
-                    log.error("can not clean up redundant file " + starSamFile);
+                Process p = Runtime.getRuntime().exec(cmd1);
+                int exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    log.error("file rename failed");
+                    System.exit(2);
                 }
-            }catch (IOException | InterruptedException ie) {
+                p = Runtime.getRuntime().exec(cmd2);
+                exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    log.error("file rename failed");
+                    System.exit(2);
+                }
+            } catch (IOException | InterruptedException ie) {
                 log.error(ie.getMessage());
+                System.exit(2);
+            }
+        } else {
+            refGenomeDict(picardJar, refGenomeFilePath, log);
+            createFastaiFile(samtools, refGenomeFilePath, log);
+            readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
+            deleteFile(deduplicatedBamFile, log);
+            deleteFile(deduplicatedBaiFile, log);
+            String cmd1 = "mv " + splitBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
+            String cmd2 = "mv " + splitBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
+            try {
+                Process p = Runtime.getRuntime().exec(cmd1);
+                int exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    log.error("file rename failed");
+                    System.exit(2);
+                }
+                p = Runtime.getRuntime().exec(cmd2);
+                exitVal = p.waitFor();
+                if (exitVal != 0) {
+                    log.error("file rename failed");
+                    System.exit(2);
+                }
+            } catch (IOException | InterruptedException ie) {
+                log.error(ie.getMessage());
+                System.exit(2);
             }
         }
-        dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
-        if (deduplicatedBamFile.length() > new Long("2147483648"))
-            return deduplicatedBamFile.getAbsolutePath();
-
-        refGenomeDict(picardJar, refGenomeFilePath, log);
-        createFastaiFile(samtools, refGenomeFilePath, log);
-        readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
         log.debug("filtration complete");
 
         return splitBamFile.getAbsolutePath();
@@ -406,13 +410,6 @@ public class ReadsMapping {
                 log.error("picard reads deduplicate process failed.");
                 System.exit(2);
             }
-
-            p = Runtime.getRuntime().exec("rm -f " + sortedBamFile);
-            exitVal = p.waitFor();
-            if (exitVal != 0) {
-                log.error("remove previous file failed.");
-                System.exit(2);
-            }
             p.destroy();
         }catch (IOException | InterruptedException ie){
             log.error(ie.getMessage());
@@ -599,6 +596,14 @@ public class ReadsMapping {
             } catch (IOException ie) {
                 ie.printStackTrace();
             }
+        }
+    }
+
+    private static void deleteFile(File targetFile, Logger log) {
+        if (targetFile.exists()) {
+            boolean res = targetFile.delete();
+            if (!res)
+                log.error("can not remove redundant SAM file " + targetFile);
         }
     }
 }
