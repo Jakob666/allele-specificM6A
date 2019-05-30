@@ -2,7 +2,6 @@ package RnaSeqSnpCalling;
 
 import CommonThreadClass.*;
 import ReadsMapping.sra2fastq;
-import CommonThreadClass.RunSnpCalling;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
@@ -34,16 +33,14 @@ public class RnaSeqSnpCalling {
         genomeFile = commandLine.getOptionValue('r');
         gtfFile = commandLine.getOptionValue('g');
         String genomeFileDir = new File(genomeFile).getParent();
-
         // output result directory, default a new directory name "outputResult" in genome file directory
-        if (commandLine.hasOption('o')) {
+        if (commandLine.hasOption('o'))
             outputDir = commandLine.getOptionValue('o');
-        } else {
+        else {
             outputDir = new File(genomeFileDir, "outputResult").getAbsolutePath();
             mkDir(outputDir);
         }
         logger = initLog(outputDir);
-
         // get input file format(support sra, fastq, fasta)
         if (commandLine.hasOption("fmt")) {
             inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
@@ -53,17 +50,14 @@ public class RnaSeqSnpCalling {
             }
         }
         // source data directory
-        if (commandLine.hasOption("ip")) {
+        if (commandLine.hasOption("ip"))
             ipDataDir = commandLine.getOptionValue("ip");
-        }
-        if (commandLine.hasOption("input")) {
+        if (commandLine.hasOption("input"))
             inputDataDir = commandLine.getOptionValue("input");
-        }
         if (ipDataDir == null & inputDataDir == null) {
             logger.error("Specifies the value of at least one of the parameters -ip(--ip_dir) and -input(--input_dir)");
             System.exit(2);
         }
-
         if (inputFormat.equals("sra")) {
             if (commandLine.hasOption("tmp")) {
                 fastqTempDir = commandLine.getOptionValue("tmp");
@@ -74,7 +68,6 @@ public class RnaSeqSnpCalling {
         } else {
             fastqTempDir = ipDataDir;
         }
-
         if (commandLine.hasOption('p')) {
             prefix = commandLine.getOptionValue('p');
         } else {
@@ -138,6 +131,7 @@ public class RnaSeqSnpCalling {
             logger.error(ie.getMessage());
             System.exit(2);
         }
+
         if (inputFormat.toLowerCase().equals("sra"))
             cleanUp(fastqTempDir);
     }
@@ -210,7 +204,6 @@ public class RnaSeqSnpCalling {
             logger.error(ie.getMessage());
         }
     }
-
 
     /**
      * 设置命令行参数
@@ -291,3 +284,4 @@ public class RnaSeqSnpCalling {
         return Logger.getLogger(RnaSeqSnpCalling.class);
     }
 }
+

@@ -99,16 +99,14 @@ public class ReadsMapping {
         File sortedBamFile = new File(outputDir, prefix + "_sorted.bam");
         File deduplicatedBamFile = new File(outputDir, prefix + "_deduplicated.bam");
         File deduplicatedBaiFile = new File(outputDir, prefix + "_deduplicated.bai");
-        File splitBamFile = new File(outputDir, prefix + "_split.bam");
-        File splitBaiFile = new File(outputDir, prefix + "_split.bai");
         File finalBamFile = new File(outputDir, prefix + "_alignment.bam");
         File finalBaiFile = new File(outputDir, prefix + "_alignment.bai");
         log.debug("filtering alignment reads");
-
         readsGroup(picardJar, starSamFile.getAbsolutePath(), sortedBamFile.getAbsolutePath(), log);
         // 删去STAR比对得到的SAM文件
         deleteFile(starSamFile, log);
         dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
+        deleteFile(sortedBamFile, log);
         if (deduplicatedBamFile.length() > new Long("2147483648")) {
             String cmd1 = "mv " + deduplicatedBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
             String cmd2 = "mv " + deduplicatedBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
@@ -132,32 +130,12 @@ public class ReadsMapping {
         } else {
             refGenomeDict(picardJar, refGenomeFilePath, log);
             createFastaiFile(samtools, refGenomeFilePath, log);
-            readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), log);
+            readsTrimReassign(gatkJar, refGenomeFilePath, deduplicatedBamFile.getAbsolutePath(), finalBamFile.getAbsolutePath(), log);
             deleteFile(deduplicatedBamFile, log);
             deleteFile(deduplicatedBaiFile, log);
-            String cmd1 = "mv " + splitBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
-            String cmd2 = "mv " + splitBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
-            try {
-                Process p = Runtime.getRuntime().exec(cmd1);
-                int exitVal = p.waitFor();
-                if (exitVal != 0) {
-                    log.error("file rename failed");
-                    System.exit(2);
-                }
-                p = Runtime.getRuntime().exec(cmd2);
-                exitVal = p.waitFor();
-                if (exitVal != 0) {
-                    log.error("file rename failed");
-                    System.exit(2);
-                }
-            } catch (IOException | InterruptedException ie) {
-                log.error(ie.getMessage());
-                System.exit(2);
-            }
+            log.debug("filtration complete");
         }
-        log.debug("filtration complete");
-
-        return splitBamFile.getAbsolutePath();
+        return finalBamFile.getAbsolutePath();
     }
 
     /**
