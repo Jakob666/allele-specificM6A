@@ -1,8 +1,10 @@
 package AseSeqSimulator;
 
+import GTFComponent.ElementRecord;
 import GTFComponent.GeneRecord;
 import GTFComponent.TranscriptRecord;
 
+import java.io.IOException;
 import java.util.*;
 
 public class CommonMethod {
@@ -53,5 +55,46 @@ public class CommonMethod {
         return transcriptRecord;
     }
 
-
+    /**
+     * 获取基因的外显子组
+     * @param geneRecord GeneRecord对象
+     * @param twoBit TwoBit Parser对象
+     * @return 外显子区间(合并重叠区域)
+     */
+    public static ArrayList<int[]> getGeneExome(GeneRecord geneRecord, TwoBitParser twoBit) {
+        HashMap<String, TranscriptRecord> transcriptIsoforms = geneRecord.getTranscriptIsoform();
+        ArrayList<int[]> exonRanges = new ArrayList<>();
+        for (String isoformId: transcriptIsoforms.keySet()) {
+            TranscriptRecord record = transcriptIsoforms.get(isoformId);
+            ElementRecord exon = record.getElementList().getOrDefault("exon", null);
+            while (exon != null) {
+                int elementStart = exon.getElementStart();
+                int elementEnd = exon.getElementEnd();
+                exonRanges.add(new int[]{elementStart, elementEnd});
+                exon = exon.getNextElement();
+            }
+        }
+        // 将外显子按顺序从前到后排列
+        Collections.sort(exonRanges, new Comparator<int[]>() {
+            @Override
+            public int compare(int[] o1, int[] o2) {
+                return Integer.compare(o1[0], o2[0]);
+            }
+        });
+        // 不同的transcript的外显子之可能存在重叠将重叠区域合并
+        ArrayList<int[]> mergeOverlapExons = new ArrayList<>();
+        for (int[] curExon: exonRanges) {
+            if (mergeOverlapExons.size() == 0)
+                mergeOverlapExons.add(curExon);
+            else {
+                int[] preExon = mergeOverlapExons.get(mergeOverlapExons.size()-1);
+                if (preExon[1] > curExon[0]) {
+                    preExon[1] = Math.max(preExon[1], curExon[1]);
+                }  else {
+                    mergeOverlapExons.add(curExon);
+                }
+            }
+        }
+        return mergeOverlapExons;
+    }
 }
