@@ -13,14 +13,11 @@ public class SNPGenerator {
     private ArrayList<String> bases = new ArrayList<String>(Arrays.asList("A", "C", "T", "G"));
     private ArrayList<Integer> mutSiteNum;
     private HashMap<String, HashSet<Integer>> mutGenePosition;
-    // originExonSequence是基因最长一条转录本的原始序列，originExomeSequence是基因完整的外显子组的原始序列
-    private HashMap<String, String> originExonSequence = new HashMap<>(), originExomeSequence = new HashMap<>();
-    private HashMap<String, ArrayList<int[]>> mutGeneExomeLists = new HashMap<>();
-    // mutatedExonSeqence是基因最长一条转录本的突变序列，mutatedExomeSequence是基因完整的外显子组的突变序列
-    private HashMap<String, String> mutatedExonSeqence = new HashMap<>(), mutatedExomeSequence = new HashMap<>();
+    private HashMap<String, String> originExonSequence = new HashMap<>();
+    private HashMap<String, String> mutatedExonSeqence = new HashMap<>();
     private HashMap<String, HashMap<Integer, String[]>> mutationRefAlt = new HashMap<>();
     private HashMap<String, LinkedList<Gene>> selectedGenes;
-    private HashMap<String, HashMap<Integer, Integer>> mutGenomePosition = new HashMap<>(), mutExomePosition = new HashMap<>();
+    private HashMap<String, HashMap<Integer, Integer>> mutGenomePosition = new HashMap<>();
     private double mutateProp;
     private String vcfFile;
 
@@ -76,12 +73,7 @@ public class SNPGenerator {
 
             for (Gene mutGene: mutGenes) {
                 String exonSeq = mutGene.getExonSeq();
-                String exomeSeq = mutGene.getExomeSeq();
                 this.originExonSequence.put(mutGene.getGeneId(), exonSeq);
-                if (exomeSeq != null) {
-                    this.originExomeSequence.put(mutGene.getGeneId(), exomeSeq);
-                    this.mutGeneExomeLists.put(mutGene.getGeneId(), mutGene.getExomeList());
-                }
 
                 UniformIntegerDistribution uid = new UniformIntegerDistribution(1, exonSeq.length()-1);
                 Collections.shuffle(this.mutSiteNum);
@@ -131,43 +123,6 @@ public class SNPGenerator {
         }
 
         return genomePosition;
-    }
-
-    /**
-     * 返回基因突变相应的外显子组突变序列
-     * @return 外显子组突变序列
-     */
-    public HashMap<String, String> getMutatedExomeSequence() {
-        for (String geneId: this.mutGenomePosition.keySet()) {
-            Set<Integer> exonPositions = new HashSet<>(this.mutGenomePosition.get(geneId).keySet());
-
-            String exon = this.mutatedExonSeqence.get(geneId);
-            String exome = this.originExomeSequence.get(geneId);
-            ArrayList<int[]> exomeList = this.mutGeneExomeLists.get(geneId);
-            HashMap<Integer, Integer> exomePositions = new HashMap<>();
-            String mutExome = exome;
-            int distance;
-            for (Integer exonPos: exonPositions) {
-                int genomePosition = this.mutGenomePosition.get(geneId).get(exonPos);
-                int length = 0;
-                for (int[] range: exomeList) {
-                    if (genomePosition >= range[0]) {
-                        if (genomePosition <= range[1]) {
-                            distance = genomePosition - range[0];
-                            String mutNc = Character.toString(exon.charAt(distance));
-                            mutExome = mutExome.substring(0, length+distance) + mutNc + mutExome.substring(length+distance+1);
-                            exomePositions.put(exonPos, length+distance);
-                            break;
-                        } else
-                            length += range[1] - range[0] + 1;
-                    } else
-                        break;
-                }
-            }
-            this.mutExomePosition.put(geneId, exomePositions);
-            this.mutatedExomeSequence.put(geneId, mutExome);
-        }
-        return this.mutatedExomeSequence;
     }
 
     /**
@@ -323,10 +278,6 @@ public class SNPGenerator {
 
     public HashMap<String, HashMap<Integer, Integer>> getMutGenomePosition() {
         return this.mutGenomePosition;
-    }
-
-    public HashMap<String, HashMap<Integer, Integer>> getMutExomePosition() {
-        return this.mutExomePosition;
     }
 
     public String getVcfFile() {

@@ -74,32 +74,22 @@ public class M6AGenerator {
      * @param simulatedM6aSites 记录每个基因修饰位点的哈希表，HashMap<String, HashMap<Integer, Integer>> geneId: exon position: genome position
      * @param outputFile 输出文件
      */
-    public void storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites,
-                                  HashMap<String, Double> genePM, HashMap<String, String> geneChrNum, File outputFile) {
+    public void storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites, File outputFile) {
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(outputFile))
             );
-            bfw.write("#chr\tgeneId\texonPosition\tgenomePosition\tPM\n");
+            bfw.write("geneId\texonPosition\tgenomePosition\n");
             HashMap<Integer, Integer> m6aSites;
-            String chrNum;
+            Integer genomePosition;
             for (String geneId: simulatedM6aSites.keySet()) {
-                chrNum = geneChrNum.get(geneId);
                 m6aSites = simulatedM6aSites.get(geneId);
-                List<Integer> exonSites = new ArrayList<>(m6aSites.keySet());
-                Collections.sort(exonSites);
-                List<Integer> genomeSites = new ArrayList<>(m6aSites.values());
-                Collections.sort(genomeSites);
-                String[] exon = new String[exonSites.size()];
-                String[] genome = new String[genomeSites.size()];
-                for (int i = 0; i < exonSites.size(); i++) {
-                    exon[i] = Integer.toString(exonSites.get(i));
-                    genome[i] = Integer.toString(genomeSites.get(i));
+                for (Integer exonPosition: m6aSites.keySet()) {
+                    genomePosition = m6aSites.get(exonPosition);
+                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition);
+                    bfw.newLine();
                 }
-                bfw.write(chrNum + "\t" + geneId + "\t" + String.join(",", exon) + "\t" + String.join(",", genome)
-                        + "\t" + genePM.get(geneId));
-                bfw.newLine();
             }
             bfw.close();
         } catch (IOException ie) {
