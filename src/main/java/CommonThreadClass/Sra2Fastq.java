@@ -1,4 +1,4 @@
-package ExomeSeqSnpCalling;
+package CommonThreadClass;
 
 import org.apache.log4j.Logger;
 

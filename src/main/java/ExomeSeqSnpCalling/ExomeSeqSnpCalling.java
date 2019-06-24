@@ -1,6 +1,7 @@
 package ExomeSeqSnpCalling;
 
 import CommonThreadClass.RunSnpCalling;
+import CommonThreadClass.Sra2Fastq;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
@@ -67,8 +68,8 @@ public class ExomeSeqSnpCalling {
         // get input file format(support sra, fastq)
         if (commandLine.hasOption("fmt")) {
             inputFormat = commandLine.getOptionValue("fmt").toLowerCase();
-            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq") && !inputFormat.equals("fasta")) {
-                logger.error("invalid input file format, the format should be sra or fastq");
+            if (!inputFormat.equals("sra") && !inputFormat.equals("fastq") && !inputFormat.equals("bam")) {
+                logger.error("invalid input file format, the format should be sra, fastq or bam");
                 System.exit(2);
             }
         }
@@ -87,24 +88,59 @@ public class ExomeSeqSnpCalling {
         }
 
         // 如果输入数据是SRA格式，则需转为fastq格式，确定fastq文件的临时存放路径
-        if (inputFormat.equals("sra")) {
+        if (inputFormat.toLowerCase().equals("sra")) {
             if (commandLine.hasOption("tmp")) {
                 fastqTempDir = commandLine.getOptionValue("tmp");
             } else {
                 fastqTempDir = new File(outputDir, "temp").getAbsolutePath();
                 mkDir(fastqTempDir);
             }
-        } else { // 如果输入数据本身就是fastq格式，则无需转换
+        } else if (inputFormat.toLowerCase().equals("fastq")) { // 如果输入数据本身就是fastq格式，则无需转换
             fastqTempDir = source_dir;
+        } else {
+            fastqTempDir = "";
         }
 
-        // 对测序文件进行比对
-        logger.debug("start exome sequencing reads alignment");
+        String mergedBamFile;
+        if (!inputFormat.toLowerCase().equals("bam")) {
+            // 对测序文件进行比对
+            logger.debug("start exome sequencing reads alignment");
 
-        String mergedBamFile = alignSequencingReads(fastqTempDir, bwa, samtools, picardJar, sraTool, source_dir, inputFormat,
-                                                    alignmentOutputDir.getAbsolutePath(), genomeFile, execThread, direct, prefix);
-        cleanUp(fastqTempDir);
-        logger.debug("Exome sequencing reads alignment complete");
+            mergedBamFile = alignSequencingReads(fastqTempDir, bwa, samtools, picardJar, sraTool, source_dir, inputFormat,
+                    alignmentOutputDir.getAbsolutePath(), genomeFile, execThread, direct, prefix);
+            if (inputFormat.toLowerCase().equals("sra"))
+                cleanUp(fastqTempDir);
+            logger.debug("Exome sequencing reads alignment complete");
+        } else {
+            File mergedBam = new File(outputDir, prefix+"_alignment.bam");
+            mergedBamFile = mergedBam.getAbsolutePath();
+            File[] bamFile = new File(source_dir).listFiles();
+            if (bamFile == null) {
+                logger.error("empty bam File data");
+                System.exit(2);
+            }
+            ArrayList<String> alignmentBamFile = new ArrayList<>();
+            for (File f: bamFile) {
+                if (f.getAbsolutePath().endsWith("bam")) {
+                    alignmentBamFile.add(f.getAbsolutePath());
+                }
+            }
+            if (alignmentBamFile.size() == 0) {
+                logger.error("directory contains no bam File");
+                System.exit(2);
+            }
+            logger.debug("merge alignment bam files");
+            if (alignmentBamFile.size() == 1) {
+                boolean res = new File(alignmentBamFile.get(0)).renameTo(mergedBam);
+                if (!res) {
+                    logger.error("rename file error: " + alignmentBamFile.get(0));
+                }
+            } else {
+                ReadsAlignment readsAlignment = new ReadsAlignment(bwa, samtools, picardJar, genomeFile, execThread, logger);
+                readsAlignment.mergeBamFiles(alignmentBamFile, mergedBam.getAbsolutePath());
+            }
+        }
+
         // 对INPUT样本进行SNP calling
         logger.debug("start exome SNP calling");
         RunSnpCalling rsc = new RunSnpCalling(genomeFile, mergedBamFile, samtools, bcftools, logger);
@@ -215,13 +251,6 @@ public class ExomeSeqSnpCalling {
                 logger.error("can not make directory: " + dirName);
                 System.exit(2);
             }
-        } else { // 如果已经存在则清空之前目录
-            cleanUp(dirName);
-            boolean res = targetDir.mkdir();
-            if (!res) {
-                logger.error("can not make directory: " + dirName);
-                System.exit(2);
-            }
         }
     }
 
@@ -268,7 +297,7 @@ public class ExomeSeqSnpCalling {
         option.setRequired(true);
         options.addOption(option);
 
-        option = new Option("fmt", "input_format", true, "input file format, sra or fastq, default sra");
+        option = new Option("fmt", "input_format", true, "input file format, SRA, FastQ and BAM, default SRA");
         option.setRequired(false);
         options.addOption(option);
 
