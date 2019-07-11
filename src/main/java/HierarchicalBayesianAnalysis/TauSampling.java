@@ -29,6 +29,7 @@ public class TauSampling extends MHSampling {
                              double miu, double sigma) {
         double curTau = this.randomTau();
         double curTauPosteriorDensity = this.posteriorTau(curTau, logOddRatios, variances, miu, sigma);
+        System.out.println("random Tau: " + curTau + "\tposterior density: " + curTauPosteriorDensity);
 
         return this.getSamplingRes(curTau, curTauPosteriorDensity, prevTau, prevTauDensity);
     }
@@ -59,7 +60,7 @@ public class TauSampling extends MHSampling {
      * @param sigma 当前全局对数优势比的方差
      * @return 后验概率近似值
      */
-    private double posteriorTau(double curSamplingTau, double[] logOddRatios, double[] variances, double miu, double sigma) {
+    public double posteriorTau(double curSamplingTau, double[] logOddRatios, double[] variances, double miu, double sigma) {
         double cumProd = 1;
 
         for (int i=0; i<variances.length; i++) {

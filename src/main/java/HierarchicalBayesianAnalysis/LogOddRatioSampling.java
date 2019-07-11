@@ -18,7 +18,7 @@ public class LogOddRatioSampling {
             miu += 1.0 / (variances[i] + Math.pow(curTau, 2)) * logOddRatios[i];
             v += 1.0 / (variances[i] + Math.pow(curTau, 2));
         }
-        miu = miu * v;
+        miu = miu / v;
         v = 1.0 / v;
 
         NormalDistribution nd = new NormalDistribution(miu, v);
@@ -27,7 +27,7 @@ public class LogOddRatioSampling {
     }
 
     /**
-     * 通过新一轮采样得到的tau和全局对数优势比采样值，采样每个ASE位点的对数优势比
+     * 通过新一轮采样得到的tau和全局对数优势比采样值，采样每个ASE位点的对数优势比均值
      * @param curTau 新一轮采样得到的tau
      * @param curGlobalOddRatio 新一轮采样得到的全局对数优势比
      * @param logOddRatios 现有的ASE位点的对数优势比
@@ -43,8 +43,6 @@ public class LogOddRatioSampling {
             miu = (1.0/variances[i] * logOddRatios[i] + 1.0/Math.pow(curTau, 2) * curGlobalOddRatio) / (1.0/variances[i] + 1.0/Math.pow(curTau, 2));
             v = 1.0 / (1.0/variances[i] + 1.0/Math.pow(curTau, 2));
             nd = new NormalDistribution(miu, v);
-            double LORMean = nd.sample();
-            nd = new NormalDistribution(LORMean, variances[i]);
             newAseLogOddRatio[i] = nd.sample();
         }
 

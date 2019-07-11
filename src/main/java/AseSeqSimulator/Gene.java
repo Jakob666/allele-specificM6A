@@ -105,7 +105,7 @@ public class Gene {
                 twoBit.reset();
                 String exonSeq = twoBit.loadFragment(exonStart-1, (exonEnd - exonStart + 1));
                 if (strand.equals("-")) {
-                    sb.append(CommonMethod.AntiChain(exonSeq));
+                    sb.insert(0, CommonMethod.AntiChain(exonSeq));
                 } else {
                     sb.append(exonSeq);
                 }
