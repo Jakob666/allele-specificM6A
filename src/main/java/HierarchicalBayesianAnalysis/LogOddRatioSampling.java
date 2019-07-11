@@ -6,13 +6,13 @@ public class LogOddRatioSampling {
     public LogOddRatioSampling() {}
 
     /**
-     * 通过新一轮采样得到的tau，获取新一轮的全局对数优势比采样值
+     * 通过新一轮采样得到的tau，获取新一轮的全局对数优势比均值、方差及采样值
      * @param curTau 新一轮采样得到的tau
      * @param logOddRatios 现有的ASE位点的对数优势比
      * @param variances 现有的ASE位点的对数优势比的方差
-     * @return 新一轮采样的对数优势比
+     * @return 新一轮采样的对数优势比均值、方差及采样值
      */
-    public double globalLogOddRatioSampling(double curTau, double[] logOddRatios, double[] variances) {
+    public double[] globalLogOddRatioSampling(double curTau, double[] logOddRatios, double[] variances) {
         double miu = 0, v = 0;
         for (int i=0; i<logOddRatios.length; i++) {
             miu += 1.0 / (variances[i] + Math.pow(curTau, 2)) * logOddRatios[i];
@@ -23,7 +23,7 @@ public class LogOddRatioSampling {
 
         NormalDistribution nd = new NormalDistribution(miu, v);
 
-        return nd.sample();
+        return new double[]{miu, v, nd.sample()};
     }
 
     /**

@@ -6,7 +6,7 @@ import java.util.HashMap;
 public class HierarchicalBayesianModel {
     private TauSampling ts;
     private LogOddRatioSampling lors;
-    private double curTau, curTauPosteriorDensity, miu;
+    private double curTau, curTauPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
     private double[] logOddRatios, variances, samplingLORs;
     private int[] majorAlleleReads, minorAlleleReads;
@@ -48,17 +48,32 @@ public class HierarchicalBayesianModel {
      * 初始化参数tau等参数
      */
     private void initializer() {
+        // 从tau的先验分布中初始化一个tau值并得到相应的概率(作为后验概率)
         this.curTau = this.ts.randomTau();
         this.curTauPosteriorDensity = this.ts.priorTauDensity(this.curTau);
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.logOddRatios = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
 
-        this.miu = 0;
-        for (double variance: this.variances) {
-            this.miu += 1.0 / (variance + Math.pow(this.curTau, 2));
+        // 依据初始的tau计算初始化的全局对数优势比的值
+        double miu_denominator = 0, miu_numernator = 0;
+        for (int i = 0; i < this.logOddRatios.length; i++) {
+            miu_denominator += 1.0 / (this.variances[i] + Math.pow(this.curTau, 2));
+            miu_numernator += this.logOddRatios[i] / (1.0 / (this.variances[i] + Math.pow(this.curTau, 2)));
         }
-        this.miu = 1.0 / this.miu;
+        this.globalLORMean = miu_numernator / miu_denominator;
+        this.globalLORSigma = 1.0 / miu_denominator;
+        NormalDistribution nd = new NormalDistribution(this.globalLORMean, this.globalLORSigma);
+        double globalLOR = nd.sample();
+
+        // 根据全局优势比初始化各个位点优势比
+        for (int i = 0; i < this.logOddRatios.length; i++) {
+            double mean = (1.0 / this.variances[i] * this.logOddRatios[i] + 1.0 / Math.pow(this.curTau, 2) * globalLOR) / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
+            double sigma = 1.0 / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
+            nd = new NormalDistribution(mean, sigma);
+            double lorMean = nd.sample();
+            this.logOddRatios[i] = new NormalDistribution(lorMean, this.variances[i]).sample();
+        }
     }
 
     /**
@@ -80,16 +95,19 @@ public class HierarchicalBayesianModel {
             double prevTau = this.curTau;
             double prevTauPosteriorDensity = this.curTauPosteriorDensity;
             double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.logOddRatios,
-                                                    this.variances, this.miu);
+                                                    this.variances, this.globalLORMean, this.globalLORSigma);
             this.curTau = samplingRes[0];
             this.curTauPosteriorDensity = samplingRes[1];
 
             // 对全局对数优势比进行采样
-            double globalLORs = lors.globalLogOddRatioSampling(this.curTau, this.logOddRatios, this.variances);
-            this.samplingLORs[i] = globalLORs;
+            double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.logOddRatios, this.variances);
+            this.globalLORMean = globalLORSummary[0];
+            this.globalLORSigma = globalLORSummary[1];
+            double globalLOR = globalLORSummary[2];
+            this.samplingLORs[i] = globalLOR;
 
             // 对各个ASE位点的对数优势比进行采样
-            this.logOddRatios = lors.singleAseOddRatioSampling(this.curTau, globalLORs, this.logOddRatios, this.variances);
+            this.logOddRatios = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.logOddRatios, this.variances);
         }
     }
 }
