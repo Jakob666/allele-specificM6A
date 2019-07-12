@@ -29,7 +29,6 @@ public class TauSampling extends MHSampling {
                              double miu, double sigma) {
         double curTau = this.randomTau();
         double curTauPosteriorDensity = this.posteriorTau(curTau, logOddRatios, variances, miu, sigma);
-        System.out.println("random Tau: " + curTau + "\tposterior density: " + curTauPosteriorDensity);
 
         return this.getSamplingRes(curTau, curTauPosteriorDensity, prevTau, prevTauDensity);
     }

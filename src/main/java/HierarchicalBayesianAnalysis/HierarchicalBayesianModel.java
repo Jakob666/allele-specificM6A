@@ -2,6 +2,7 @@ package HierarchicalBayesianAnalysis;
 
 import org.apache.commons.math3.distribution.NormalDistribution;
 
+import java.io.*;
 import java.text.DecimalFormat;
 import java.util.HashMap;
 
@@ -12,7 +13,6 @@ public class HierarchicalBayesianModel {
     private int samplingTime, burnIn;
     private double[] observeLogOddRatio, singleASELORMean, variances, samplingGlobalLORs;
     private int[] majorAlleleReads, minorAlleleReads;
-    private double ratio = 0;
     private DecimalFormat df = new DecimalFormat("0.00");
 
     /**
@@ -27,6 +27,7 @@ public class HierarchicalBayesianModel {
         this.majorAlleleReads = majorAlleleReads;
         this.minorAlleleReads = minorAlleleReads;
         this.samplingGlobalLORs = new double[samplingTime];
+        this.singleASELORMean = new double[minorAlleleReads.length];
     }
 
     /**
@@ -36,12 +37,15 @@ public class HierarchicalBayesianModel {
     public double testSignificant() {
         this.initializer();
         this.sampling();
+        double positiveLOR = 0, negativeLOR = 0;
         for (double globalLOR: this.samplingGlobalLORs) {
-            if (globalLOR < 0)
-                this.ratio++;
+            if (globalLOR <= 0)
+                negativeLOR++;
+            else
+                positiveLOR++;
         }
 
-        return this.ratio / this.samplingTime;
+        return 2 * Math.min(positiveLOR, negativeLOR) / this.samplingTime;
     }
 
     /**
@@ -95,30 +99,49 @@ public class HierarchicalBayesianModel {
      * 进行采样操作，得到 samplingTimes + burnIn个采样值
      */
     private void sampling() {
+        BufferedWriter bfw = null;
+        String tauRecordFile = "C:\\Users\\hbs\\Desktop\\等位基因特异的m6A修饰位点分析平台\\globalTauSample.txt";
         int totalTimes = this.samplingTime + this.burnIn;
-        for (int i=0; i<totalTimes; i++) {
-            // 首先对tau进行采样
-            double prevTau = this.curTau;
-            double prevTauPosteriorDensity = this.curTauPosteriorDensity;
-            double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.observeLogOddRatio,
-                                                    this.variances, this.globalLORMean, this.globalLORSigma);
-            this.curTau = samplingRes[0];
-            this.curTauPosteriorDensity = samplingRes[1];
-            System.out.println("step " + i + " current Tau: " + df.format(this.curTau) + "\tcurrent Density: " + this.curTauPosteriorDensity);
+        try {
+            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tauRecordFile))));
+            for (int i=0; i<totalTimes; i++) {
+                // 首先对tau进行采样
+                double prevTau = this.curTau;
+                double prevTauPosteriorDensity = this.curTauPosteriorDensity;
+                double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.observeLogOddRatio,
+                        this.variances, this.globalLORMean, this.globalLORSigma);
+                this.curTau = samplingRes[0];
+                this.curTauPosteriorDensity = samplingRes[1];
+                if (i > this.burnIn) {
+                    bfw.write(df.format(this.curTau));
+                    bfw.newLine();
+                }
 
-            // 对全局对数优势比进行采样
-            double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio, this.variances);
-            this.globalLORMean = globalLORSummary[0];
-            this.globalLORSigma = globalLORSummary[1];
-            double globalLOR = globalLORSummary[2];
-            System.out.println("current theta: " + df.format(globalLOR));
-            if (i > this.burnIn)
-                this.samplingGlobalLORs[i-this.burnIn] = globalLOR;
+                // 对全局对数优势比进行采样
+                double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio, this.variances);
+                this.globalLORMean = globalLORSummary[0];
+                this.globalLORSigma = globalLORSummary[1];
+                double globalLOR = globalLORSummary[2];
+                System.out.println("step " + i + " current theta: " + df.format(globalLOR));
+                if (i > this.burnIn)
+                    this.samplingGlobalLORs[i-this.burnIn] = globalLOR;
 
-            // 对各个ASE位点的对数优势比均值进行采样
-            this.singleASELORMean = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.observeLogOddRatio, this.variances);
-            System.out.println("single ASE Site LOR: [" + this.getString(this.singleASELORMean) + "]");
-            System.out.println("------------------------------------");
+                // 对各个ASE位点的对数优势比均值进行采样
+                this.singleASELORMean = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.observeLogOddRatio, this.variances);
+                System.out.println("single ASE Site LOR: [" + this.getString(this.singleASELORMean) + "]");
+                System.out.println("------------------------------------");
+            }
+            bfw.close();
+        } catch (IOException ie) {
+            ie.printStackTrace();
+        } finally {
+            if (bfw != null) {
+                try {
+                    bfw.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
