@@ -13,7 +13,7 @@ public class CommonMethod {
      * @return anti-chain sequence
      */
     public static String AntiChain(String Seq) {
-        StringBuilder sb = new StringBuilder();
+        StringBuffer sb = new StringBuffer();
         for (int i = 0; i < Seq.length(); i++) {
             char nucleotide = Seq.charAt(i);
             if (nucleotide == 'A' || nucleotide == 'a') {

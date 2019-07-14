@@ -11,7 +11,7 @@ import java.util.*;
  */
 public class SNPGenerator {
     private ArrayList<String> bases = new ArrayList<String>(Arrays.asList("A", "C", "T", "G"));
-    private UniformIntegerDistribution mutSiteNum;
+    private ArrayList<Integer> mutSiteNum;
     private HashMap<String, HashSet<Integer>> mutGenePosition;
     private HashMap<String, String> originExonSequence = new HashMap<>();
     private HashMap<String, String> mutatedExonSeqence = new HashMap<>();
@@ -52,7 +52,12 @@ public class SNPGenerator {
      * 设置基因外显子序列上突变位点的数目
      */
     private void setMutSiteNum(int minNum, int maxNum) {
-        this.mutSiteNum = new UniformIntegerDistribution(minNum, maxNum);
+        ArrayList<Integer> mutNum = new ArrayList<>();
+        for (int i = minNum; i <= maxNum; i++) {
+            mutNum.add(i);
+        }
+
+        this.mutSiteNum = mutNum;
     }
 
     /**
@@ -71,7 +76,8 @@ public class SNPGenerator {
                 this.originExonSequence.put(mutGene.getGeneId(), exonSeq);
 
                 UniformIntegerDistribution uid = new UniformIntegerDistribution(1, exonSeq.length()-1);
-                int mutNum = this.mutSiteNum.sample();
+                Collections.shuffle(this.mutSiteNum);
+                int mutNum = this.mutSiteNum.get(0);
                 int order = 0;
                 HashSet<Integer> geneMutPosition = new HashSet<>();
                 while (order < mutNum){

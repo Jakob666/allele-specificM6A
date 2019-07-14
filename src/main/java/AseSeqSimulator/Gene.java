@@ -105,7 +105,7 @@ public class Gene {
                 twoBit.reset();
                 String exonSeq = twoBit.loadFragment(exonStart-1, (exonEnd - exonStart + 1));
                 if (strand.equals("-")) {
-                    sb.insert(0, CommonMethod.AntiChain(exonSeq));
+                    sb.append(CommonMethod.AntiChain(exonSeq));
                 } else {
                     sb.append(exonSeq);
                 }
@@ -133,7 +133,7 @@ public class Gene {
      */
     public void calculateReadsCountViaSequencingDepth(int depth, int readLength, long librarySize) {
         this.readsCount = this.exonSeq.length() * depth / readLength;
-//        this.RPKM = Math.pow(10.0, 9) * this.readsCount / this.exonSeq.length() / librarySize;
+        this.RPKM = Math.pow(10.0, 9) * this.readsCount / this.exonSeq.length() / librarySize;
     }
 
     /**
@@ -253,7 +253,7 @@ public class Gene {
                 // 获取每个ASE位点覆盖的fragment的范围
                 mutateFragments = mutateFragmentRanges.get(mutateSite);
                 count = mutateFragments.size();
-                majorAlleleCount = (int) Math.round(count * refProp);
+                majorAlleleCount = (int) (count * refProp);
                 Collections.shuffle(mutateFragments);
                 majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                 minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
@@ -262,6 +262,7 @@ public class Gene {
                 this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq,"minor");
                 minorAlleleFragmentRanges = null;
             }
+
         } catch (Exception io) {
             io.printStackTrace();
         }
@@ -287,7 +288,7 @@ public class Gene {
             Collections.sort(mutations);
         }
         int peakReadsCount, peakFragmentCount;
-        UniformRealDistribution urd = new UniformRealDistribution(0.85, 0.95);
+        UniformRealDistribution urd = new UniformRealDistribution(this.pmRange[0], this.pmRange[1]);
         ArrayList<int[]> fragmentRanges;
         List<int[]> randomFragmentRanges = new ArrayList<>();
         try {
@@ -323,7 +324,7 @@ public class Gene {
                 for (Integer mutateSite: this.m6aSiteMutateFragments.keySet()) {
                     mutateFragments = this.m6aSiteMutateFragments.get(mutateSite);
                     count = mutateFragments.size();
-                    majorAlleleCount = (int) Math.round(count * refProp);
+                    majorAlleleCount = (int) (count * refProp);
                     Collections.shuffle(mutateFragments);
                     majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                     minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());

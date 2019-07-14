@@ -2,7 +2,7 @@ package HierarchicalBayesianAnalysis;
 
 import org.apache.commons.math3.distribution.NormalDistribution;
 
-import java.io.*;
+//import java.io.*;
 import java.text.DecimalFormat;
 import java.util.HashMap;
 
@@ -56,8 +56,8 @@ public class HierarchicalBayesianModel {
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.observeLogOddRatio = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
-        System.out.println("observeLOR: [" + this.getString(this.observeLogOddRatio) + "]");
-        System.out.println("observeVAR: [" + this.getString(this.variances) + "]");
+//        System.out.println("observeLOR: [" + this.getString(this.observeLogOddRatio) + "]");
+//        System.out.println("observeVAR: [" + this.getString(this.variances) + "]");
 
         // 从tau的先验分布中初始化一个tau值
         this.curTau = this.ts.randomTau();
@@ -74,7 +74,7 @@ public class HierarchicalBayesianModel {
         // 依据全局对数优势比的均值计算得到当前Tau的近似后验概率
         this.curTauPosteriorDensity = this.ts.posteriorTau(this.curTau, this.observeLogOddRatio, this.variances,
                                                            this.globalLORMean, this.globalLORSigma);
-        System.out.println("initial tau: " + this.curTau+"\t initial density: " + this.curTauPosteriorDensity);
+//        System.out.println("initial tau: " + this.curTau+"\t initial density: " + this.curTauPosteriorDensity);
 
         // 根据全局优势比得到各ASE位点优势比均值
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
@@ -83,7 +83,7 @@ public class HierarchicalBayesianModel {
             nd = new NormalDistribution(mean, sigma);
             this.singleASELORMean[i] = nd.sample();
         }
-        System.out.println("initial single ASE site LOR: [" + this.getString(this.singleASELORMean) + "]");
+//        System.out.println("initial single ASE site LOR: [" + this.getString(this.singleASELORMean) + "]");
     }
 
     /**
@@ -99,50 +99,50 @@ public class HierarchicalBayesianModel {
      * 进行采样操作，得到 samplingTimes + burnIn个采样值
      */
     private void sampling() {
-        BufferedWriter bfw = null;
-        String tauRecordFile = "C:\\Users\\hbs\\Desktop\\等位基因特异的m6A修饰位点分析平台\\globalTauSample.txt";
+//        BufferedWriter bfw = null;
+//        String tauRecordFile = "C:\\Users\\hbs\\Desktop\\等位基因特异的m6A修饰位点分析平台\\globalTauSample.txt";
         int totalTimes = this.samplingTime + this.burnIn;
-        try {
-            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tauRecordFile))));
-            for (int i=0; i<totalTimes; i++) {
-                // 首先对tau进行采样
-                double prevTau = this.curTau;
-                double prevTauPosteriorDensity = this.curTauPosteriorDensity;
-                double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.observeLogOddRatio,
-                        this.variances, this.globalLORMean, this.globalLORSigma);
-                this.curTau = samplingRes[0];
-                this.curTauPosteriorDensity = samplingRes[1];
-                if (i > this.burnIn) {
-                    bfw.write(df.format(this.curTau));
-                    bfw.newLine();
-                }
+//        try {
+//            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tauRecordFile))));
+        for (int i=0; i<totalTimes; i++) {
+            // 首先对tau进行采样
+            double prevTau = this.curTau;
+            double prevTauPosteriorDensity = this.curTauPosteriorDensity;
+            double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.observeLogOddRatio,
+                    this.variances, this.globalLORMean, this.globalLORSigma);
+            this.curTau = samplingRes[0];
+            this.curTauPosteriorDensity = samplingRes[1];
+//            if (i > this.burnIn) {
+//                bfw.write(df.format(this.curTau));
+//                bfw.newLine();
+//            }
 
-                // 对全局对数优势比进行采样
-                double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio, this.variances);
-                this.globalLORMean = globalLORSummary[0];
-                this.globalLORSigma = globalLORSummary[1];
-                double globalLOR = globalLORSummary[2];
-                System.out.println("step " + i + " current theta: " + df.format(globalLOR));
-                if (i > this.burnIn)
-                    this.samplingGlobalLORs[i-this.burnIn] = globalLOR;
+            // 对全局对数优势比进行采样
+            double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio, this.variances);
+            this.globalLORMean = globalLORSummary[0];
+            this.globalLORSigma = globalLORSummary[1];
+            double globalLOR = globalLORSummary[2];
+//                System.out.println("step " + i + " current theta: " + df.format(globalLOR));
+            if (i > this.burnIn)
+                this.samplingGlobalLORs[i-this.burnIn] = globalLOR;
 
-                // 对各个ASE位点的对数优势比均值进行采样
-                this.singleASELORMean = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.observeLogOddRatio, this.variances);
-                System.out.println("single ASE Site LOR: [" + this.getString(this.singleASELORMean) + "]");
-                System.out.println("------------------------------------");
-            }
-            bfw.close();
-        } catch (IOException ie) {
-            ie.printStackTrace();
-        } finally {
-            if (bfw != null) {
-                try {
-                    bfw.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
+            // 对各个ASE位点的对数优势比均值进行采样
+            this.singleASELORMean = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.observeLogOddRatio, this.variances);
+//                System.out.println("single ASE Site LOR: [" + this.getString(this.singleASELORMean) + "]");
+//                System.out.println("------------------------------------");
         }
+//            bfw.close();
+//        } catch (IOException ie) {
+//            ie.printStackTrace();
+//        } finally {
+//            if (bfw != null) {
+//                try {
+//                    bfw.close();
+//                } catch (Exception e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        }
     }
 
     private String getString(double[] lorList) {

@@ -160,7 +160,7 @@ public class ReadsGenerator {
      * 设置具有SNP位点的基因 major allele和 minor allele的比例
      */
     private void mutatedGeneAseRatio() {
-        UniformRealDistribution urd = new UniformRealDistribution(0.50, 0.75);
+        UniformRealDistribution urd = new UniformRealDistribution(0.50, 0.95);
         // 获取到突变基因的 geneID集合
         Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
         double ref;
@@ -254,7 +254,7 @@ public class ReadsGenerator {
         double lower;
         double upper = 0;
         // 用于随机抽取RPKM值
-        UniformRealDistribution unidiform = new UniformRealDistribution(100, 500);
+        UniformRealDistribution unidiform = new UniformRealDistribution(10, 100);
         GeneExpDistribution geneExp = GeneExpDistribution.getInstance();
         HashMap<String, double[]> geneExpValue = null;
         Set<String> mutatedGeneId = this.geneMutatedPosition.keySet();
@@ -448,14 +448,13 @@ public class ReadsGenerator {
                     gene.enrichInputFragment(fragmentMean, fragmentTheta, this.readLength, geneMutateSites);
                     gene.enrichIpFragment(fragmentMean, fragmentTheta, this.readLength, geneM6aSites, geneMutateSites);
                     gene.generateReads(inputMate1File, inputMate2File, this.readLength, inputMultiple, ref, mutExonSeq,
-                                       direct, this.seqErrorModel, "input");
+                                            direct, this.seqErrorModel, "input");
                     gene.generateReads(ipMate1File, ipMate2File, this.readLength, inputMultiple, ref, mutExonSeq,
                                        direct, this.seqErrorModel, "ip");
                     gene.peakFragmentFromBackground(ipMate1File, ipMate2File, this.readLength, inputMultiple, ref,
                                                     mutExonSeq, direct, this.seqErrorModel, geneMutateSites);
                     gene.release();
                 }
-                System.out.println("complete simulate genes on Chr"+entry.getKey());
             }
             inputMate1File.close();
             ipMate1File.close();
