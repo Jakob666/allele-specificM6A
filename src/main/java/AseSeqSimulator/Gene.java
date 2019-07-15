@@ -19,7 +19,7 @@ public class Gene {
     private double RPKM;
     private String chr, exonSeq;
     private int readsCount;
-    private double[] pmRange = new double[]{0.05, 0.9};
+    private double[] pmRange = new double[]{0.8, 0.9};
     private ElementRecord exonList = null;
     private HashMap<Integer, ArrayList<int[]>> m6aSiteFragments = new HashMap<>(), m6aSiteMutateFragments = new HashMap<>();
     // 对应的read覆盖SNP位点的fragment
@@ -133,7 +133,6 @@ public class Gene {
      */
     public void calculateReadsCountViaSequencingDepth(int depth, int readLength, long librarySize) {
         this.readsCount = this.exonSeq.length() * depth / readLength;
-        this.RPKM = Math.pow(10.0, 9) * this.readsCount / this.exonSeq.length() / librarySize;
     }
 
     /**
@@ -257,9 +256,9 @@ public class Gene {
                 Collections.shuffle(mutateFragments);
                 majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                 minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
-                this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "major");
+                this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "maj");
                 majorAlleleFragmentRanges = null;
-                this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq,"minor");
+                this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq, "min");
                 minorAlleleFragmentRanges = null;
             }
 
@@ -328,9 +327,9 @@ public class Gene {
                     Collections.shuffle(mutateFragments);
                     majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                     minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
-                    this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "major");
+                    this.writeIn(majorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, this.exonSeq, "maj");
                     majorAlleleFragmentRanges = null;
-                    this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq,"minor");
+                    this.writeIn(minorAlleleFragmentRanges, direct, readLength, seqErrorModel, mateFile1, mateFile2, mutExonSeq, "min");
                     minorAlleleFragmentRanges = null;
                 }
                 this.m6aSiteNormalFragments.clear();
@@ -404,7 +403,7 @@ public class Gene {
     }
 
     private void writeIn(List<int[]> fragmentRanges, String direct, int readLength, SequencingError seqErrorModel,
-                         BufferedWriter mateFile1, BufferedWriter mateFile2, String exonSequence,  String type) {
+                         BufferedWriter mateFile1, BufferedWriter mateFile2, String exonSequence, String type) {
         String fragmentString;
         Fragmentation fragment;
         int break_point, endPoint;
@@ -412,14 +411,14 @@ public class Gene {
         for (int[] fragmentRange: fragmentRanges) {
             // 获取fragment的起始、终止位点
             break_point = fragmentRange[0];
-            endPoint = fragmentRange[1];
+            endPoint = break_point + readLength - 1;
             // 如果基因含有ASE位点，则随机选取refCount个fragment作为major allele，其余的是minor allele
-            fragmentString = exonSequence.substring(break_point, endPoint);
+            fragmentString = exonSequence.substring(break_point, endPoint+1);
             fragment = this.getSequencingReads(fragmentString, break_point, endPoint, readLength, direct);
             if (direct.equals("SE"))
                 this.writeReadInFile(fragment, seqErrorModel, mateFile1, readLength, break_point, endPoint, type);
             else
-                this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint, type);
+                this.pairReadToFile(fragment, seqErrorModel, mateFile1, mateFile2, readLength, break_point, endPoint);
             fragment = null;
             fragmentString = null;
         }
@@ -433,13 +432,11 @@ public class Gene {
      * @param readLength read长度
      * @param break_point fragment 在外显子序列上的起始位点
      * @param end_point fragment 在外显子序列上的终止位点
-     * @param type major or minor
      */
     private void writeReadInFile(Fragmentation fragment, SequencingError seqErrorModel, BufferedWriter fw,
                                  int readLength, int break_point, int end_point, String type) {
         try {
             String sequencingRead = fragment.getSingleEndRead();
-            String strand = fragment.getReadStrand();
             sequencingRead = seqErrorModel.pcrErrorReads(sequencingRead);
             if (sequencingRead.length() != readLength) {
                 int baseNNum = readLength - sequencingRead.length();
@@ -447,7 +444,7 @@ public class Gene {
                 sequencingRead = sequencingRead + baseNSeq;
             }
 
-            fw.write(">chr" + this.chr + "_" + this.geneId + "_" +type + "_"+break_point + ":" + end_point +"\t" + strand); // +"_"+readsStart+":"+readsEnd
+            fw.write(">chr" + this.chr + "_" + this.geneId + "_" +break_point + "_" + end_point + " " + type);
             fw.newLine();
             fw.write(sequencingRead);
             fw.newLine();
@@ -465,15 +462,13 @@ public class Gene {
      * @param readLength read长度
      * @param break_point fragment 在外显子序列上的起始位点
      * @param end_point fragment 在外显子序列上的终止位点
-     * @param type major or minor
      */
     private void pairReadToFile(Fragmentation fragment, SequencingError seqErrorModel, BufferedWriter mateFile1,
-                                BufferedWriter mateFile2, int readLength, int break_point, int end_point, String type) {
+                                BufferedWriter mateFile2, int readLength, int break_point, int end_point) {
         try {
             String[] sequencingRead = fragment.getPairEndRead();
             String mate1 = sequencingRead[0];
             String mate2 = sequencingRead[1];
-            String strand = fragment.getReadStrand();
             mate1 = seqErrorModel.pcrErrorReads(mate1);
             mate2 = seqErrorModel.pcrErrorReads(mate2);
             if (mate1.length() != readLength) {
@@ -483,12 +478,12 @@ public class Gene {
                 mate2 = baseNSeq + mate2;
             }
 
-            mateFile1.write(">chr" + this.chr + "_" + this.geneId + "_" +type + "_"+break_point + ":" + end_point +"\t" + strand);
+            mateFile1.write(">chr" + this.chr + "_" + this.geneId + "_" +break_point + "_" + end_point);
             mateFile1.newLine();
             mateFile1.write(mate1);
             mateFile1.newLine();
 
-            mateFile2.write(">chr" + this.chr + "_" + this.geneId + "_" +type + "_"+break_point + ":" + end_point +"\t" + strand);
+            mateFile2.write(">chr" + this.chr + "_" + this.geneId + "_"+break_point + "_" + end_point);
             mateFile2.newLine();
             mateFile2.write(mate2);
             mateFile2.newLine();

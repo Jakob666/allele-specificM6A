@@ -160,7 +160,7 @@ public class ReadsGenerator {
      * 设置具有SNP位点的基因 major allele和 minor allele的比例
      */
     private void mutatedGeneAseRatio() {
-        UniformRealDistribution urd = new UniformRealDistribution(0.50, 0.95);
+        UniformRealDistribution urd = new UniformRealDistribution(0.50, 0.80);
         // 获取到突变基因的 geneID集合
         Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
         double ref;
@@ -250,11 +250,8 @@ public class ReadsGenerator {
      * @param outputfile 输出文件路径
      */
     private void transcriptionParameter(String outputfile, String geneExpFile) {
-        double chr_pm_range = 0.95 / this.ChrGeneMap.keySet().size();
-        double lower;
-        double upper = 0;
         // 用于随机抽取RPKM值
-        UniformRealDistribution unidiform = new UniformRealDistribution(10, 100);
+        UniformRealDistribution unidiform = new UniformRealDistribution(100, 400);
         GeneExpDistribution geneExp = GeneExpDistribution.getInstance();
         HashMap<String, double[]> geneExpValue = null;
         Set<String> mutatedGeneId = this.geneMutatedPosition.keySet();
@@ -267,14 +264,10 @@ public class ReadsGenerator {
             for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> geneList = entry.getValue();
                 String chr = entry.getKey();
-                double gene_pm_range = chr_pm_range / geneList.size();
                 String geneId;
                 double majorAlleleRatio, minorAlleleRatio;
                 for (Gene gene: geneList) {
                     geneId = gene.getGeneId();
-                    lower = upper;
-                    upper = upper + gene_pm_range;
-                    gene.setPmRange(lower, upper);
                     double RPKM;
                     // 如果没有设置测序深度
                     if (this.sequencingDepth == 0) {
