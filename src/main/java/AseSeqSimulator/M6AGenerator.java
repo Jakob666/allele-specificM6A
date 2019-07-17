@@ -3,6 +3,7 @@ package AseSeqSimulator;
 import GTFComponent.ElementRecord;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformIntegerDistribution;
+import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.*;
 import java.util.*;
@@ -13,6 +14,8 @@ import java.util.*;
 public class M6AGenerator {
     private HashMap<String, HashSet<Integer>> mutGenePosition;
     private NormalDistribution m6aFrequency = new NormalDistribution(6, 2);
+    private HashMap<String, HashMap<Integer, Double>> asmRatio = new HashMap<>();
+    private HashMap<String, HashMap<Integer, Boolean>> asmBias = new HashMap<>();
 
     /**
      * 构造方法
@@ -75,20 +78,36 @@ public class M6AGenerator {
      * @param outputFile 输出文件
      */
     public void storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites, File outputFile) {
+        UniformRealDistribution urd = new UniformRealDistribution(0.6, 0.8);
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(outputFile))
             );
-            bfw.write("geneId\texonPosition\tgenomePosition\n");
+            bfw.write("geneId\texonPosition\tgenomePosition\tmajorASMRatio\tMajorAlleleSpecific\n");
             HashMap<Integer, Integer> m6aSites;
             Integer genomePosition;
             for (String geneId: simulatedM6aSites.keySet()) {
                 m6aSites = simulatedM6aSites.get(geneId);
                 for (Integer exonPosition: m6aSites.keySet()) {
+                    double randNum = Math.random(), ase = 0.5;
+                    boolean bias = false;
+                    if (randNum > 0.5) {
+                        ase = urd.sample();
+                        randNum = Math.random();
+                        if (randNum > 0.5) {
+                            bias = true;
+                        }
+                    }
                     genomePosition = m6aSites.get(exonPosition);
-                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition);
+                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition + "\t" + ase + "\t" + bias);
                     bfw.newLine();
+                    HashMap<Integer, Double> geneAsmRatio = asmRatio.getOrDefault(geneId, new HashMap<>());
+                    HashMap<Integer, Boolean> geneAsmBias = asmBias.getOrDefault(geneId, new HashMap<>());
+                    geneAsmRatio.put(exonPosition, ase);
+                    geneAsmBias.put(exonPosition, bias);
+                    asmRatio.put(geneId, geneAsmRatio);
+                    asmBias.put(geneId, geneAsmBias);
                 }
             }
             bfw.close();
@@ -103,8 +122,11 @@ public class M6AGenerator {
                 }
             }
         }
-
     }
+
+    public HashMap<String, HashMap<Integer, Double>> getAseRatio() {return asmRatio;}
+
+    public HashMap<String, HashMap<Integer, Boolean>> getAseBias() {return asmBias;}
 
     /**
      * 通过m6A在基因外显子区域的位置，得到其基因组上的位置

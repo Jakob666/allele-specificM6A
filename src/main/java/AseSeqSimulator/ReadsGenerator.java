@@ -19,6 +19,8 @@ public class ReadsGenerator {
     private HashMap<String, HashSet<Integer>> geneMutatedPosition;
     private HashMap<String, HashMap<Integer, String[]>> geneMutationRefAlt;
     private HashMap<String, HashMap<Integer, Integer>> geneMutGenomePosition, geneM6aGenomePosition;
+    private HashMap<String, HashMap<Integer, Double>> geneM6aAsmRatio;
+    private HashMap<String, HashMap<Integer, Boolean>> geneM6aAsmBias;
     private HashMap<String, HashSet<String>> selectedGeneChr = new HashMap<>();
     private HashMap<String, Double> aseGeneMajorAlleleRatio = new HashMap<>();
     private SequencingError seqErrorModel;
@@ -160,13 +162,18 @@ public class ReadsGenerator {
      * 设置具有SNP位点的基因 major allele和 minor allele的比例
      */
     private void mutatedGeneAseRatio() {
-        UniformRealDistribution urd = new UniformRealDistribution(0.50, 0.80);
+        UniformRealDistribution urd = new UniformRealDistribution(0.60, 0.80);
         // 获取到突变基因的 geneID集合
         Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
-        double ref;
+        double ref, randNum;
         for (String mutGeneId: mutGeneIds) {
-            ref = urd.sample();
-            this.aseGeneMajorAlleleRatio.put(mutGeneId, ref);
+            randNum = Math.random();
+            if (randNum > 0.5)
+                this.aseGeneMajorAlleleRatio.put(mutGeneId, 0.5);
+            else {
+                ref = urd.sample();
+                this.aseGeneMajorAlleleRatio.put(mutGeneId, ref);
+            }
         }
     }
 
@@ -311,7 +318,8 @@ public class ReadsGenerator {
     }
 
     /**
-     * 对每个选中的基因进行m6A修饰，在其外显子序列上随机生成一定数目的m6A修饰位点并将其记录到文件中
+     * 对每个选中的基因进行m6A修饰，在其外显子序列上随机生成一定数目的m6A修饰位点并将其记录到文件中，同时得到每个甲基化位点的ASM ratio
+     * 以及甲基化是否具有allele偏向性
      */
     private void geneM6aModification() {
         this.geneM6aGenomePosition = new HashMap<>();
@@ -327,6 +335,8 @@ public class ReadsGenerator {
         }
         File recordFile = new File(this.outputDir, "simulateM6aSites.txt");
         m6AGenerator.storeGeneM6aSites(this.geneM6aGenomePosition, recordFile);
+        this.geneM6aAsmRatio = m6AGenerator.getAseRatio();
+        this.geneM6aAsmBias = m6AGenerator.getAseBias();
     }
 
     /**
@@ -440,12 +450,14 @@ public class ReadsGenerator {
                     // 生成基因mRNA的fragment，并将其富集到INPUT和IP两个类群
                     gene.enrichInputFragment(fragmentMean, fragmentTheta, this.readLength, geneMutateSites);
                     gene.enrichIpFragment(fragmentMean, fragmentTheta, this.readLength, geneM6aSites, geneMutateSites);
-                    gene.generateReads(inputMate1File, inputMate2File, this.readLength, inputMultiple, ref, mutExonSeq,
-                                            direct, this.seqErrorModel, "input");
-                    gene.generateReads(ipMate1File, ipMate2File, this.readLength, inputMultiple, ref, mutExonSeq,
-                                       direct, this.seqErrorModel, "ip");
-                    gene.peakFragmentFromBackground(ipMate1File, ipMate2File, this.readLength, inputMultiple, ref,
-                                                    mutExonSeq, direct, this.seqErrorModel, geneMutateSites);
+                    gene.generateReads(inputMate1File, inputMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
+                                       mutExonSeq, direct, this.seqErrorModel, "input", null, null);
+                    HashMap<Integer, Double> geneM6aAsm = this.geneM6aAsmRatio.getOrDefault(geneId, null);
+                    HashMap<Integer, Boolean> m6aBias = this.geneM6aAsmBias.getOrDefault(geneId, null);
+                    gene.generateReads(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref, mutExonSeq,
+                                       direct, this.seqErrorModel, "ip", geneM6aAsm, m6aBias);
+                    gene.peakFragmentFromBackground(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
+                                                    mutExonSeq, direct, this.seqErrorModel, geneMutateSites, geneM6aAsm, m6aBias);
                     gene.release();
                 }
             }

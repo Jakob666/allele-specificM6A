@@ -225,17 +225,24 @@ public class Gene {
      * @param mateFile1 测序文件
      * @param mateFile2 测序文件(只有在pair-end时候指定，否则为null)
      * @param readLength 测序read length
-     * @param multiple 实验重复次数
+     * @param fragmentMean fragment长度均值
+     * @param fragmentTheta fragment长度标准差
      * @param direct 测序方式 single-end 或 pair-end
      * @param mutExonSeq 当基因具有ASE位点时传入突变的序列，不存在时为null
      * @param refProp major allele的频率
      * @param seqErrorModel 测序误差模型
      * @param sample ip或input
+     * @param geneM6aAsm 如果基因上存在ASE位点，则传入各位点的ASM ratio
      */
-    public void generateReads(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int multiple,
-                                   double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
-                                   String sample) {
+    public void generateReads(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int fragmentMean,
+                              int fragmentTheta, double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
+                              String sample, HashMap<Integer, Double> geneM6aAsm, HashMap<Integer, Boolean> minorBias) {
         ArrayList<int[]> fragmentRanges;
+        ArrayList<Integer> m6aSites = null;
+        if (geneM6aAsm != null) {
+            m6aSites = new ArrayList<>(geneM6aAsm.keySet());
+            Collections.sort(m6aSites);
+        }
         HashMap<Integer, ArrayList<int[]>> mutateFragmentRanges;
         fragmentRanges = (sample.equals("ip"))? this.ipFragment : this.inputFragment;
         mutateFragmentRanges = (sample.equals("ip"))? this.ipMutateFragments : this.inputMutateFragments;
@@ -252,7 +259,24 @@ public class Gene {
                 // 获取每个ASE位点覆盖的fragment的范围
                 mutateFragments = mutateFragmentRanges.get(mutateSite);
                 count = mutateFragments.size();
-                majorAlleleCount = (int) (count * refProp);
+                if (Math.abs(refProp - 0.5) < 0.00001) {
+                    if (count % 2 == 0)
+                        majorAlleleCount = count / 2;
+                    else
+                        majorAlleleCount = (count - 1) / 2;
+                } else {
+                    majorAlleleCount = (int) (count * refProp);
+                }
+                boolean bias = false;
+                if (sample.equals("ip") && m6aSites != null) {
+                    int site = this.ifInM6aPeakRange(mutateSite, m6aSites, fragmentMean + 2 * fragmentTheta);
+                    if (site != -1) {
+                        refProp = geneM6aAsm.get(site);
+                        bias = minorBias.get(site);
+                        if (!bias)
+                            majorAlleleCount = count - majorAlleleCount;
+                    }
+                }
                 Collections.shuffle(mutateFragments);
                 majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                 minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
@@ -272,19 +296,26 @@ public class Gene {
      * @param mateFile1 测序文件
      * @param mateFile2 测序文件(只有在pair-end时候指定，否则为null)
      * @param readLength 测序read length
-     * @param multiple 实验重复次数
+     * @param fragmentMean fragment长度均值
+     * @param fragmentTheta fragment长度标准差
      * @param direct 测序方式 single-end 或 pair-end
      * @param mutExonSeq 当基因具有ASE位点时传入突变的序列，不存在时为null
      * @param refProp major allele的频率
      * @param seqErrorModel 测序误差模型
      */
-    public void peakFragmentFromBackground(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int multiple,
-                                           double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
-                                           Set<Integer> geneMutateSites) {
+    public void peakFragmentFromBackground(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int fragmentMean,
+                                           int fragmentTheta, double refProp, String mutExonSeq, String direct,
+                                           SequencingError seqErrorModel, Set<Integer> geneMutateSites,
+                                           HashMap<Integer, Double> geneM6aAsm, HashMap<Integer, Boolean> minorBias) {
         List<Integer> mutations = null;
         if (geneMutateSites != null) {
             mutations = new ArrayList<>(geneMutateSites);
             Collections.sort(mutations);
+        }
+        ArrayList<Integer> m6aSites = null;
+        if (geneM6aAsm != null) {
+            m6aSites = new ArrayList<>(geneM6aAsm.keySet());
+            Collections.sort(m6aSites);
         }
         int peakReadsCount, peakFragmentCount;
         UniformRealDistribution urd = new UniformRealDistribution(this.pmRange[0], this.pmRange[1]);
@@ -322,8 +353,21 @@ public class Gene {
                 List<int[]> majorAlleleFragmentRanges, minorAlleleFragmentRanges;
                 for (Integer mutateSite: this.m6aSiteMutateFragments.keySet()) {
                     mutateFragments = this.m6aSiteMutateFragments.get(mutateSite);
+                    boolean bias = false;
+                    // 查看突变位点是否被m6A修饰位点区间覆盖，区间范围[site-fragmentMean-2*theta, site+fragmentMean+2*theta]
+                    if (m6aSites != null) {
+                        int site = this.ifInM6aPeakRange(mutateSite, m6aSites, fragmentMean+2*fragmentTheta);
+                        // 如果在区域范围内，则该突变位点的reads数目依据修饰位点的ASM ratio进行生成，并查看是否具有major allele偏向性
+                        if (site != -1) {
+                            refProp = geneM6aAsm.get(site);
+                            bias = minorBias.get(site);
+                        }
+                    }
                     count = mutateFragments.size();
-                    majorAlleleCount = (int) (count * refProp);
+                    if (bias)
+                        majorAlleleCount = (int) (count * refProp);
+                    else
+                        majorAlleleCount = count - (int) (count * refProp);
                     Collections.shuffle(mutateFragments);
                     majorAlleleFragmentRanges = mutateFragments.subList(0, majorAlleleCount);
                     minorAlleleFragmentRanges = mutateFragments.subList(majorAlleleCount, mutateFragments.size());
@@ -382,6 +426,21 @@ public class Gene {
     }
 
     /**
+     * 判断reads上的突变位点是否位于甲基化peak内
+     * @param mutatePosition 突变位点位置
+     * @param m6aSites 甲基化位点集合
+     * @param fragmentLength fragment长度
+     * @return 是否在peak范围内
+     */
+    private int ifInM6aPeakRange(int mutatePosition, ArrayList<Integer> m6aSites, int fragmentLength) {
+        for (Integer site: m6aSites) {
+            if (Math.max(0, site-fragmentLength) <= mutatePosition && mutatePosition <= site + fragmentLength)
+                return site;
+        }
+        return -1;
+    }
+
+    /**
      * get break and end point of fragment on exon sequence, according to the random generated position
      * @param fragmentLength fragment length
      * @return break and end point
@@ -413,6 +472,8 @@ public class Gene {
             break_point = fragmentRange[0];
             endPoint = break_point + readLength - 1;
             // 如果基因含有ASE位点，则随机选取refCount个fragment作为major allele，其余的是minor allele
+            if (endPoint > exonSequence.length())
+                endPoint = exonSequence.length() - 1;
             fragmentString = exonSequence.substring(break_point, endPoint+1);
             fragment = this.getSequencingReads(fragmentString, break_point, endPoint, readLength, direct);
             if (direct.equals("SE"))
