@@ -3,6 +3,7 @@ package AseSeqSimulator;
 import GTFComponent.ElementRecord;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformIntegerDistribution;
+import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.io.*;
 import java.util.*;
@@ -74,21 +75,29 @@ public class M6AGenerator {
      * @param simulatedM6aSites 记录每个基因修饰位点的哈希表，HashMap<String, HashMap<Integer, Integer>> geneId: exon position: genome position
      * @param outputFile 输出文件
      */
-    public void storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites, File outputFile) {
+    public HashMap<String, HashMap<Integer, Double>> storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites, File outputFile) {
+        HashMap<String, HashMap<Integer, Double>> asmRatio = new HashMap<>();
+        UniformRealDistribution urd = new UniformRealDistribution(0.6, 0.8);
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(outputFile))
             );
-            bfw.write("geneId\texonPosition\tgenomePosition\n");
+            bfw.write("geneId\texonPosition\tgenomePosition\tmajorASMRatio\n");
             HashMap<Integer, Integer> m6aSites;
             Integer genomePosition;
             for (String geneId: simulatedM6aSites.keySet()) {
                 m6aSites = simulatedM6aSites.get(geneId);
                 for (Integer exonPosition: m6aSites.keySet()) {
+                    double randNum = Math.random(), ase = 0.5;
+                    if (randNum > 0.5)
+                        ase = urd.sample();
                     genomePosition = m6aSites.get(exonPosition);
-                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition);
+                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition + "\t" + ase);
                     bfw.newLine();
+                    HashMap<Integer, Double> geneAsm = asmRatio.getOrDefault(geneId, new HashMap<>());
+                    geneAsm.put(exonPosition, ase);
+                    asmRatio.put(geneId, geneAsm);
                 }
             }
             bfw.close();
@@ -104,6 +113,7 @@ public class M6AGenerator {
             }
         }
 
+        return asmRatio;
     }
 
     /**
