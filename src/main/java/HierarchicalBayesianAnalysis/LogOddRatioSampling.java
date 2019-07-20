@@ -2,6 +2,10 @@ package HierarchicalBayesianAnalysis;
 
 import org.apache.commons.math3.distribution.NormalDistribution;
 
+import java.io.*;
+import java.util.HashMap;
+import java.util.HashSet;
+
 public class LogOddRatioSampling {
     public LogOddRatioSampling() {}
 
