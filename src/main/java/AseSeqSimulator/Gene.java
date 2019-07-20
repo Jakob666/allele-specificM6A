@@ -258,6 +258,11 @@ public class Gene {
             for (Integer mutateSite: mutateFragmentRanges.keySet()) {
                 // 获取每个ASE位点覆盖的fragment的范围
                 mutateFragments = mutateFragmentRanges.get(mutateSite);
+                if (sample.equals("ip") && m6aSites != null) {
+                     int site = this.ifInM6aPeakRange(mutateSite, m6aSites, fragmentTheta+2*fragmentTheta);
+                     if (site != -1)
+                         refProp = geneM6aAsm.get(site);
+                }
                 count = mutateFragments.size();
                 if (Math.abs(refProp - 0.5) < 0.00001) {
                     if (count % 2 == 0)

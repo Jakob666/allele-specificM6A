@@ -321,6 +321,7 @@ public class SimulateDataPredictAccuracy {
                     geneID = info[1];
                     geneName = info[2];
                     majorAlleleRatio = Double.parseDouble(info[6]);
+
                     if (this.significantAsePeakCoveredGeneId.contains(geneID)) {
                         this.significantPeakCoveredGeneAse.put(geneName, majorAlleleRatio);
                     }

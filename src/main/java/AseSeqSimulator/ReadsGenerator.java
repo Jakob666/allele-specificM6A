@@ -319,7 +319,10 @@ public class ReadsGenerator {
 
     /**
      * 对每个选中的基因进行m6A修饰，在其外显子序列上随机生成一定数目的m6A修饰位点并将其记录到文件中，同时得到每个甲基化位点的ASM ratio
+<<<<<<< HEAD
      * 以及甲基化是否具有allele偏向性
+=======
+>>>>>>> refs/remotes/origin/master
      */
     private void geneM6aModification() {
         this.geneM6aGenomePosition = new HashMap<>();
