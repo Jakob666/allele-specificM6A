@@ -13,11 +13,11 @@ public class PeakCoveredSNP {
      * Constructor
      * @param vcfRecordFile vcf record file
      * @param peakCallingRes m6a peak calling result bed file
+     * @param outputFile 输出文件路径
      * @param logger Logger instance
      */
-    public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, Logger logger) {
+    public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, Logger logger) {
         this.logger = logger;
-        String outputFileName = vcfRecordFile.substring(0, vcfRecordFile.lastIndexOf("_")) + "_peakCoveredSNP.txt";
         this.vcfFile = new File(vcfRecordFile);
         if (!vcfFile.exists()) {
             this.logger.error("vcf file not exists");
@@ -28,7 +28,7 @@ public class PeakCoveredSNP {
             this.logger.error("peak calling result bed file not exists");
             System.exit(2);
         }
-        this.outputFile = new File(outputFileName);
+        this.outputFile = new File(outputFile);
     }
 
     /**
@@ -48,10 +48,11 @@ public class PeakCoveredSNP {
 
             String line = "", writeOut;
             String[] info;
-            String chrNum, refNc, altNc, refCount, altCount;
+            String chrNum, refNc, altNc, refCount, altCount, majorAlleleStrand;
             int[] refAndAltCount;
             int position;
-            bfw.write("#chr\tstrand\tposition\tpeakStart\tpeakEnd\tmajorAllele\tminorAllele\tmajorCount\tminorCount\n");
+            double quality;
+            bfw.write("#chr\tSNP strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleStrand\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -62,18 +63,29 @@ public class PeakCoveredSNP {
                     chrNum = info[0];
                     refNc = info[3];
                     altNc = info[4];
+                    quality = Double.parseDouble(info[5]);
                     // 只保留单核苷酸突变
                     if (refNc.length() > 1 | altNc.length() > 1)
+                        continue;
+                    // 对质量进行筛选
+                    if (quality < 10.0)
                         continue;
                     position = Integer.parseInt(info[1]);
                     refAndAltCount = this.getReadsCountViaDp4(info[7]);
                     // 设置阈值防止出现假阳性位点
                     if (refAndAltCount[0] == 0 | refAndAltCount[1] == 0)
                         continue;
-                    if (refAndAltCount[0] + refAndAltCount[1] <= 3 | Math.abs(refAndAltCount[0] - refAndAltCount[1]) >= 20)
+                    if (refAndAltCount[0] <= 1 | refAndAltCount[1] <= 1)
                         continue;
-                    refCount = (refAndAltCount[0] > refAndAltCount[1])? Integer.toString(refAndAltCount[0]):Integer.toString(refAndAltCount[1]);
-                    altCount = (refAndAltCount[0] > refAndAltCount[1])? Integer.toString(refAndAltCount[1]):Integer.toString(refAndAltCount[0]);
+                    if (refAndAltCount[0] >= refAndAltCount[1]) {
+                        refCount = Integer.toString(refAndAltCount[0]);
+                        altCount = Integer.toString(refAndAltCount[1]);
+                        majorAlleleStrand = "+";
+                    } else {
+                        refCount = Integer.toString(refAndAltCount[1]);
+                        altCount = Integer.toString(refAndAltCount[0]);
+                        majorAlleleStrand = "-";
+                    }
 
                     // 获取对应的染色体的区间树并在正负链的peak上搜寻是否被覆盖。如果被覆盖则写入文件
                     HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
@@ -85,13 +97,13 @@ public class PeakCoveredSNP {
                     IntervalTreeNode negStrandSearchResult = negStrandTree.search(negStrandTree.root, position);
                     if (posStrandSearchResult != null) {
                         String[] newLine = new String[]{chrNum, "+", Integer.toString(position), Integer.toString(posStrandSearchResult.peakStart),
-                                                        Integer.toString(posStrandSearchResult.peakEnd), refNc, altNc, refCount, altCount};
+                                                        Integer.toString(posStrandSearchResult.peakEnd), majorAlleleStrand, refCount, altCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
                     }else if (negStrandSearchResult != null) {
                         String[] newLine = new String[]{chrNum, "-", Integer.toString(position), Integer.toString(negStrandSearchResult.peakStart),
-                                                        Integer.toString(negStrandSearchResult.peakEnd), refNc, altNc, refCount, altCount};
+                                                        Integer.toString(negStrandSearchResult.peakEnd), majorAlleleStrand, refCount, altCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
