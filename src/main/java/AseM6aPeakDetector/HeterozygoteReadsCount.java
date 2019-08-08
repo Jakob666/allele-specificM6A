@@ -8,6 +8,7 @@ import java.util.LinkedList;
 
 public class HeterozygoteReadsCount {
     private File peakCoveredSNPFile;
+    private HashMap<String, String> peakMajorAlleleStrand = new HashMap<>();
     private Logger log;
 
     /**
@@ -33,7 +34,7 @@ public class HeterozygoteReadsCount {
             );
             String line = "";
             String[] info;
-            String chr, peakStart, peakEnd, peakRange;
+            String chr, peakStart, peakEnd, peakRange, majorAlleleStrand;
             int refCount, altCount;
             while (line != null) {
                 line = bfr.readLine();
@@ -45,9 +46,11 @@ public class HeterozygoteReadsCount {
                     peakStart = info[3];
                     peakEnd = info[4];
                     peakRange = peakStart +":"+peakEnd;
-                    refCount = Integer.parseInt(info[7]);
-                    altCount = Integer.parseInt(info[8]);
+                    majorAlleleStrand = info[5];
+                    refCount = Integer.parseInt(info[6]);
+                    altCount = Integer.parseInt(info[7]);
 
+                    this.peakMajorAlleleStrand.put(chr+":"+peakRange, majorAlleleStrand);
                     HashMap<String, HashMap<String, LinkedList<Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
                     HashMap<String, LinkedList<Integer>> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());
                     LinkedList<Integer> majorHaplotypeReads = peakSnp.getOrDefault("major", new LinkedList<Integer>());
@@ -76,6 +79,10 @@ public class HeterozygoteReadsCount {
         }
 
         return majorMinorHaplotype;
+    }
+
+    public HashMap<String, String> getPeakMajorAlleleStrand() {
+        return peakMajorAlleleStrand;
     }
 
 }

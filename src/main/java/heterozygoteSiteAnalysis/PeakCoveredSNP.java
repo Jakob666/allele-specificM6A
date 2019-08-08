@@ -73,10 +73,10 @@ public class PeakCoveredSNP {
                     position = Integer.parseInt(info[1]);
                     refAndAltCount = this.getReadsCountViaDp4(info[7]);
                     // 设置阈值防止出现假阳性位点
-                    if (refAndAltCount[0] == 0 | refAndAltCount[1] == 0)
+                    if (refAndAltCount[1] == 0) // refAndAltCount[0] == 0 |
                         continue;
-                    if (refAndAltCount[0] <= 1 | refAndAltCount[1] <= 1)
-                        continue;
+//                    if (refAndAltCount[0] <= 1 | refAndAltCount[1] <= 1)
+//                        continue;
                     if (refAndAltCount[0] >= refAndAltCount[1]) {
                         refCount = Integer.toString(refAndAltCount[0]);
                         altCount = Integer.toString(refAndAltCount[1]);
