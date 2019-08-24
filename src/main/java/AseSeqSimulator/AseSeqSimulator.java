@@ -10,13 +10,13 @@ public class AseSeqSimulator {
 
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
-        int librarySize = 1000000, readLength = 50, fragmentMean = 250, fragmentStd = 25, multiple = 1,
-            repeat = 1, minimumMut = 5, maximumMut = 15, depth = 0;
-        // default 20% gene has SNP site;
-        double geneProp = 0.2, mutProportion = 0.4, pcrErrorProb = 0.005;
+        int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
+                minimumMut = 1, maximumMut = 5, depth = 100;
+        // default 60% gene has SNP site;
+        double geneProp = 0.05, mutProportion = 0.6, pcrErrorProb = 0;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
-        boolean overlap = false, singleEnd = true;
-        File outputDir = new File("./AseSeqReads");
+        boolean overlap = true, singleEnd = true;
+        File outputDir = new File("./simulateData");
 
         gtfFile = commandLine.getOptionValue('g');
         twoBitFile = commandLine.getOptionValue('t');
@@ -26,6 +26,8 @@ public class AseSeqSimulator {
             geneExpFile = commandLine.getOptionValue("exp");
         if (commandLine.hasOption('o'))
             outputDir = new File(commandLine.getOptionValue('o'));
+        if (!outputDir.exists())
+            outputDir.mkdir();
         if (commandLine.hasOption("ls"))
             librarySize = Integer.parseInt(commandLine.getOptionValue("ls"));
         if (commandLine.hasOption("dep")) {
@@ -37,6 +39,8 @@ public class AseSeqSimulator {
         }
         if (commandLine.hasOption("rl"))
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
+        if (commandLine.hasOption("pl"))
+            peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
         if (commandLine.hasOption("mi"))
             minimumMut = Integer.parseInt(commandLine.getOptionValue("mi"));
         if (commandLine.hasOption("mx"))
@@ -45,10 +49,6 @@ public class AseSeqSimulator {
             fragmentMean = Integer.parseInt(commandLine.getOptionValue("fm"));
         if (commandLine.hasOption("ft"))
             fragmentStd = Integer.parseInt(commandLine.getOptionValue("ft"));
-        if (commandLine.hasOption("mul"))
-            multiple = Integer.parseInt(commandLine.getOptionValue("mul"));
-        if (commandLine.hasOption("rep"))
-            repeat = Integer.parseInt(commandLine.getOptionValue("rep"));
         if (commandLine.hasOption("gp")) {
             double number = Double.parseDouble(commandLine.getOptionValue("gp"));
             if (number > 0)
@@ -88,7 +88,7 @@ public class AseSeqSimulator {
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, readLength, minimumMut,
-                                          maximumMut, fragmentMean, fragmentStd, mutProportion, multiple, repeat, pcrErrorProb,
+                                          maximumMut, fragmentMean, fragmentStd, mutProportion, peakLength, pcrErrorProb,
                                           overlap, singleEnd, geneExpFile);
 
     }
@@ -120,15 +120,19 @@ public class AseSeqSimulator {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("dep", "depth", true, "sequencing depth, default 0.");
+        option = new Option("dep", "depth", true, "sequencing depth, default 100.");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rl", "read_length", true, "sequencing reads length, default 50");
+        option = new Option("rl", "read_length", true, "sequencing reads length, default 75");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment, default 5");
+        option = new Option("pl", "peak_length", true, "m6A signal peak length, default 250");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment, default 1");
         option.setRequired(false);
         options.addOption(option);
 
@@ -161,14 +165,6 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("pe", "pcr_error", true, "probability of PCR sequencing error, default 5‰");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("mul", "multiple_time", true, "multiple time, default 1");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("rep", "repeat_time", true, "experiment repeat time, default 1");
         option.setRequired(false);
         options.addOption(option);
 

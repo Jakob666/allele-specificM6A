@@ -18,7 +18,8 @@ public class AseGeneDetection {
     private HashMap<String, int[]> geneMajorStrand;
     private int samplingTime, burnIn;
     private HashMap<Double, ArrayList<String>> geneAsePValue = new HashMap<>();
-    private HashMap<String, Integer> geneMajorMinorReadCountDiff = new HashMap<>(), geneSNVs = new HashMap<>();
+    private HashMap<String, Integer> geneSNVs = new HashMap<>();
+    private HashMap<String, Double> geneMajorAlleleFrequency = new HashMap<>();
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.000000");
 
@@ -120,7 +121,7 @@ public class AseGeneDetection {
             }
             if (majorCount.length == 1 && (minorCount[0] ==0 && majorCount[0] < 10))  // majorCount[0] - minorCount[0] <= 4
                 continue;
-            this.geneMajorMinorReadCountDiff.put(label, majorReadsCount-minorReadsCount);
+            this.geneMajorAlleleFrequency.put(label, (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount));
             hb = new HierarchicalBayesianModel(0, 1, this.samplingTime, this.burnIn, majorCount, minorCount);
             p = hb.testSignificant();
 
@@ -144,10 +145,10 @@ public class AseGeneDetection {
             }
         });
 
-        int totalGenes = this.geneAlleleReads.size(), rankage = totalGenes;
+        int totalGenes = this.geneSNVs.size(), rankage = totalGenes;
         double qValue, prevQVal = sortedPVals.get(0).getKey();
         String pValString, qValString;
-        this.geneAseQValue = new ArrayList(totalGenes);
+        this.geneAseQValue = new ArrayList<>(totalGenes);
 
         // 对相同p值的基因进行排序
         for (Map.Entry<Double, ArrayList<String>> entry: sortedPVals) {
@@ -158,34 +159,32 @@ public class AseGeneDetection {
             HashMap<String, Integer> samePValGeneSNVs = new HashMap<>();
             for (String gene: samePValGenes)
                 samePValGeneSNVs.put(gene, this.geneSNVs.get(gene));
-            // 相同p值的基因上major count与minor count数目的差值
-            HashMap<String, Integer> samePValGeneMajorMinorDiff = new HashMap<>();
+            // 相同p值的基因的major allele frequency
+            HashMap<String, Double> samePValGeneMajorAlleleFrequency = new HashMap<>();
             for (String gene: samePValGenes)
-                samePValGeneMajorMinorDiff.put(gene, this.geneMajorMinorReadCountDiff.get(gene));
+                samePValGeneMajorAlleleFrequency.put(gene, this.geneMajorAlleleFrequency.get(gene));
 
             List<Map.Entry<String, Integer>> samePValGeneEntry = new ArrayList<>(samePValGeneSNVs.entrySet());
             Collections.sort(samePValGeneEntry, new Comparator<Map.Entry<String, Integer>>() {
                 @Override
                 public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
-                    // 首先按照SNVs的数目进行排序
-                    Integer gene1SNVs = o1.getValue(), gene2SNVs = o2.getValue();
-                    if (gene1SNVs - gene2SNVs != 0)
-                        return o2.getValue().compareTo(o1.getValue());
-                    else { // 若SNVs数目相同，则按照major reads与 minor reads的差值进行排序
-                        String gene1 = o1.getKey(), gene2 = o2.getKey();
-                        return samePValGeneMajorMinorDiff.get(gene2).compareTo(samePValGeneMajorMinorDiff.get(gene1));
-                    }
+
+                    // 首先按照MAF进行排序，若MAF相同，则按照SNV的数目进行排序
+                    String gene1 = o1.getKey(), gene2 = o2.getKey();
+                    Double gene1MAF = samePValGeneMajorAlleleFrequency.get(gene1), gene2MAF = samePValGeneMajorAlleleFrequency.get(gene2);
+                    if (Math.abs(gene1MAF - gene2MAF) < 0.00001) {
+                        Integer gene1SNVs = o1.getValue(), gene2SNVs = o2.getValue();
+                        return gene2SNVs.compareTo(gene1SNVs);
+                    } else
+                        return gene2MAF.compareTo(gene1MAF);
                 }
             });
 
             for (Map.Entry<String, Integer> geneEntry: samePValGeneEntry) {
                 String geneName = geneEntry.getKey();
                 qValue = Math.min(1.0, pVal * totalGenes / rankage);
+                System.out.println(geneEntry.getKey() + "\t" + geneEntry.getValue() + "\t" + pVal + "\t" + qValue + samePValGeneMajorAlleleFrequency.get(geneEntry.getKey()) + "\t" + rankage);
                 rankage--;
-//                if (qValue > prevQVal)
-//                    qValue = prevQVal;
-//                else
-//                    prevQVal = qValue;
 
                 pValString = Double.toString(pVal);
                 qValString = Double.toString(qValue);
@@ -206,8 +205,9 @@ public class AseGeneDetection {
             String[] info;
             int snvNum, majorCount, minorCount;
             int[] alleleStrand;
+            double majorAlleleFrequency;
             ArrayList<Integer> majorAlleleCount, minorAlleleCount;
-            bfw.write("#geneId\tgeneName\tp-value\tq-value\tsnvNum\tmajorAlleleReads\tminorAlleleReads\tmajorAlleleStrand\n");
+            bfw.write("#geneId\tgeneName\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tMajorAlleleFrequency\tmajorAlleleStrand\n");
             for (String record: this.geneAseQValue) {
                 info = record.split("->");
                 geneId = info[0];
@@ -220,6 +220,7 @@ public class AseGeneDetection {
                 snvNum = majorAlleleCount.size();
                 majorCount = this.getSum(majorAlleleCount);
                 minorCount = this.getSum(minorAlleleCount);
+                majorAlleleFrequency = (double) majorCount / (double) (majorCount + minorCount);
                 alleleStrand = this.geneMajorStrand.get(geneId);
                 if (alleleStrand[0] >= alleleStrand[1])
                     majorAlleleStrand = "+";
@@ -228,7 +229,7 @@ public class AseGeneDetection {
 
                 finalRecords.put(geneName, new String[]{geneId, geneName, pVal, qVal, Integer.toString(snvNum),
                         Integer.toString(majorCount), Integer.toString(minorCount),
-                        majorAlleleCount.toString(), minorAlleleCount.toString(), majorAlleleStrand});
+                        Double.toString(majorAlleleFrequency), majorAlleleStrand});
             }
 
             List<Map.Entry<String, String[]>> records = new ArrayList<>(finalRecords.entrySet());
@@ -254,7 +255,7 @@ public class AseGeneDetection {
 
             for (Map.Entry<String, String[]> rec: records) {
                 String[] data = rec.getValue();
-                String[] lineInfo = new String[]{data[0], data[1], data[2], data[3], data[4], data[7], data[8], data[9]};
+                String[] lineInfo = new String[]{data[0], data[1], data[2], data[3], data[4], data[5] + "," + data[6], data[7], data[8]};
                 line = String.join("\t", lineInfo);
                 bfw.write(line);
                 bfw.newLine();

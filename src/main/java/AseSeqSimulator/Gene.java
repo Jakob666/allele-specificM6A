@@ -16,9 +16,9 @@ import java.util.*;
 public class Gene {
     private String geneId, strand, geneName;
     private TranscriptRecord longestTranscriptRecord;
-    private double RPKM;
+    private double rnaRPKM, dnaRPKM;
     private String chr, exonSeq;
-    private int readsCount;
+    private int rnaReadsCount, dnaReadsCount;
     private double[] pmRange = new double[]{0.8, 0.9};
     private ElementRecord exonList = null;
     private HashMap<Integer, ArrayList<int[]>> m6aSiteFragments = new HashMap<>(), m6aSiteMutateFragments = new HashMap<>();
@@ -47,8 +47,12 @@ public class Gene {
         this.pmRange = new double[]{lower, upper};
     }
 
-    public void setRPKM(double RPKM) {
-        this.RPKM = RPKM;
+    public void setRnaRPKM(double RPKM) {
+        this.rnaRPKM = RPKM;
+    }
+
+    public void setDnaRPKM(double RPKM) {
+        this.dnaRPKM = RPKM;
     }
 
     public String getGeneId() {
@@ -67,12 +71,16 @@ public class Gene {
         return this.chr;
     }
 
-    public int getReadsCount() {
-        return this.readsCount;
+    public int getRnaReadsCount() {
+        return this.rnaReadsCount;
     }
 
-    public double getRPKM() {
-        return this.RPKM;
+    public int getDnaReadsCount() {
+        return this.dnaReadsCount;
+    }
+
+    public double getDnaRPKM() {
+        return this.dnaRPKM;
     }
 
     public ElementRecord getExonList() {
@@ -123,7 +131,7 @@ public class Gene {
      * @param librarySize library size
      */
     public void calculateReadsCountViaLibrarySize(long librarySize) {
-        this.readsCount = (int) ((this.exonSeq.length() * librarySize * this.RPKM) / Math.pow(10, 9));
+        this.rnaReadsCount = (int) ((this.exonSeq.length() * librarySize * this.rnaRPKM) / Math.pow(10, 9));
     }
 
     /**
@@ -131,8 +139,8 @@ public class Gene {
      * @param depth sequencing depth
      * @param readLength read length
      */
-    public void calculateReadsCountViaSequencingDepth(int depth, int readLength, long librarySize) {
-        this.readsCount = this.exonSeq.length() * depth / readLength;
+    public void calculateReadsCountViaSequencingDepth(int depth, int readLength) {
+        this.dnaReadsCount = this.exonSeq.length() * depth / readLength;
     }
 
     /**
@@ -149,7 +157,9 @@ public class Gene {
      * @param fragmentMean fragment平均长度
      * @param fragmentTheta fragment长度标准差
      */
-    public void enrichInputFragment(int fragmentMean, int fragmentTheta, int readLength, Set<Integer> mutatePositions) {
+    public void enrichInputFragment(int fragmentMean, int fragmentTheta, int readLength, Set<Integer> mutatePositions,
+                                    String type) {
+        int readsCount = (type.equals("rna"))? this.rnaReadsCount: this.dnaReadsCount;
         List<Integer> mutations = null;
         if (mutatePositions != null) {
             mutations = new ArrayList<>(mutatePositions);
@@ -159,7 +169,7 @@ public class Gene {
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0, fragmentLength, breakPoint, endPoint;
         boolean cover;
-        while (curReadsCount < this.readsCount) {
+        while (curReadsCount < readsCount) {
             cover = false;
             // 随机生成fragment的长度并确定fragment在外显子序列上的起始终止位点
             fragmentLength = Math.abs((int) nordi.sample());
@@ -174,7 +184,8 @@ public class Gene {
                 this.inputFragment.add(breakAndEndPoint);
             curReadsCount++;
         }
-        mutations = null;
+        if (mutations != null)
+            mutations.clear();
         nordi = null;
     }
 
@@ -185,7 +196,8 @@ public class Gene {
      * @param geneM6aSites 该基因上m6A修饰位点
      */
     public void enrichIpFragment(int fragmentMean, int fragmentTheta, int readLength, Set<Integer> geneM6aSites,
-                                 Set<Integer> mutatePositions) {
+                                 Set<Integer> mutatePositions, String type) {
+        int readsCount = (type.equals("rna"))? rnaReadsCount: dnaReadsCount;
         List<Integer> mutations = null;
         if (mutatePositions != null) {
             mutations = new ArrayList<>(mutatePositions);
@@ -196,7 +208,7 @@ public class Gene {
         NormalDistribution nordi = new NormalDistribution(fragmentMean, fragmentTheta);
         int curReadsCount = 0, fragmentLength, break_point, end_point;
         boolean cover;
-        while (curReadsCount < this.readsCount) {
+        while (curReadsCount < readsCount) {
             cover = false;
             // 随机生成fragment的长度并确定fragment在外显子序列上的起始终止位点
             fragmentLength = Math.abs((int) nordi.sample());
@@ -215,8 +227,9 @@ public class Gene {
                 this.ifCoverM6aSite(break_point, end_point, m6aSites);
             curReadsCount++;
         }
-        m6aSites = null;
-        mutations = null;
+        m6aSites.clear();
+        if (mutations != null)
+            mutations.clear();
         nordi = null;
     }
 
@@ -387,7 +400,7 @@ public class Gene {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        this.m6aSiteFragments = null;
+        this.m6aSiteFragments.clear();
     }
 
     /**
@@ -596,10 +609,10 @@ public class Gene {
      * 释放内存
      */
     public void release() {
-        this.ipFragment = null;
-        this.inputFragment = null;
-        this.inputMutateFragments = null;
-        this.ipMutateFragments = null;
+        this.ipFragment.clear();
+        this.inputFragment.clear();
+        this.inputMutateFragments.clear();
+        this.ipMutateFragments.clear();
     }
 }
 

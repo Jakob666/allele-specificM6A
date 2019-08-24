@@ -12,26 +12,30 @@ import java.util.*;
 public class SNPGenerator {
     private ArrayList<String> bases = new ArrayList<String>(Arrays.asList("A", "C", "T", "G"));
     private ArrayList<Integer> mutSiteNum;
-    private HashMap<String, HashSet<Integer>> mutGenePosition;
+    private HashMap<String, HashSet<Integer>> mutGenePosition = new HashMap<>();
     private HashMap<String, String> originExonSequence = new HashMap<>();
     private HashMap<String, String> mutatedExonSeqence = new HashMap<>();
     private HashMap<String, HashMap<Integer, String[]>> mutationRefAlt = new HashMap<>();
     private HashMap<String, LinkedList<Gene>> selectedGenes;
     private HashMap<String, HashMap<Integer, Integer>> mutGenomePosition = new HashMap<>();
+    private HashMap<String, ArrayList<String>> geneM6aPeakRanges;
     private double mutateProp;
     private String vcfFile;
 
     /**
      * 构造方法
      * @param selectedGenes 传入各个染色体上选取的基因，HashMap<String, LinkedList<Gene>> 键是染色体号，值是Gene对象链表
+     * @param geneM6aPeakRanges 各个基因上m6A修饰信号的区域
      * @param mutateProportion 突变基因占选取基因总数的比例
      * @param vcfFile 如果通过已有的VCF文件生成SNP。如果没有VCF文件，参数值为null
-     * @param minMutNum 最少突变数
-     * @param maxMutNum 最多突变数
+     * @param minMutNum 基因每个m6A peak下最少突变数
+     * @param maxMutNum 基因每个m6A peak下最多突变数
      */
-    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, double mutateProportion, String vcfFile, int minMutNum, int maxMutNum) {
+    public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, HashMap<String, ArrayList<String>> geneM6aPeakRanges,
+                        double mutateProportion, String vcfFile, int minMutNum, int maxMutNum) {
         this.selectedGenes = selectedGenes;
         this.mutateProp = mutateProportion;
+        this.geneM6aPeakRanges = geneM6aPeakRanges;
         this.setMutSiteNum(minMutNum, maxMutNum);
         this.vcfFile = vcfFile;
     }
@@ -64,37 +68,47 @@ public class SNPGenerator {
      * 在选取的所有基因中，选取一定比例的基因作为突变基因。在这些基因的外显子区域挑选随机数目的突变位点
      */
     protected void randomMutateGene() {
-        HashMap<String, HashSet<Integer>> mutatedGene = new HashMap<>();
         for (LinkedList<Gene> chrGenes: selectedGenes.values()) {
             // measure the number of mutate gene on current chromosome and randomly select from list
             int mutGeneNum = (int) (this.mutateProp * chrGenes.size());
             Collections.shuffle(chrGenes);
             List<Gene> mutGenes = chrGenes.subList(0, mutGeneNum);
-
             for (Gene mutGene: mutGenes) {
                 String exonSeq = mutGene.getExonSeq();
                 this.originExonSequence.put(mutGene.getGeneId(), exonSeq);
 
-                UniformIntegerDistribution uid = new UniformIntegerDistribution(1, exonSeq.length()-1);
-                Collections.shuffle(this.mutSiteNum);
-                int mutNum = this.mutSiteNum.get(0);
-                int order = 0;
+                String geneId = mutGene.getGeneId();
+                ArrayList<String> geneM6aPeaks = this.geneM6aPeakRanges.get(geneId);
+                int peakStart, peakEnd, genomeStart, genomeEnd;
                 HashSet<Integer> geneMutPosition = new HashSet<>();
-                while (order < mutNum){
-                    Integer mutPosition = uid.sample();
-                    if (geneMutPosition.contains(mutPosition))
-                        continue;
-                    geneMutPosition.add(mutPosition);
-                    HashMap<Integer, Integer> genomePos  = this.mutGenomePosition.getOrDefault(mutGene.getGeneId(), new HashMap<>());
-                    genomePos.put(mutPosition, this.getGenomePosition(mutGene, mutPosition));
-                    this.mutGenomePosition.put(mutGene.getGeneId(), genomePos);
-                    order ++;
+                // 在每个模拟的m6A peak下生成随机数目的突变位点
+                for (String peak: geneM6aPeaks) {
+                    String[] info = peak.split(":");
+                    genomeStart = Integer.parseInt(info[0]);
+                    genomeEnd = Integer.parseInt(info[1]);
+                    peakStart = Integer.parseInt(info[2]);
+                    peakEnd = Integer.parseInt(info[3]);
+                    UniformIntegerDistribution uid = new UniformIntegerDistribution(peakStart, peakEnd);
+                    Collections.shuffle(this.mutSiteNum);
+                    int mutNum = this.mutSiteNum.get(0);
+                    int order = 0;
+                    while (order < mutNum){
+                        Integer mutPosition = uid.sample();
+                        if (geneMutPosition.contains(mutPosition))
+                            continue;
+                        HashMap<Integer, Integer> genomePos  = this.mutGenomePosition.getOrDefault(mutGene.getGeneId(), new HashMap<>());
+                        int pos = this.getGenomePosition(mutGene, mutPosition);
+                        if (pos < genomeStart || pos > genomeEnd)
+                            continue;
+                        geneMutPosition.add(mutPosition);
+                        genomePos.put(mutPosition, pos);
+                        this.mutGenomePosition.put(mutGene.getGeneId(), genomePos);
+                        order ++;
+                    }
                 }
-                mutatedGene.put(mutGene.getGeneId(), geneMutPosition);
+                this.mutGenePosition.put(mutGene.getGeneId(), geneMutPosition);
             }
         }
-
-        this.mutGenePosition = mutatedGene;
     }
 
     /**

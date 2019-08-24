@@ -12,47 +12,34 @@ import java.util.*;
  * 给每个基因的mRNA上生成随机数目个m6A修饰位点
  */
 public class M6AGenerator {
-    private HashMap<String, HashSet<Integer>> mutGenePosition;
-    private NormalDistribution m6aFrequency = new NormalDistribution(6, 2);
+    private NormalDistribution m6aFrequency = new NormalDistribution(3, 1);
     private HashMap<String, HashMap<Integer, Double>> asmRatio = new HashMap<>();
     private HashMap<String, HashMap<Integer, Boolean>> asmBias = new HashMap<>();
 
     /**
      * 构造方法
-     * @param mutGenePosition 突变基因中SNP位点的信息
      */
-    public M6AGenerator(HashMap<String, HashSet<Integer>> mutGenePosition) {
-        this.mutGenePosition = mutGenePosition;
-    }
+    public M6AGenerator() {}
 
     /**
      * 随机生成基因m6A修饰位点，该方法为公有方法，供外界调用，返回m6A修饰位点外显子的位置及其基因组的位置
      * @param m6aModifyGene 需要生成m6A修饰位点的Gene对象
      * @return m6A修饰位点
      */
-    public HashMap<Integer, Integer> generateM6aSites(Gene m6aModifyGene) {
-        String modifiedGeneIds = m6aModifyGene.getGeneId();
-        int geneExonSeqLength = m6aModifyGene.getExonSeq().length();
+    public HashMap<Integer, Integer> generateM6aSites(Gene m6aModifyGene, int peakStart, int peakEnd, int readLength) {
         UniformIntegerDistribution uid;
-        HashSet<Integer> exonMutations, geneM6aModifySites = new HashSet<>();
-        int head, tail, modifyNum, modifyPosition;
+        HashSet<Integer> geneM6aModifySites = new HashSet<>();
+        int modifyNum, modifyPosition;
 
-        exonMutations = this.mutGenePosition.getOrDefault(modifiedGeneIds, null);
+        uid = new UniformIntegerDistribution(peakStart + readLength/2, peakEnd - readLength/2);
 
-        // 获取突变位点的范围，用于生成均匀分布的抽样范围
-        head = (exonMutations != null)? Collections.min(exonMutations) : 1;
-        head = (head - 100 > 0)? (head - 100): 1;
-        tail = (exonMutations != null)? Collections.max(exonMutations) : geneExonSeqLength;
-        tail = (tail + 100 <= geneExonSeqLength)? (tail + 100): geneExonSeqLength - 1;
-        uid = new UniformIntegerDistribution(head, tail);
         // 随机选取mRNA上m6a修饰位点数目并生成m6a修饰位点(外显子序列的位点，并非基因组位点)
         modifyNum = Math.abs((int) this.m6aFrequency.sample());
+        if (modifyNum == 0)
+            modifyNum = 1;
         for (int i = 0; i < modifyNum; ) {
             modifyPosition = uid.sample();
-            if (exonMutations != null &&!exonMutations.contains(modifyPosition) && !geneM6aModifySites.contains(modifyPosition)) {
-                geneM6aModifySites.add(modifyPosition);
-                i++;
-            } else if (exonMutations == null && !geneM6aModifySites.contains(modifyPosition)) {
+            if (!geneM6aModifySites.contains(modifyPosition)) {
                 geneM6aModifySites.add(modifyPosition);
                 i++;
             }
@@ -65,8 +52,7 @@ public class M6AGenerator {
             m6aModificationSites.put(m6aSite, genomePosition);
         }
         // 释放内存
-        geneM6aModifySites = null;
-        exonMutations = null;
+        geneM6aModifySites.clear();
         uid = null;
 
         return m6aModificationSites;
@@ -77,47 +63,52 @@ public class M6AGenerator {
      * @param simulatedM6aSites 记录每个基因修饰位点的哈希表，HashMap<String, HashMap<Integer, Integer>> geneId: exon position: genome position
      * @param outputFile 输出文件
      */
-    public void storeGeneM6aSites(HashMap<String, HashMap<Integer, Integer>> simulatedM6aSites, File outputFile) {
-        UniformRealDistribution urd = new UniformRealDistribution(0.6, 0.8);
+    public void storeGeneM6aSites(HashMap<String, HashMap<String, HashMap<Integer, Integer>>> simulatedM6aSites, File outputFile,
+                                  HashMap<String, ArrayList<String>> peakRanges, HashMap<String, ArrayList<Boolean>> asmPeaks) {
+        UniformRealDistribution urd = new UniformRealDistribution(0.6, 0.9);
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(outputFile))
             );
             bfw.write("geneId\texonPosition\tgenomePosition\tmajorASMRatio\tMajorAlleleSpecific\n");
-            HashMap<Integer, Integer> m6aSites;
-            Integer genomePosition;
-            for (String geneId: simulatedM6aSites.keySet()) {
-                m6aSites = simulatedM6aSites.get(geneId);
-                for (Integer exonPosition: m6aSites.keySet()) {
-                    double randNum = Math.random(), ase = 0.5;
-                    boolean bias = false;
-                    if (randNum > 0.5) {
-                        ase = urd.sample();
-                        randNum = Math.random();
-                        if (randNum > 0.5) {
-                            bias = true;
-                        }
+
+            for (String label: simulatedM6aSites.keySet()) {
+                String[] info = label.split(":");
+                String geneId = info[1];
+                ArrayList<String> genePeaks = peakRanges.get(geneId);
+                ArrayList<Boolean> asms = asmPeaks.get(geneId);
+                HashMap<String, HashMap<Integer, Integer>> peakCoveredM6aSites = simulatedM6aSites.get(label);
+                assert genePeaks.size() == asms.size();
+                // 确定每个m6A ASM ratio
+                for (int i = 0; i < genePeaks.size(); i++) {
+                    boolean asm = asms.get(i);
+                    String peak = genePeaks.get(i);
+                    double asmRatio = 0.5;
+                    if (asm)
+                        asmRatio = urd.sample();
+                    HashMap<Integer, Integer> m6aSites = peakCoveredM6aSites.get(peak);
+                    for (Integer exonPosition: m6aSites.keySet()) {
+                        Integer genomePosition = m6aSites.get(exonPosition);
+                        bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition + "\t" + asmRatio + "\t" + asm);
+                        bfw.newLine();
+
+                        HashMap<Integer, Double> geneAsmRatio = this.asmRatio.getOrDefault(geneId, new HashMap<>());
+                        HashMap<Integer, Boolean> geneAsmBias = this.asmBias.getOrDefault(geneId, new HashMap<>());
+                        geneAsmRatio.put(exonPosition, asmRatio);
+                        geneAsmBias.put(exonPosition, asm);
+                        this.asmRatio.put(geneId, geneAsmRatio);
+                        this.asmBias.put(geneId, geneAsmBias);
                     }
-                    genomePosition = m6aSites.get(exonPosition);
-                    bfw.write(geneId + "\t" + exonPosition + "\t" + genomePosition + "\t" + ase + "\t" + bias);
-                    bfw.newLine();
-                    HashMap<Integer, Double> geneAsmRatio = asmRatio.getOrDefault(geneId, new HashMap<>());
-                    HashMap<Integer, Boolean> geneAsmBias = asmBias.getOrDefault(geneId, new HashMap<>());
-                    geneAsmRatio.put(exonPosition, ase);
-                    geneAsmBias.put(exonPosition, bias);
-                    asmRatio.put(geneId, geneAsmRatio);
-                    asmBias.put(geneId, geneAsmBias);
                 }
             }
-            bfw.close();
         } catch (IOException ie) {
             ie.printStackTrace();
         } finally {
             if (bfw != null) {
                 try {
                     bfw.close();
-                } catch (IOException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }

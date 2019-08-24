@@ -120,32 +120,11 @@ public class DnaSeqReadsMapping implements Runnable {
                     System.exit(2);
                 }
             } else {
-                File splitBamFile = new File(head + "_split.bam");
-                File splitBaiFile = new File(head + "_split.bai");
                 ReadsMapping.refGenomeDict(this.picard, this.refGenomeFile, this.logger);
                 ReadsMapping.createFastaiFile(samtools, this.refGenomeFile, this.logger);
-                ReadsMapping.readsTrimReassign(this.gatk, this.refGenomeFile, deduplicatedBamFile.getAbsolutePath(), splitBamFile.getAbsolutePath(), this.logger);
+                ReadsMapping.readsTrimReassign(this.gatk, this.refGenomeFile, deduplicatedBamFile.getAbsolutePath(), finalBamFile.getAbsolutePath(), this.logger);
                 deleteFile(deduplicatedBamFile);
                 deleteFile(deduplicatedBaiFile);
-                String cmd1 = "mv " + sortedBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
-                String cmd2 = "mv " + splitBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
-                try {
-                    Process p = Runtime.getRuntime().exec(cmd1);
-                    int exitVal = p.waitFor();
-                    if (exitVal != 0) {
-                        this.logger.error("file rename failed");
-                        System.exit(2);
-                    }
-                    p = Runtime.getRuntime().exec(cmd2);
-                    exitVal = p.waitFor();
-                    if (exitVal != 0) {
-                        this.logger.error("file rename failed");
-                        System.exit(2);
-                    }
-                } catch (IOException | InterruptedException ie) {
-                    this.logger.error(ie.getMessage());
-                    System.exit(2);
-                }
             }
         }
         // 将fastq文件的比对结果bam文件合并

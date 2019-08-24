@@ -1,12 +1,23 @@
 package CommonThreadClass;
 
-import meripSeqPeakCalling.peakCaller;
+import meripSeqPeakCalling.PeakCaller;
 import org.apache.log4j.Logger;
 
+/**
+ * 子线程运行Peak calling
+ */
 public class RunPeakCalling implements Runnable {
     private String ipBamFile, inputBamFile, gtfFile,  outputDir;
     private Logger logger;
 
+    /**
+     * Constructor
+     * @param ipBamFile IP比对结果
+     * @param inputBamFile INPUT比对结果
+     * @param gtfFile GTF文件
+     * @param outputDir 输出目录
+     * @param logger log4j对象
+     */
     RunPeakCalling(String ipBamFile, String inputBamFile, String gtfFile, String outputDir, Logger logger) {
         this.inputBamFile = inputBamFile;
         this.ipBamFile = ipBamFile;
@@ -24,6 +35,7 @@ public class RunPeakCalling implements Runnable {
      */
     private void getM6aPeak() {
         String experimentName = "m6aPeak";
-        peakCaller.peakCalling(gtfFile, outputDir, ipBamFile, inputBamFile, experimentName, logger);
+        PeakCaller pc = new PeakCaller(this.gtfFile, this.ipBamFile, this.inputBamFile, this.outputDir, experimentName, this.logger);
+        pc.peakCalling();
     }
 }
