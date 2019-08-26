@@ -54,7 +54,7 @@ public class betaBinomialDistribution {
      * @return cdf value cumulates from lower bound to upper bound
      */
     public double betaBinomialCdf(int lowerBound, int upperBound, int n, double theta, double tao) {
-        assert (lowerBound < upperBound): "invalid input";
+        assert (lowerBound <= upperBound): "invalid input" + lowerBound + "->" + upperBound;
         double cdf = 0.0;
         while (lowerBound <= upperBound) {
             cdf = cdf + this.betaBinomialDistributionProbability(n, lowerBound, theta, tao);

@@ -6,7 +6,7 @@ import org.apache.log4j.Logger;
 import java.io.File;
 
 
-public class ReadsMapping {
+public class STARMapping {
 
     /**
      * use STAR software mapping reads to the reference genome and output alignment SAM file named "Aligned.out.sam"
@@ -16,7 +16,7 @@ public class ReadsMapping {
      */
     public static void alignment(String refGenomeFile, String gtfFile, File[] fastqFiles, int execThread, Logger logger) {
         String refGenomeDir = new File(refGenomeFile).getParent();
-        int readLength = ReadsMapping.getFastqReadLength(fastqFiles[0].getAbsolutePath(), logger);
-        ReadsMapping.readsMapping(refGenomeDir, refGenomeFile, gtfFile, fastqFiles, readLength, execThread, logger);
+        int readLength = ReadsMapping.getFastqReadLength(fastqFiles[0].getAbsolutePath(), true, logger);
+//        ReadsMapping.readsMapping(refGenomeDir, refGenomeFile, gtfFile, fastqFiles, readLength, execThread, logger);
     }
 }

@@ -10,7 +10,7 @@ import java.util.*;
 public class ReadsGenerator {
     private HashMap<String, LinkedList<Gene>> ChrGeneMap = new HashMap<String, LinkedList<Gene>>();
     private GTFReader readGTF = new GTFReader();
-    private int readLength, sequencingDepth;
+    private int readLength, sequencingDepth, m6aPeakLength;
     private double geneProp;
     private TwoBitParser twoBit;
     private long librarySize;
@@ -18,11 +18,14 @@ public class ReadsGenerator {
     private HashMap<String, String> genesOriginExonSeq, genesMutatedExonSeq;
     private HashMap<String, HashSet<Integer>> geneMutatedPosition;
     private HashMap<String, HashMap<Integer, String[]>> geneMutationRefAlt;
-    private HashMap<String, HashMap<Integer, Integer>> geneMutGenomePosition, geneM6aGenomePosition;
+    private HashMap<String, HashMap<Integer, Integer>> geneMutGenomePosition;
+    private HashMap<String, HashMap<String, HashMap<Integer, Integer>>> geneM6aGenomePosition;
     private HashMap<String, HashMap<Integer, Double>> geneM6aAsmRatio;
     private HashMap<String, HashMap<Integer, Boolean>> geneM6aAsmBias;
     private HashMap<String, HashSet<String>> selectedGeneChr = new HashMap<>();
     private HashMap<String, Double> aseGeneMajorAlleleRatio = new HashMap<>();
+    private HashMap<String, ArrayList<String>> geneM6aPeakRanges = new HashMap<>();
+    private HashMap<String, ArrayList<Boolean>> geneM6aPeakAsm = new HashMap<>();
     private SequencingError seqErrorModel;
 
     public ReadsGenerator(String gtfFile, double geneProp, String twoBitFile) {
@@ -47,6 +50,10 @@ public class ReadsGenerator {
 
     private void setReadLength(int readLength) {
         this.readLength = readLength;
+    }
+
+    private void setM6aPeakLength(int peakLength) {
+        this.m6aPeakLength = peakLength;
     }
 
     public HashMap<String, LinkedList<Gene>> getChrGeneMap() {
@@ -76,7 +83,7 @@ public class ReadsGenerator {
                 genesOnChr = chromosomeRecord.getChrGenes();
 
                 // 将染色体上的基因随机打乱，之后从中随机抽取
-                geneIds = new ArrayList<String>(genesOnChr.keySet());
+                geneIds = new ArrayList<>(genesOnChr.keySet());
                 int geneNum = (int) (this.geneProp * genesOnChr.size());
                 System.out.println(chr+":"+geneNum);
                 geneList = new LinkedList<>();
@@ -124,7 +131,6 @@ public class ReadsGenerator {
                     geneList.add(gene);
                     twoBit.close();
                     chrGenes.add(gene.getGeneId());
-//                    System.out.println(order + ":" + gene.getGeneId()+"->"+longestTranscript.getTranscriptId());
                     order ++;
                 }
                 this.selectedGeneChr.put(chr, chrGenes);
@@ -136,7 +142,7 @@ public class ReadsGenerator {
             ex.printStackTrace();
         }
         // 释放内存
-        chrMap = null;
+        chrMap.clear();
         this.readGTF = null;
     }
 
@@ -148,7 +154,8 @@ public class ReadsGenerator {
      * @param mutProp 突变基因占基因总数的比例
      */
     private void randomMutateGene(String vcfFile, int minimumMut, int maximumMut, double mutProp) {
-        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, mutProp, vcfFile, minimumMut, maximumMut);
+        SNPGenerator snpGenerator = new SNPGenerator(this.ChrGeneMap, this.geneM6aPeakRanges, mutProp, vcfFile,
+                                                     minimumMut, maximumMut);
         snpGenerator.generateSNP();
         this.genesOriginExonSeq = snpGenerator.getOriginExonSequence();     // 基因未突变的外显子序列
         this.genesMutatedExonSeq = snpGenerator.getMutatedExonSeqence();    // 突变基因的外显子序列
@@ -159,10 +166,10 @@ public class ReadsGenerator {
     }
 
     /**
-     * 设置具有SNP位点的基因 major allele和 minor allele的比例
+     * 设置具有SNP位点的基因的 major allele frequency
      */
     private void mutatedGeneAseRatio() {
-        UniformRealDistribution urd = new UniformRealDistribution(0.60, 0.80);
+        UniformRealDistribution urd = new UniformRealDistribution(0.60, 0.95);
         // 获取到突变基因的 geneID集合
         Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
         double ref, randNum;
@@ -254,20 +261,29 @@ public class ReadsGenerator {
 
     /**
      * 为每个挑选出的基因设置RPKM值和PM参数，通过设置的参数计算表达值和reads数目，写入到文件
-     * @param outputfile 输出文件路径
+     * @param rnaRPKMFile rna RPKM输出文件路径
+     * @param dnaRPKMFile dna RPKM输出文件路径
+     * @param geneExpFile 基因表达值文件
+     * @param minReadsCount 最小reads coverage数目
+     * @param maxReadsCount 最大reads coverage数目
      */
-    private void transcriptionParameter(String outputfile, String geneExpFile) {
+    private void transcriptionParameter(String rnaRPKMFile, String dnaRPKMFile, String geneExpFile,
+                                        int minReadsCount, int maxReadsCount) {
         // 用于随机抽取RPKM值
-        UniformRealDistribution unidiform = new UniformRealDistribution(100, 400);
+        UniformRealDistribution unidiform = new UniformRealDistribution(minReadsCount, maxReadsCount);
         GeneExpDistribution geneExp = GeneExpDistribution.getInstance();
         HashMap<String, double[]> geneExpValue = null;
         Set<String> mutatedGeneId = this.geneMutatedPosition.keySet();
         // 如果有基因表达的参考数据，则读取数据
         if (geneExpFile != null)
             geneExpValue = geneExp.experimentalGeneExp(geneExpFile);
+
+        BufferedWriter rfw = null, dfw = null;
         try {
-            FileWriter fw = new FileWriter(outputfile);
-            fw.write("chr\tgeneId\tgeneName\tRPKM\texonLength\treadsCount\tmajorAlleleRatio\tminorAlleleRatio\n");
+            rfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(rnaRPKMFile))));
+            dfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(dnaRPKMFile))));
+            rfw.write("chr\tgeneId\tgeneName\tRPKM\texonLength\treadsCount\tmajorAlleleRatio\tminorAlleleRatio\n");
+            dfw.write("chr\tgeneId\tgeneName\tRPKM\texonLength\treadsCount\tmajorAlleleRatio\tminorAlleleRatio\n");
             for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> geneList = entry.getValue();
                 String chr = entry.getKey();
@@ -275,27 +291,29 @@ public class ReadsGenerator {
                 double majorAlleleRatio, minorAlleleRatio;
                 for (Gene gene: geneList) {
                     geneId = gene.getGeneId();
-                    double RPKM;
-                    // 如果没有设置测序深度
-                    if (this.sequencingDepth == 0) {
-                        if (geneExpValue == null)   // 没有参考的基因表达文件
-                            RPKM = unidiform.sample();
-                        else {      // 有参考的基因表达文件
-                            double[] expData = geneExpValue.getOrDefault(gene.getGeneName(), null);
-                            if (expData == null)    // 如果参考文件中没有记录该基因，则还是随机抽取RPKM值
-                                RPKM = unidiform.sample();
-                            else {                  // 如果参考文件中有记录该基因，则拟合正态分布，从分布中抽取RPKM值
-                                NormalDistribution dist = new NormalDistribution(expData[0], expData[1] + 0.0001);
-                                RPKM = Math.abs(dist.sample());
-                                dist = null;
-                            }
+                    double rnaRPKM, dnaRPKM = 0;
+                    // RNA-seq表达值
+                    if (geneExpValue == null)   // 没有参考的基因表达文件
+                        rnaRPKM = unidiform.sample();
+                    else {      // 有参考的基因表达文件
+                        double[] expData = geneExpValue.getOrDefault(gene.getGeneName(), null);
+                        if (expData == null)    // 如果参考文件中没有记录该基因，则还是随机抽取RPKM值
+                            rnaRPKM = unidiform.sample();
+                        else {                  // 如果参考文件中有记录该基因，则拟合正态分布，从分布中抽取RPKM值
+                            NormalDistribution dist = new NormalDistribution(expData[0], expData[1] + 0.0001);
+                            rnaRPKM = Math.abs(dist.sample());
+                            dist = null;
                         }
-                        gene.setRPKM(RPKM); // 为基因设置RPKM值，在没有设置深度时通过文库大小和RPKM计算基因在测序时的reads数
-                        gene.calculateReadsCountViaLibrarySize(this.librarySize);
-                    } else { // 如果设定了测序深度，则直接通过深度求取reads数目和RPKM
-                        gene.calculateReadsCountViaSequencingDepth(this.sequencingDepth, this.readLength, this.librarySize);
-                        RPKM = gene.getRPKM();
                     }
+                    gene.setRnaRPKM(rnaRPKM);
+                    gene.calculateReadsCountViaLibrarySize(this.librarySize);
+                    // DNA-seq深度
+                    if (this.sequencingDepth != 0) { // 如果设定了测序深度，则直接通过深度求取reads数目和RPKM
+                        gene.calculateReadsCountViaSequencingDepth(this.sequencingDepth, this.readLength);
+                        dnaRPKM = gene.getDnaRPKM();
+                        gene.setDnaRPKM(dnaRPKM);
+                    }
+
                     if (mutatedGeneId.contains(geneId)) {
                         majorAlleleRatio = this.aseGeneMajorAlleleRatio.get(geneId);
                         minorAlleleRatio = 1.0 - majorAlleleRatio;
@@ -303,43 +321,115 @@ public class ReadsGenerator {
                         majorAlleleRatio = 1.0;
                         minorAlleleRatio = 0.0;
                     }
-                    fw.write(chr + "\t" + geneId + "\t" + gene.getGeneName() + "\t" + RPKM + "\t"
-                                  + gene.getExonSeq().length() + "\t" + gene.getReadsCount() + "\t"
-                                  + majorAlleleRatio+ "\t" + minorAlleleRatio+"\n");
+                    rfw.write(chr + "\t" + geneId + "\t" + gene.getGeneName() + "\t" + rnaRPKM + "\t"
+                            + gene.getExonSeq().length() + "\t" + gene.getRnaReadsCount() + "\t"
+                            + majorAlleleRatio+ "\t" + minorAlleleRatio+"\n");
+
+                    dfw.write(chr + "\t" + geneId + "\t" + gene.getGeneName() + "\t" + dnaRPKM + "\t"
+                            + gene.getExonSeq().length() + "\t" + gene.getDnaReadsCount() + "\t"
+                            + majorAlleleRatio+ "\t" + minorAlleleRatio+"\n");
+
                 }
                 geneList = null;
             }
-            fw.close();
         } catch (IOException ex) {
             ex.printStackTrace();
+        } finally {
+            if (rfw != null) {
+                try {
+                    rfw.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            if (dfw != null) {
+                try {
+                    dfw.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
         }
         // 释放内存
         geneExpValue = null;
     }
 
     /**
-     * 对每个选中的基因进行m6A修饰，在其外显子序列上随机生成一定数目的m6A修饰位点并将其记录到文件中，同时得到每个甲基化位点的ASM ratio
-<<<<<<< HEAD
-     * 以及甲基化是否具有allele偏向性
-=======
->>>>>>> refs/remotes/origin/master
+     * 设置基因的m6A修饰peak的范围，在此范围中生成m6A修饰位点
      */
-    private void geneM6aModification() {
-        this.geneM6aGenomePosition = new HashMap<>();
-
-        M6AGenerator m6AGenerator = new M6AGenerator(this.geneMutatedPosition);
-        HashMap<Integer, Integer> m6aSites;
+    private void geneM6aPeakRange() {
+        // 用于生成模拟的m6A 信号峰以及峰下覆盖的m6A位点
+        M6AGenerator m6AGenerator = new M6AGenerator();
+        M6APeaks mp = M6APeaks.getInstance(m6AGenerator);
         for (String chrNum: this.ChrGeneMap.keySet()) {
-            LinkedList<Gene> chrGenes = this.ChrGeneMap.get(chrNum);
+            List<Gene> chrGenes = this.ChrGeneMap.get(chrNum);
             for (Gene gene: chrGenes) {
-                m6aSites = m6AGenerator.generateM6aSites(gene);
-                this.geneM6aGenomePosition.put(gene.getGeneId(), m6aSites);
+                mp.geneM6aPeakRange(gene, this.m6aPeakLength, this.readLength);
             }
         }
+        this.geneM6aGenomePosition = mp.getGeneM6aSites();
+        for (String label: this.geneM6aGenomePosition.keySet()) {
+            String[] info = label.split(":");
+            String geneId = info[1];
+            HashMap<String, HashMap<Integer, Integer>> genePeakRecords = this.geneM6aGenomePosition.get(label);
+            ArrayList<String> genePeaks = new ArrayList<>(genePeakRecords.keySet().size());
+            ArrayList<Boolean> genePeakAse = new ArrayList<>(genePeakRecords.keySet().size());
+            for (String peakRange: genePeakRecords.keySet()) {
+                boolean ase;
+                genePeaks.add(peakRange);
+                double random = Math.random();
+                ase = random > 0.5;
+                genePeakAse.add(ase);
+            }
+            this.geneM6aPeakRanges.put(geneId, genePeaks);
+            this.geneM6aPeakAsm.put(geneId, genePeakAse);
+        }
+        // 将模拟的基因位点写入文件
         File recordFile = new File(this.outputDir, "simulateM6aSites.txt");
-        m6AGenerator.storeGeneM6aSites(this.geneM6aGenomePosition, recordFile);
+        m6AGenerator.storeGeneM6aSites(this.geneM6aGenomePosition, recordFile, this.geneM6aPeakRanges, this.geneM6aPeakAsm);
         this.geneM6aAsmRatio = m6AGenerator.getAseRatio();
         this.geneM6aAsmBias = m6AGenerator.getAseBias();
+    }
+
+    /**
+     * 将模拟的Peak写入到BED文件中
+     * @param outputBedFile BED文件
+     */
+    private void m6aPeakBedFile(String outputBedFile) {
+        BufferedWriter bfw = null;
+        try {
+            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(outputBedFile))));
+            bfw.write("# chr\tchromStart\tchromEnd\tname\tscore\tstrand\tthickStart\tthickEnd\titemRgb\tblockCount\tblockSizes\tblockStarts\tASM\n");
+            for (String label: this.geneM6aGenomePosition.keySet()) {
+                String[] info = label.split(":");
+                String chrNum = info[0], geneId = info[1], strand = info[2];
+                ArrayList<String> genePeaks = this.geneM6aPeakRanges.get(geneId);
+                ArrayList<Boolean> peakAsm = this.geneM6aPeakAsm.get(geneId);
+                assert peakAsm.size() == genePeaks.size();
+                for (int i =0; i < peakAsm.size(); i++) {
+                    String peakRange = genePeaks.get(i);
+                    boolean asm = peakAsm.get(i);
+                    String[] range = peakRange.split(":");
+                    String genomeStart = range[0], genomeEnd = range[1];
+                    String[] lineInfo = new String[] {chrNum, genomeStart, genomeEnd, geneId, "0.001", strand,
+                                        genomeStart, genomeEnd, "0", "1", Integer.toString(this.m6aPeakLength), "0",
+                                        Boolean.toString(asm)};
+                    String line = String.join("\t", lineInfo);
+                    bfw.write(line);
+                    bfw.newLine();
+                }
+            }
+        } catch (IOException ie) {
+            ie.printStackTrace();
+        } finally {
+            if (bfw != null) {
+                try {
+                    bfw.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     /**
@@ -370,7 +460,6 @@ public class ReadsGenerator {
                     bfw.newLine();
                 }
             }
-            bfw.close();
         } catch (IOException ie) {
             ie.printStackTrace();
         } finally {
@@ -407,10 +496,10 @@ public class ReadsGenerator {
      * @param inputOutputFile2 input样本输出文件(生成pair-end时传入，否则设置为null)
      * @param ipOutputFile1 ip样本输出文件
      * @param ipOutputFile2 ip样本输出文件(生成pair-end时传入，否则设置为null)
-     * @param inputMultiple 生物学重复
+     * @param type dna or rna
      */
     private void generateReads(int fragmentMean, int fragmentTheta, String inputOutputFile1, String inputOutputFile2,
-                               String ipOutputFile1, String ipOutputFile2, int inputMultiple) {
+                               String ipOutputFile1, String ipOutputFile2, String type) {
         BufferedWriter inputMate1File = null, inputMate2File = null, ipMate1File = null, ipMate2File = null;
         String direct = "SE";
         try {
@@ -432,31 +521,42 @@ public class ReadsGenerator {
                 );
                 direct = "PE";
             }
+
             // 获取到突变基因的 geneID集合
             Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
+            // 生成模拟测序数据
             for (Map.Entry<String, LinkedList<Gene>> entry : this.ChrGeneMap.entrySet()) {
                 LinkedList<Gene> GeneList = entry.getValue();
-                Set<Integer> geneM6aSites;  // 基因外显子区域的m6A修饰位点集合
+                Set<Integer> geneM6aSites = new HashSet<>();  // 基因外显子区域的m6A修饰位点集合
                 Set<Integer> geneMutateSites; // 基因外显子区域突变位点集合
                 for (Gene gene: GeneList) {
                     geneMutateSites = null;
-                    String geneId = gene.getGeneId();
+                    String geneId = gene.getGeneId(), chrNum = gene.getChr(), strand = gene.getStrand();
+                    String label = String.join(":", new String[]{chrNum, geneId, strand});
                     // 如果当前基因在突变基因的列表中，则获取它突变后的外显子序列
                     String mutExonSeq = null;
                     double ref = 1.0;
                     if (mutGeneIds.contains(geneId)) {
-                        ref = this.aseGeneMajorAlleleRatio.get(geneId);
+                        if (type.equals("rna")) // 如果是RNA-seq测序
+                            ref = this.aseGeneMajorAlleleRatio.get(geneId);
+                        else // 如果是DNA-seq测序不涉及表达量，所以ref和alt均为0.5
+                            ref = 0.5;
                         mutExonSeq = this.genesMutatedExonSeq.get(geneId);
                         geneMutateSites = this.geneMutatedPosition.get(geneId);
                     }
-                    geneM6aSites = this.geneM6aGenomePosition.get(geneId).keySet();
+                    HashMap<String, HashMap<Integer, Integer>> peakCoveredSites = this.geneM6aGenomePosition.get(label);
+                    for (String peak: peakCoveredSites.keySet()) {
+                        HashMap<Integer, Integer> m6aSites = peakCoveredSites.get(peak);
+                        for (Integer exonPosition: m6aSites.keySet())
+                            geneM6aSites.add(exonPosition);
+                    }
                     // 生成基因mRNA的fragment，并将其富集到INPUT和IP两个类群
-                    gene.enrichInputFragment(fragmentMean, fragmentTheta, this.readLength, geneMutateSites);
-                    gene.enrichIpFragment(fragmentMean, fragmentTheta, this.readLength, geneM6aSites, geneMutateSites);
+                    gene.enrichInputFragment(fragmentMean, fragmentTheta, this.readLength, geneMutateSites, type);
                     gene.generateReads(inputMate1File, inputMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
                                        mutExonSeq, direct, this.seqErrorModel, "input", null, null);
                     HashMap<Integer, Double> geneM6aAsm = this.geneM6aAsmRatio.getOrDefault(geneId, null);
                     HashMap<Integer, Boolean> m6aBias = this.geneM6aAsmBias.getOrDefault(geneId, null);
+                    gene.enrichIpFragment(fragmentMean, fragmentTheta, this.readLength, geneM6aSites, geneMutateSites, type);
                     gene.generateReads(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref, mutExonSeq,
                                        direct, this.seqErrorModel, "ip", geneM6aAsm, m6aBias);
                     gene.peakFragmentFromBackground(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
@@ -464,12 +564,6 @@ public class ReadsGenerator {
                     gene.release();
                 }
             }
-            inputMate1File.close();
-            ipMate1File.close();
-            if (inputMate2File != null)
-                inputMate1File.close();
-            if (ipMate2File != null)
-                ipMate2File.close();
         } catch (Exception io) {
             io.printStackTrace();
         } finally {
@@ -509,48 +603,69 @@ public class ReadsGenerator {
      * 生成模拟数据的方法，公有方法，供外界调用
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int sequencingDepth, int readLength,
-                                   int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, double mutProp,
-                                   int Multiple, int repeat, double pcrErrorProb, boolean overlap, boolean singleEnd,
-                                   String geneExpFile) {
+                                   int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, int minReadsCount,
+                                   int maxReadsCount, double mutProp, int peakLength, double pcrErrorProb, boolean overlap,
+                                   boolean singleEnd, String geneExpFile) {
 
         this.outputDir = new File(dataPath).getAbsolutePath();
         this.seqErrorModel = new SequencingError(pcrErrorProb);
         this.setLibrarySize(librarySize);
         this.setSequencingDepth(sequencingDepth);
         this.setReadLength(readLength);
+        this.setM6aPeakLength(peakLength);
         // 每条染色体上选取基因用于生成数据
         this.selectGene(overlap);
         System.out.println("complete select");
-        // 随机从选取的基因中抽取一部分进行突变，并设置ASE表达的major allele的比例
+        // m6A修饰在mRNA上很常见，对每个选中的基因随机生成m6A修饰位点并写入文件
+        this.geneM6aPeakRange();
+        String outputBedFile = new File(this.outputDir, "simulatePeak.bed").getAbsolutePath();
+        this.m6aPeakBedFile(outputBedFile);
+        System.out.println("complete m6A modification");
+        // 随机从选取的基因中抽取一部分进行突变，并设置ASE表达的major allele的比例，将随机生成的基因SNP信息写入文件
         this.randomMutateGene(vcfFile, minimumMut, maximumMut, mutProp);
         this.mutatedGeneAseRatio();
         System.out.println("complete variant");
-        // 将随机生成的基因SNP信息写入文件
         this.mutateGeneInfomation(new File(this.outputDir, "mutations.txt").getAbsolutePath());
-        // m6A修饰在mRNA上很常见，对每个选中的基因随机生成m6A修饰位点并写入文件
-        this.geneM6aModification();
-        System.out.println("complete m6A modification");
-        // 生成简化的 GTF文件
+        // 生成简化的GTF文件
         this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());
-        // 计算基因的RPKM值并写入到文件
-        this.transcriptionParameter(new File(outputDir, "rpkm.txt").getAbsolutePath(), geneExpFile);
+        // 设置基因的RPKM值并写入到文件
+        String rnaseqRPKMFile = new File(outputDir, "rnaseq_rpkm.txt").getAbsolutePath();
+        String dnaseqRPKMFile = new File(outputDir, "dnaseq_rpkm.txt").getAbsolutePath();
+        this.transcriptionParameter(rnaseqRPKMFile, dnaseqRPKMFile, geneExpFile, minReadsCount, maxReadsCount);
 
-        // 依据设定的实验重复次数生成IP和INPUT文件
-        for (int i = 0; i < repeat; i++) {
-            String InputOutputfile = new File(outputDir, "Input"+i+".fasta").getAbsolutePath();
-            String IpOutputfile = new File(outputDir, "Ip"+i+".fasta").getAbsolutePath();
-            String InputMatefile = null;
-            String IpMatefile = null;
-            // 单端测序
-            if (singleEnd) {
-                this.generateReads(fragmentMean,fragmentTheta, InputOutputfile, InputMatefile, IpOutputfile, IpMatefile, Multiple);
-            } else { // 双端测序
-                InputMatefile = new File(outputDir, "Input_mate"+i+".fasta").getAbsolutePath();
-                IpMatefile = new File(outputDir, "Ip_mate"+i+".fasta").getAbsolutePath();
-                this.generateReads(fragmentMean,fragmentTheta, InputOutputfile, InputMatefile, IpOutputfile, IpMatefile, Multiple);
-            }
+        // 依据设定的实验重复次数生成MeRIP-seq、MeDIP-seq的IP和INPUT文件
+        File meRipOutputDir = new File(outputDir, "merip_seq");
+        meRipOutputDir.mkdir();
+        File meDipOutputDir = new File(outputDir, "medip_seq");
+        meDipOutputDir.mkdir();
+        // 生成MeRIP-seq数据
+        String InputOutputFile = new File(meRipOutputDir, "Input.fasta").getAbsolutePath();
+        String IpOutputFile = new File(meRipOutputDir, "Ip.fasta").getAbsolutePath();
+        String InputMateFile, IpMateFile;
+        if (singleEnd) {  // 单端测序
+            this.generateReads(fragmentMean,fragmentTheta, InputOutputFile, null, IpOutputFile, null, "rna");
+        } else { // 双端测序
+            InputMateFile = new File(meRipOutputDir, "Input_mate.fasta").getAbsolutePath();
+            IpMateFile = new File(meRipOutputDir, "Ip_mate.fasta").getAbsolutePath();
+            this.generateReads(fragmentMean,fragmentTheta, InputOutputFile, InputMateFile, IpOutputFile, IpMateFile, "rna");
         }
-        this.ChrGeneMap = null;
+        // 生成MeDIP-seq数据
+        InputOutputFile = new File(meDipOutputDir, "Input.fasta").getAbsolutePath();
+        IpOutputFile = new File(meDipOutputDir, "Ip.fasta").getAbsolutePath();
+        if (singleEnd) {  // 单端测序
+            this.generateReads(fragmentMean,fragmentTheta, InputOutputFile, null, IpOutputFile, null, "dna");
+        } else { // 双端测序
+            InputMateFile = new File(meDipOutputDir, "Input_mate.fasta").getAbsolutePath();
+            IpMateFile = new File(meDipOutputDir, "Ip_mate.fasta").getAbsolutePath();
+            this.generateReads(fragmentMean,fragmentTheta, InputOutputFile, InputMateFile, IpOutputFile, IpMateFile, "dna");
+        }
+        this.geneM6aGenomePosition.clear();
+        this.geneM6aPeakAsm.clear();
+        this.geneM6aPeakRanges.clear();
+        this.geneMutatedPosition.clear();
+        this.geneMutGenomePosition.clear();
+        this.geneM6aAsmBias.clear();
+        this.ChrGeneMap.clear();
     }
 
     public HashMap<String, HashSet<Integer>> getGeneMutatedPosition() {

@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 
 public class ReadsMapping {
 
@@ -27,8 +28,9 @@ public class ReadsMapping {
      * @param execThread number of working thread
      * @param logger Logger instance
      */
-    public static void snpCalling(String refGenomeFilePath, String gtfFile, String refVcfFile, String prefix, String fastqDir,
-                                  String outputDir, String picardJar, String gatkJar, String samtools, int execThread, Logger logger) {
+    public static void snpCalling(String refGenomeFilePath, String gtfFile, String refVcfFile, String prefix, String fastqDir, String direct,
+                                  String outputDir, String picardJar, String gatkJar, String samtools, int execThread, boolean zip,
+                                  Logger logger) {
 
         File refGenomePath = new File(refGenomeFilePath);
         String refGenomeDir = refGenomePath.getParent();
@@ -46,13 +48,13 @@ public class ReadsMapping {
 
         File[] fastqFiles = fastqDirectory.listFiles();
         if (fastqFiles != null) {
-            readLength = getFastqReadLength(fastqFiles[0].getAbsolutePath(), logger) - 1;
+            readLength = getFastqReadLength(fastqFiles[0].getAbsolutePath(), zip, logger) - 1;
 
             logger.debug("start SNP calling");
-            File outputSamFile = new File(refGenomeDir, "Aligned.out.sam");
-            if (!outputSamFile.exists())
-                readsMapping(refGenomeDir, refGenomeFilePath, gtfFile, fastqFiles, readLength, execThread, logger);
-            String bamFile = filterMappedReads(refGenomeFilePath, picardJar, gatkJar, samtools, outputDir, prefix, logger);
+//            File outputSamFile = new File(refGenomeDir, "Aligned.out.sam");
+//            if (!outputSamFile.exists())
+            readsMapping(refGenomeDir, refGenomeFilePath, gtfFile, fastqFiles, outputDir, direct, readLength, execThread, zip, logger);
+            String bamFile = filterMappedReads(refGenomeFilePath, outputDir, picardJar, gatkJar, samtools, logger);
             // get SNP reads abundance with samtools
             String readsCountFile = AseInference.inferenceASE(refGenomeFilePath, bamFile, samtools, logger);
             SnpFilter sf = new SnpFilter(refVcfFile, readsCountFile, logger);
@@ -69,44 +71,44 @@ public class ReadsMapping {
      * @param genomeFileName name of reference genome file without path
      */
     public static void readsMapping(String refGenomeDir, String genomeFileName, String gtfFile, File[] fastqFiles,
-                                    int readLength, int execThread, Logger log) {
+                                    String outFileNamePrefix, String direct, int readLength, int execThread, boolean zip,
+                                    Logger log) {
         File genomeIdxFile = new File(refGenomeDir, "SAindex");
         log.debug("reads mapping start.");
         if (!genomeIdxFile.exists()) {
             genomeIndex(refGenomeDir, genomeFileName, gtfFile, execThread, log);
         }
-        log.debug("1-pass alignment");
-        alignment(refGenomeDir, fastqFiles, execThread, log);
-        twoPassMapping(refGenomeDir, genomeFileName, readLength, execThread, log);
-        log.debug("2-pass alignment");
-        alignment(refGenomeDir, fastqFiles, execThread, log);
+        log.debug("1-pass alignment, output file " + outFileNamePrefix + "Aligned.out.bam");
+        alignment(refGenomeDir, fastqFiles, execThread, direct, outFileNamePrefix, zip, log);
+        twoPassMapping(refGenomeDir, genomeFileName, outFileNamePrefix, readLength, execThread, log);
+        log.debug("2-pass alignment, output file " + outFileNamePrefix + "Aligned.out.bam");
+        alignment(refGenomeDir, fastqFiles, execThread, direct, outFileNamePrefix, zip, log);
         log.debug("reads mapping complete.");
     }
 
     /**
      * adding read group information, sorting, marking duplicates and indexing. The reads are from SAM file output by readsMapping method
-     * @param refGenomeFilePath reference genome file path
+     * @param refGenomeFilePath reference genome filepath
+     * @param outFileNamePrefix output file name prefix
      * @param picardJar executable picard jar package
      * @param gatkJar executable gatk jar package
-     * @param outputDir the output result directory which contains STAR alignment output file
-     * @param prefix prefix of output result
      * @param log Logger instance
      */
-    public static String filterMappedReads(String refGenomeFilePath, String picardJar, String gatkJar, String samtools,
-                                         String outputDir, String prefix, Logger log) {
-        String refGenomeDir = new File(refGenomeFilePath).getParent();
-        File starSamFile = new File(refGenomeDir, "Aligned.out.sam");
-        File sortedBamFile = new File(outputDir, prefix + "_sorted.bam");
-        File deduplicatedBamFile = new File(outputDir, prefix + "_deduplicated.bam");
-        File deduplicatedBaiFile = new File(outputDir, prefix + "_deduplicated.bai");
-        File finalBamFile = new File(outputDir, prefix + "_alignment.bam");
-        File finalBaiFile = new File(outputDir, prefix + "_alignment.bai");
+    public static String filterMappedReads(String refGenomeFilePath, String outFileNamePrefix, String picardJar,
+                                           String gatkJar, String samtools, Logger log) {
+        File starSamFile = new File(outFileNamePrefix + "Aligned.out.bam");
+        File sortedBamFile = new File(outFileNamePrefix + "_sorted.bam");
+        File deduplicatedBamFile = new File(outFileNamePrefix + "_deduplicated.bam");
+        File deduplicatedBaiFile = new File(outFileNamePrefix + "_deduplicated.bai");
+        File finalBamFile = new File(outFileNamePrefix + "_alignment.bam");
+        File finalBaiFile = new File(outFileNamePrefix + "_alignment.bai");
         log.debug("filtering alignment reads");
         readsGroup(picardJar, starSamFile.getAbsolutePath(), sortedBamFile.getAbsolutePath(), log);
         // 删去STAR比对得到的SAM文件
         deleteFile(starSamFile, log);
         dropDuplicateReads(picardJar, sortedBamFile.getAbsolutePath(), deduplicatedBamFile.getAbsolutePath(),log);
         deleteFile(sortedBamFile, log);
+        // 如果文件过大则不进行reads split操作，因为可能会挂
         if (deduplicatedBamFile.length() > new Long("2147483648")) {
             String cmd1 = "mv " + deduplicatedBamFile.getAbsolutePath() + " " + finalBamFile.getAbsolutePath();
             String cmd2 = "mv " + deduplicatedBaiFile.getAbsolutePath() + " " + finalBaiFile.getAbsolutePath();
@@ -251,14 +253,30 @@ public class ReadsMapping {
      * @param execThread number of working thread
      * @param log Logger instance
      */
-    public static void alignment(String refGenomeDir, File[] fastqFiles, int execThread, Logger log) {
-
-        String cmd = "STAR --genomeDir " + refGenomeDir + " --readFilesIn ";
-        String[] sb = new String[fastqFiles.length];
-        for (int i = 0; i < fastqFiles.length; i++) {
-            sb[i] = fastqFiles[i].getAbsolutePath();
+    public static void alignment(String refGenomeDir, File[] fastqFiles, int execThread, String direct,
+                                 String outFileNamePrefix, boolean zip, Logger log) {
+        String cmd;
+        if (zip)
+            cmd = "STAR --genomeDir " + refGenomeDir + " --outSAMtype BAM Unsorted --readFilesCommand zcat --readFilesIn ";
+        else
+            cmd = "STAR --genomeDir " + refGenomeDir + " --outSAMtype BAM Unsorted --readFilesIn ";
+        if (direct.toLowerCase().equals("se")) {
+            String[] sb = new String[fastqFiles.length];
+            for (int i = 0; i < fastqFiles.length; i++) {
+                sb[i] = fastqFiles[i].getAbsolutePath();
+            }
+            cmd += String.join(",", sb) + " --runThreadN " + execThread + " --outFileNamePrefix " + outFileNamePrefix;
+        } else {
+            String[] sb1 = new String[fastqFiles.length/2];
+            String[] sb2 = new String[fastqFiles.length/2];
+            for (int i=0; i<fastqFiles.length/2; i++) {
+                sb1[i] = fastqFiles[2*i].getAbsolutePath();
+                sb2[i] = fastqFiles[2*i+1].getAbsolutePath();
+            }
+            cmd += String.join(",", sb1) + " " + String.join(",", sb2) + " --runThreadN " + execThread
+                    + " --outFileNamePrefix " + outFileNamePrefix;
         }
-        cmd += String.join(",", sb) + " --runThreadN " + execThread;
+
         log.debug(cmd);
         try {
             Process p = Runtime.getRuntime().exec(cmd);
@@ -288,11 +306,12 @@ public class ReadsMapping {
      * @param genomeFileName reference genome file name
      * @param execThread number of working thread
      */
-    public static void twoPassMapping(String refGenomeDir, String genomeFileName, int readLength, int execThread, Logger log) {
+    public static void twoPassMapping(String refGenomeDir, String genomeFileName, String outFileNamePrefix,
+                                      int readLength, int execThread, Logger log) {
 
-        File onePassSJOutput = new File(refGenomeDir, "SJ.out.tab");
+        File onePassSJOutput = new File(outFileNamePrefix+"SJ.out.tab");
         String cmd = "STAR --runMode genomeGenerate --genomeDir " + refGenomeDir + " --genomeFastaFiles " + genomeFileName +
-                     " --sjdbFileChrStartEnd " + onePassSJOutput + " --sjdbOverhang " + readLength + " --runThreadN "
+                     " --sjdbFileChrStartEnd " + onePassSJOutput + " --sjdbOverhang " + (readLength -1) + " --runThreadN "
                      + execThread + " --limitGenomeGenerateRAM 124544990592";
         log.debug("2-pass mapping procedure...");
         log.debug(cmd);
@@ -499,33 +518,73 @@ public class ReadsMapping {
      * @param fastqFile fastq file path
      * @return length of reads in fastq file
      */
-    public static int getFastqReadLength(String fastqFile, Logger log) {
+    public static int getFastqReadLength(String fastqFile, boolean zip, Logger log) {
         int length = 0;
-        try {
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(new FileInputStream(new File(fastqFile)))
-            );
-
-            String line = "";
-            while (line.isEmpty()) {
-                line = reader.readLine();
+        if (!zip) { // 如果fastq不是压缩格式
+            BufferedReader reader = null;
+            int lineNum = 6;
+            try {
+                reader = new BufferedReader(
+                        new InputStreamReader(new FileInputStream(new File(fastqFile)))
+                );
+                int i = 0;
+                String line = "";
+                while (line.isEmpty() && i < lineNum) {
+                    line = reader.readLine();
+                    i++;
+                }
+//                String[] splitInfo = line.split(" ");
+                length = line.length();
+            } catch (FileNotFoundException e) {
+                log.error("fastqFile : [" + fastqFile + "] not found");
+                System.exit(2);
+            } catch (IOException e) {
+                log.error("IO error");
+            } finally {
+                if (reader != null) {
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        log.error(e.getMessage());
+                    }
+                }
             }
-            String[] splitInfo = line.split(" ");
-            String lengthInfo = splitInfo[splitInfo.length -1];
+        } else {
+            int BUFFER_SIZE = 1024;
+            GZIPInputStream gis = null;
+            ByteArrayOutputStream baos = null;
+            try {
+                gis = new GZIPInputStream(new FileInputStream(new File(fastqFile)));
+                baos = new ByteArrayOutputStream();
+                byte[] buf = new byte[BUFFER_SIZE];
+                int len;
+                len=gis.read(buf, 0, BUFFER_SIZE);
+                baos.write(buf, 0, len);
 
-            Pattern pattern = Pattern.compile("\\d+");
-            Matcher lengthMatch = pattern.matcher(lengthInfo);
-
-            while (lengthMatch.find()) {
-                length = Integer.parseInt(lengthMatch.group());
+                baos.toByteArray();
+                String result = baos.toString("UTF-8");
+                String[] splitInfo = result.split("\n");
+                length = splitInfo[5].length();
+            } catch (IOException e) {
+                log.error(e.getMessage());
+            } finally {
+                if(gis!=null){
+                    try {
+                        gis.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if(baos!=null){
+                    try {
+                        baos.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
-
-        } catch (FileNotFoundException e) {
-            log.error("fastqFile : [" + fastqFile + "] not found");
-            System.exit(2);
-        } catch (IOException e) {
-            log.error("IO error");
         }
+
         log.debug("get reads length in file " + fastqFile + ", length: " + length);
         return length;
     }

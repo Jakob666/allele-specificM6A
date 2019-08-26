@@ -4,7 +4,6 @@ import heterozygoteSiteAnalysis.IntervalTree;
 import heterozygoteSiteAnalysis.IntervalTreeNode;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
@@ -14,8 +13,8 @@ public class VcfSnpMatchGene {
     protected String vcfFile;
     // 每条染色体的GTF区间树
     protected HashMap<String, IntervalTree> gtfIntervalTree;
-    // geneAlleleReads = {"geneId->geneName": {"major":[count1, count2,...], "minor": [count1, count2,...]}, ...}
-    private HashMap<String, HashMap<String, ArrayList<Integer>>> geneAlleleReads = new HashMap<>();
+    // geneAlleleReads = {"geneId->geneName": {pos1: "major":count1, "minor": count1}, ...}
+    private HashMap<String, HashMap<Integer, HashMap<String, Integer>>> geneAlleleReads = new HashMap<>();
     private HashMap<String, int[]> geneMajorAlleleStrand = new HashMap<>();
 
     public VcfSnpMatchGene(String vcfFile, String gtfFile) {
@@ -104,19 +103,18 @@ public class VcfSnpMatchGene {
         return reads;
     }
 
-    private void renewGeneAlleleReads(String geneId, String geneName, int majorCount, int minorCount) {
+    private void renewGeneAlleleReads(String geneId, String geneName, int mutPosition, int majorCount, int minorCount) {
         String label = String.join("->", new String[]{geneId, geneName});
-        HashMap<String, ArrayList<Integer>> geneSnp = this.geneAlleleReads.getOrDefault(label, new HashMap<>());
-        ArrayList<Integer> majorAllele = geneSnp.getOrDefault("major", new ArrayList<>());
-        ArrayList<Integer> minorAllele = geneSnp.getOrDefault("minor", new ArrayList<>());
-        majorAllele.add(majorCount);
-        minorAllele.add(minorCount);
-        geneSnp.put("major", majorAllele);
-        geneSnp.put("minor", minorAllele);
+        HashMap<Integer, HashMap<String, Integer>> geneSnp = this.geneAlleleReads.getOrDefault(label, new HashMap<>());
+        HashMap<String, Integer> alleleReads = new HashMap<>();
+        alleleReads.put("major", majorCount);
+        alleleReads.put("minor", minorCount);
+
+        geneSnp.put(mutPosition, alleleReads);
         this.geneAlleleReads.put(label, geneSnp);
     }
 
-    public HashMap<String, HashMap<String, ArrayList<Integer>>> getGeneAlleleReads() {
+    public HashMap<String, HashMap<Integer, HashMap<String, Integer>>> getGeneAlleleReads() {
         return this.geneAlleleReads;
     }
 
@@ -127,7 +125,7 @@ public class VcfSnpMatchGene {
     public void recursiveSearch(GTFIntervalTreeNode gitn, int majorCount, int minorCount, int majorStrand, int position) {
         String geneName = gitn.geneName;
         String geneId = gitn.geneId;
-        this.renewGeneAlleleReads(geneId, geneName, majorCount, minorCount);
+        this.renewGeneAlleleReads(geneId, geneName, position, majorCount, minorCount);
         int[] majorAlleleRecord;
         majorAlleleRecord = this.geneMajorAlleleStrand.getOrDefault(geneId, new int[2]);
         majorAlleleRecord[majorStrand] = majorAlleleRecord[majorStrand] + 1;

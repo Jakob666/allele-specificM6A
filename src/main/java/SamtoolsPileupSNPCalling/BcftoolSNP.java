@@ -78,7 +78,7 @@ public class BcftoolSNP {
 
     public String filterSnp() {
         String outputVcfFile = new File(outputDir, this.prefix + "_filtered.vcf").getAbsolutePath();
-        String cmd = String.join(" ", new String[]{this.bcftools, "filter -O v -o ", outputVcfFile, this.vcfGzFile});
+        String cmd = String.join(" ", new String[]{this.bcftools, "filter -O v -o ", outputVcfFile, "--SnpGap 30", this.vcfGzFile});
         this.logger.debug(cmd);
         try {
             Process p = Runtime.getRuntime().exec(cmd);

@@ -226,6 +226,7 @@ public class AseM6aPeakDetector {
         String inputBamFile = new File(inputOutputDir, "ase_alignment.bam").getAbsolutePath();
         String aseSnpFile = new File(this.outputDir, "ase_filtered.vcf").getAbsolutePath();
         String asmSnpFile = new File(this.outputDir, "asm_filtered.vcf").getAbsolutePath();
+        String wesSnpFile = null;
         String peakBedDir = new File(this.outputDir, this.experimentName).getAbsolutePath();
         String peakBedFile = new File(peakBedDir, "peak.bed").getAbsolutePath();
 
@@ -307,7 +308,7 @@ public class AseM6aPeakDetector {
                 System.exit(2);
             }
         }
-        HierarchicalTest ht = new HierarchicalTest(aseSnpFile, asmSnpFile, this.gtfFile, peakBedFile, this.outputDir,
+        HierarchicalTest ht = new HierarchicalTest(aseSnpFile, asmSnpFile, wesSnpFile, this.gtfFile, peakBedFile, this.outputDir,
                                                    this.samplingTime, this.burnInTime, this.log);
         ht.getResult();
     }

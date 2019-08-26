@@ -18,10 +18,12 @@ public class GatkSNPCalling {
 
         // initialize the default params
         String sourceDataDir, genomeFile, gtfFile, refVcfFile, fastqTempDir, outputDir, prefix;
+        String direct = "SE";
         String gatkJar = "gatk";
         String picardJar = "picard";
         String samtools = "samtools";
         String inputFormat = "sra";
+        boolean zip = false;
         int execThread = 2;
 
         if (commandLine.hasOption('h')) {
@@ -51,6 +53,14 @@ public class GatkSNPCalling {
                 System.exit(2);
             }
         }
+        if (commandLine.hasOption("zip")) {
+            String val = commandLine.getOptionValue("zip");
+            if (!val.equals("true") && !val.equals("false")) {
+                logger.error("invalid value. -zip parameter should be true or false");
+                System.exit(2);
+            }
+            zip = Boolean.parseBoolean(val);
+        }
 
         // source data directory
         sourceDataDir = commandLine.getOptionValue('s');
@@ -70,18 +80,16 @@ public class GatkSNPCalling {
         } else {
             prefix = "AseM6a";
         }
-        if (commandLine.hasOption("smt")) {
+        if (commandLine.hasOption("d"))
+            direct = commandLine.getOptionValue("d");
+        if (commandLine.hasOption("smt"))
             samtools = commandLine.getOptionValue("smt");
-        }
-        if (commandLine.hasOption("gatk")) {
+        if (commandLine.hasOption("gatk"))
             gatkJar = commandLine.getOptionValue("gatk");
-        }
-        if (commandLine.hasOption("picard")) {
+        if (commandLine.hasOption("picard"))
             picardJar = commandLine.getOptionValue("picard");
-        }
-        if (commandLine.hasOption('t')) {
+        if (commandLine.hasOption('t'))
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
-        }
 
         // make directories for fastq files and alignment result
         if (inputFormat.equals("sra")) {
@@ -93,7 +101,7 @@ public class GatkSNPCalling {
             }
         }
 
-        ReadsMapping.snpCalling(genomeFile, gtfFile, refVcfFile, prefix, fastqTempDir, outputDir, picardJar, gatkJar, samtools, execThread, logger);
+        ReadsMapping.snpCalling(genomeFile, gtfFile, refVcfFile, prefix, fastqTempDir, direct, outputDir, picardJar, gatkJar, samtools, execThread, zip, logger);
 
         if (!fastqTempDir.equals(sourceDataDir)) {
             try {
@@ -138,6 +146,14 @@ public class GatkSNPCalling {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("zip", "fastq_zip", true, "whether the FastQ data in GZIP format, default false");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("d", "direct", true, "sequencing direction, SE or PE, represent single-end or pair-end");
+        option.setRequired(false);
+        options.addOption(option);
+
         option = new Option("p", "prefix", true, "output result file prefix, default 'AseM6a'");
         option.setRequired(false);
         options.addOption(option);
@@ -170,9 +186,8 @@ public class GatkSNPCalling {
         options.addOption(option);
 
         CommandLineParser parser = new DefaultParser();
-        CommandLine commandLine = parser.parse(options, args);
+        return parser.parse(options, args);
 
-        return commandLine;
     }
 
     /**

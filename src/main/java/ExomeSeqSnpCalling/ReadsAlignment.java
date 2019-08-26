@@ -25,15 +25,15 @@ public class ReadsAlignment {
      */
     public void genomeIndex() {
         String cmd = String.join(" ", new String[]{this.bwa, "index", "-a bwtsw",this.refGenomeFile});
-//        File bwtFile = new File(this.refGenomeFile+".bwt");
-//        File pacFile = new File(this.refGenomeFile+".pac");
-//        File annFile = new File(this.refGenomeFile+".ann");
-//        File ambFile = new File(this.refGenomeFile+".amb");
-//        File saFile = new File(this.refGenomeFile+".sa");
-//        if (bwtFile.exists() & pacFile.exists() & annFile.exists() & ambFile.exists() & saFile.exists()) {
-//            logger.debug("index already established");
-//            return;
-//        }
+        File bwtFile = new File(this.refGenomeFile+".bwt");
+        File pacFile = new File(this.refGenomeFile+".pac");
+        File annFile = new File(this.refGenomeFile+".ann");
+        File ambFile = new File(this.refGenomeFile+".amb");
+        File saFile = new File(this.refGenomeFile+".sa");
+        if (bwtFile.exists() & pacFile.exists() & annFile.exists() & ambFile.exists() & saFile.exists()) {
+            logger.debug("index already established");
+            return;
+        }
         this.logger.debug("index reference genome " + this.refGenomeFile);
         this.logger.debug(cmd);
         try {
@@ -54,36 +54,11 @@ public class ReadsAlignment {
      * @return marked duplicated PCR file
      */
     public String alignmentToGenome(String mateFile1, String mateFile2, String alignmentSamFile) {
-        File shellScript = new File(new File(mateFile1).getParent(), "alignment.sh");
         String alignmentBamFile, sortedBamFile, markedBamFile = null;
-        try {
-            BufferedWriter bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(shellScript)));
-            readsAlignment(mateFile1, mateFile2, alignmentSamFile, bfw);
-            alignmentBamFile = samToBam(alignmentSamFile, bfw);
-            sortedBamFile = sortBamFile(alignmentBamFile, bfw);
-            markedBamFile = markDuplicates(sortedBamFile, bfw);
-            bfw.close();
 
-            Process p = Runtime.getRuntime().exec("chmod a+x " + shellScript.getAbsolutePath());
-            int res = p.waitFor();
-            if (res != 0) {
-                logger.error("change mode failed");
-                System.exit(2);
-            }
-            p = Runtime.getRuntime().exec(shellScript.getAbsolutePath());
-            res = p.waitFor();
-            if (res != 0) {
-                logger.error("alignment failed");
-                System.exit(2);
-            }
-        } catch (IOException | InterruptedException ie) {
-            logger.error(ie.getMessage());
-            System.exit(2);
-        }
-        boolean succ = shellScript.delete();
-        if (!succ) {
-            logger.error("fail to remove redundant file: " + shellScript);
-        }
+        alignmentBamFile = readsAlignment(mateFile1, mateFile2, alignmentSamFile);
+        sortedBamFile = sortBamFile(alignmentBamFile);
+        markedBamFile = markDuplicates(sortedBamFile);
 
         return markedBamFile;
     }
@@ -91,44 +66,58 @@ public class ReadsAlignment {
     /**
      * reads align to reference genome
      */
-    public void readsAlignment(String mateFile1, String mateFile2, String alignmentSamFile, BufferedWriter bfw) {
+    public String readsAlignment(String mateFile1, String mateFile2, String alignmentSamFile) {
         String cmd;
+        String alignmentBamFile = alignmentSamFile.substring(0, alignmentSamFile.lastIndexOf(".")) + ".bam";
+        File logFile = new File(new File(alignmentBamFile).getParentFile().getParent(), "logout.log");
         // 如果是单端测序，mateFile2为null
         if (mateFile2 == null) {
             cmd = String.join(" ", new String[] {this.bwa, "mem -t", Integer.toString(this.execthread),
-                              "-M", this.refGenomeFile, mateFile1, ">", alignmentSamFile});
+                              "-M", this.refGenomeFile, mateFile1});
         } else {
             cmd = String.join(" ", new String[] {this.bwa, "mem -t", Integer.toString(this.execthread),
-                              "-M", this.refGenomeFile, mateFile1, mateFile2, ">", alignmentSamFile});
+                              "-M", this.refGenomeFile, mateFile1, mateFile2});
         }
-        logger.debug(cmd);
+        cmd = cmd + " 1>"+ alignmentSamFile +" 2>" + logFile.getAbsolutePath();
+        this.logger.debug(cmd);
+        BufferedWriter bfw = null;
+        String outputDir = new File(alignmentBamFile).getParent();
+        File script = new File(outputDir, "alignment.sh");
         try {
+            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(script)));
             bfw.write("#!/bin/bash\n");
             bfw.write(cmd);
             bfw.newLine();
-        } catch (IOException ie) {
-            logger.error(ie.getMessage());
-            System.exit(2);
-        }
-    }
-
-    /**
-     * 将比对结果的SAM文件转换为BAM文件
-     * @param alignmentSamFile sam文件名
-     * @return BAM文件名
-     */
-    public String samToBam(String alignmentSamFile, BufferedWriter bfw) {
-        String alignmentBamFile = alignmentSamFile.substring(0, alignmentSamFile.lastIndexOf(".")) + ".bam";
-        String cmd = String.join(" ", new String[] {samtools, "view", "-@", Integer.toString(execthread), "-bS", alignmentSamFile, ">", alignmentBamFile});
-        logger.debug(cmd);
-        try {
-            bfw.write(cmd);
+            bfw.write(this.samtools + " view -bS -h "+alignmentSamFile +" -o " + alignmentBamFile);
             bfw.newLine();
             bfw.write("rm -f " + alignmentSamFile);
             bfw.newLine();
-        } catch (IOException ie) {
+            bfw.close();
+            Process p = Runtime.getRuntime().exec("chmod a+x " + script.getAbsolutePath());
+            int res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("chmod failed");
+                System.exit(2);
+            }
+            p = Runtime.getRuntime().exec(script.getAbsolutePath());
+            res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("alignment failed");
+                System.exit(2);
+            }
+            script.delete();
+        } catch (IOException | InterruptedException ie) {
             logger.error(ie.getMessage());
-            System.exit(0);
+            System.exit(2);
+        } finally {
+            if (bfw != null) {
+                try {
+                    bfw.close();
+                } catch (IOException e) {
+                    this.logger.error(e.getMessage());
+                    System.exit(2);
+                }
+            }
         }
 
         return alignmentBamFile;
@@ -139,17 +128,32 @@ public class ReadsAlignment {
      * @param alignmentBamFile 比对BAM文件
      * @return 排序后的BAM文件
      */
-    public String sortBamFile(String alignmentBamFile, BufferedWriter bfw) {
+    public String sortBamFile(String alignmentBamFile) {
         String sortedBamFile = alignmentBamFile.substring(0, alignmentBamFile.lastIndexOf(".")) + "_sort.bam";
-        String cmd = String.join(" ", new String[] {samtools, "sort -@", Integer.toString(execthread) ,
-                                 alignmentBamFile, "-o", sortedBamFile});
-        logger.debug(cmd);
+        String cmd;
+        if (this.picard.equals("picard"))
+            cmd = "picard";
+        else
+            cmd = "java -jar " + this.picard;
+        cmd += " AddOrReplaceReadGroups I=" + alignmentBamFile + " O=" + sortedBamFile + " SO=coordinate RGID=id RGLB=library " +
+                "RGPL=platform RGPU=machine RGSM=sample TMP_DIR=./tmp";
+        this.logger.debug("grouping alignment reads");
+        this.logger.debug(cmd);
+
         try {
-            bfw.write(cmd);
-            bfw.newLine();
-            bfw.write("rm -f " + alignmentBamFile);
-            bfw.newLine();
-        } catch (IOException ie) {
+            Process p = Runtime.getRuntime().exec(cmd);
+            int res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("sorting BAM files failed");
+                System.exit(2);
+            }
+            p = Runtime.getRuntime().exec("rm -f " + alignmentBamFile);
+            res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("delete bam file failed");
+                System.exit(2);
+            }
+        } catch (IOException | InterruptedException ie) {
             logger.error(ie.getMessage());
             System.exit(2);
         }
@@ -162,7 +166,7 @@ public class ReadsAlignment {
      * @param sortedBamFile 排序后的BAM文件
      * @return 标记重复的BAM文件
      */
-    public String markDuplicates(String sortedBamFile, BufferedWriter bfw) {
+    public String markDuplicates(String sortedBamFile) {
         String deduplicatedBamFile = sortedBamFile.substring(0, sortedBamFile.lastIndexOf("_")) + "_markDup.bam";
         String metrics_file = new File(new File(this.refGenomeFile).getParent(), "output.metrics").getAbsolutePath();
         String cmd;
@@ -176,11 +180,19 @@ public class ReadsAlignment {
 
         logger.debug(cmd);
         try {
-            bfw.write(cmd);
-            bfw.newLine();
-            bfw.write("rm -f " + sortedBamFile);
-            bfw.newLine();
-        } catch (IOException ie) {
+            Process p = Runtime.getRuntime().exec(cmd);
+            int res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("marking duplications failed");
+                System.exit(2);
+            }
+            p = Runtime.getRuntime().exec("rm -f " + sortedBamFile);
+            res = p.waitFor();
+            if (res != 0) {
+                this.logger.error("delete bam file failed");
+                System.exit(2);
+            }
+        } catch (IOException | InterruptedException ie) {
             logger.error(ie.getMessage());
             System.exit(2);
         }
@@ -203,7 +215,7 @@ public class ReadsAlignment {
             bfw.write(cmd);
             bfw.newLine();
             for (String bamFile: bamFileList) {
-                bfw.write("rm -f " + bamFile.substring(0, bamFile.lastIndexOf("bam")) + "*");
+                bfw.write("rm -f " + bamFile.substring(0, bamFile.lastIndexOf("ba")) + "*");
                 bfw.newLine();
             }
             bfw.close();

@@ -44,11 +44,11 @@ public class PeakCaller {
         String ip, input, gtfFile, outputDir = System.getProperty("user.dir"), experimentName = "m6aPeak";
         Logger log;
 
-        ip = commandLine.getOptionValue("ip");
-        input = commandLine.getOptionValue("input");
-        gtfFile = commandLine.getOptionValue("g");
+        ip = new File(commandLine.getOptionValue("ip")).getAbsolutePath();
+        input = new File(commandLine.getOptionValue("input")).getAbsolutePath();
+        gtfFile = new File(commandLine.getOptionValue("g")).getAbsolutePath();
         if (commandLine.hasOption("o"))
-            outputDir = commandLine.getOptionValue("o");
+            outputDir = new File(commandLine.getOptionValue("o")).getAbsolutePath();
         if (commandLine.hasOption("exp"))
             experimentName = commandLine.getOptionValue("exp");
 

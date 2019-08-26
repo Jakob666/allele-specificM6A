@@ -11,7 +11,7 @@ public class AseSeqSimulator {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
-                minimumMut = 1, maximumMut = 5, depth = 100;
+            minimumMut = 0, maximumMut = 3, depth = 100, minReadsCoverage = 10, maxReadsCoverage = 70;
         // default 60% gene has SNP site;
         double geneProp = 0.05, mutProportion = 0.6, pcrErrorProb = 0;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
@@ -41,10 +41,14 @@ public class AseSeqSimulator {
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
         if (commandLine.hasOption("pl"))
             peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
-        if (commandLine.hasOption("mi"))
-            minimumMut = Integer.parseInt(commandLine.getOptionValue("mi"));
-        if (commandLine.hasOption("mx"))
-            maximumMut = Integer.parseInt(commandLine.getOptionValue("mx"));
+        if (commandLine.hasOption("min_mut"))
+            minimumMut = Integer.parseInt(commandLine.getOptionValue("min_mut"));
+        if (commandLine.hasOption("max_mut"))
+            maximumMut = Integer.parseInt(commandLine.getOptionValue("max_mut"));
+        if (commandLine.hasOption("min_cover"))
+            minReadsCoverage = Integer.parseInt(commandLine.getOptionValue("min_cover"));
+        if (commandLine.hasOption("max_cover"))
+            maxReadsCoverage = Integer.parseInt(commandLine.getOptionValue("max_cover"));
         if (commandLine.hasOption("fm"))
             fragmentMean = Integer.parseInt(commandLine.getOptionValue("fm"));
         if (commandLine.hasOption("ft"))
@@ -88,9 +92,8 @@ public class AseSeqSimulator {
 
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, readLength, minimumMut,
-                                          maximumMut, fragmentMean, fragmentStd, mutProportion, peakLength, pcrErrorProb,
-                                          overlap, singleEnd, geneExpFile);
-
+                                          maximumMut, fragmentMean, fragmentStd, minReadsCoverage, maxReadsCoverage,
+                                          mutProportion, peakLength, pcrErrorProb, overlap, singleEnd, geneExpFile);
     }
 
     private static CommandLine parseCommandLine(String[] args) throws ParseException {
@@ -132,11 +135,19 @@ public class AseSeqSimulator {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mi", "minimum_mutation", true, "minimum mutation sites on fragment, default 1");
+        option = new Option("min_mut", "minimum_mutation", true, "minimum mutation sites number on fragment under a m6A signal, default 0");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("mx", "maximum_mutation", true, "maximum mutation sites on fragment, default 15");
+        option = new Option("max_mut", "maximum_mutation", true, "maximum mutation sites number on fragment under a m6A signal, default 3");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("min_cover", "minimum_coverage", true, "minimum reads coverage when generate RNA-seq data, default 10");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("max_cover", "maximum_coverage", true, "maximum reads coverage when generate RNA-seq data, default 70");
         option.setRequired(false);
         options.addOption(option);
 
