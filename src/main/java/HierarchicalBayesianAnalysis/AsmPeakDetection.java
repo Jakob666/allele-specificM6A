@@ -9,10 +9,10 @@ import java.text.DecimalFormat;
 import java.util.*;
 
 public class AsmPeakDetection {
-    private String peakBedFile, vcfFile, asmPeakFile, peakCoveredSnpFile;
+    private String peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int samplingTime, burnIn;
     private Logger log;
-    private HashMap<String, HashMap<String, HashMap<String, LinkedList<Integer>>>> peakSnpReadsCount;
+    private HashMap<String, HashMap<String, HashMap<String, int[]>>> peakSnpReadsCount, peakSnpBackground;
     private HashMap<String, Double> asmPValue = new HashMap<>(), asmQValue = new HashMap<>();
     private HashMap<String, String> peakCoveredGene = new HashMap<>(), peakMajorAlleleStrand;
     private DecimalFormat df = new DecimalFormat("0.0000");
@@ -20,17 +20,23 @@ public class AsmPeakDetection {
     /**
      * Constructor
      * @param peakBedFile peak calling得到的BED格式文件
-     * @param vcfFile IP样本SNP Calling得到的VCF格式文件
-     * @param peakCoveredSnpFile 记录peak信号覆盖的SNP位点的文件
+     * @param vcfFile RNA-seq数据SNP Calling得到的VCF格式文件
+     * @param wesFile WES数据SNP Calling得到的VCF格式文件
+     * @param peakCoveredSnpFile 记录peak信号覆盖的RNA-seq SNP位点的文件
+     * @param peakCoveredWesSnpFile 记录peak信号覆盖的WES SNP位点的文件
      * @param asmPeakFile ASM peak检验结果输出文件
      * @param samplingTime 采样次数
      * @param burnIn burn in次数
      */
-    public AsmPeakDetection(String peakBedFile, String vcfFile, String peakCoveredSnpFile, String asmPeakFile,
-                            int samplingTime, int burnIn) {
+    public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String peakCoveredSnpFile, String peakCoveredWesSnpFile,
+                            String asmPeakFile, int samplingTime, int burnIn) {
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
+        this.wesFile = wesFile;
         this.peakCoveredSnpFile = peakCoveredSnpFile;
+        this.peakCoveredWesSnpFile = peakCoveredWesSnpFile;
+        if (this.wesFile != null)
+            assert this.peakCoveredWesSnpFile != null;
         this.asmPeakFile = asmPeakFile;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
@@ -38,8 +44,10 @@ public class AsmPeakDetection {
     }
 
     public void getTestResult() {
-        this.getPeakCoveredGene();;
+        this.getPeakCoveredGene();
         this.getPeakCoveredSnpResult();
+        if (this.wesFile != null)
+            this.getPeakCoveredSnpBackground();
         this.getPeakSNPReadsCount();
         this.asmPeakTest();
         this.bhRecalibrationOfEachPeak();
@@ -93,12 +101,31 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 获取每个m6A信号范围内ASE位点上的 major allele和 minor allele的reads count
-     * @return [chr1: [peak1: [major: [count1, count2,...], minor: [count1, count2,...]]], chr2:....]
+     * 当存在WES数据SNP calling结果时，将结果写入文件
      */
-    private HashMap<String, HashMap<String, HashMap<String, LinkedList<Integer>>>> getPeakSNPReadsCount() {
+    private void getPeakCoveredSnpBackground() {
+        if (this.wesFile != null) {
+            PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.wesFile, this.peakBedFile, this.peakCoveredWesSnpFile);
+            pcsr.getPeakCoveredSNP();
+        }
+    }
+
+    /**
+     * 获取RNA-seq得到的每个m6A信号范围内SNV位点上的 major allele和 minor allele的reads count
+     * @return [chr1: [peak1: position1: [majorCount, minorCount], position2:[majorCount, minorCount]]], chr2:....]
+     */
+    private HashMap<String, HashMap<String, HashMap<String, int[]>>> getPeakSNPReadsCount() {
         HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.log);
         this.peakMajorAlleleStrand = hrc.getPeakMajorAlleleStrand();
+        return hrc.getMajorMinorHaplotype();
+    }
+
+    /**
+     * 获取WES得到的每个m6A信号范围内SNV位点上的 major allele和 minor allele的reads count
+     * @return [chr1: [peak1: position1: [majorCount, minorCount], position2:[majorCount, minorCount]]], chr2:....]
+     */
+    private HashMap<String, HashMap<String, HashMap<String, int[]>>> getPeakSNPBackground() {
+        HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredWesSnpFile, this.log);
         return hrc.getMajorMinorHaplotype();
     }
 
@@ -106,8 +133,12 @@ public class AsmPeakDetection {
      * 对每个覆盖SNP的peak进行检验
      */
     private void asmPeakTest() {
-        // [chr1: [peak1: [major: [count1, count2,...], minor: [count1, count2,...]]], chr2:....]
+        // [chr1: [peak1: position1: [majorCount, minorCount], position2:[majorCount, minorCount]]], chr2:....]
         this.peakSnpReadsCount = this.getPeakSNPReadsCount();
+        if (this.wesFile != null)
+            this.peakSnpBackground = this.getPeakSNPBackground();
+        else
+            this.peakSnpBackground = null;
         this.hierarchicalModelTest();
     }
 
@@ -116,37 +147,71 @@ public class AsmPeakDetection {
      */
     private void hierarchicalModelTest() {
         double pVal;
-        Set<Map.Entry<String, HashMap<String, HashMap<String, LinkedList<Integer>>>>> chrPeaks = this.peakSnpReadsCount.entrySet();
-        for (Map.Entry<String, HashMap<String, HashMap<String, LinkedList<Integer>>>> chrPeak: chrPeaks) {
-            String chrNum = chrPeak.getKey();
-            // 某条染色体上所有的peak
-            HashMap<String, HashMap<String, LinkedList<Integer>>> peaksOnChr = chrPeak.getValue();
+        Set<Map.Entry<String, HashMap<String, HashMap<String, int[]>>>> rnaSeqChrPeaks = this.peakSnpReadsCount.entrySet();
+        Set<Map.Entry<String, HashMap<String, HashMap<String, int[]>>>> wesSeqChrPeaks = (this.peakSnpBackground != null)? this.peakSnpBackground.entrySet():null;
+        HashMap<String, HashMap<String, int[]>> rnaSeqPeakSnvAlleleReads, wesPeakSnvAlleleReads;
+        HashMap<String, int[]> rnaSeqMutPositionAlleleReads, wesMutPositionAlleleReads;
+        int[] rnaSeqReads, wesReads, majorCount, minorCount, majorBackground, minorBackground;
+        int major, minor, backgroundMajor, backgroundMinor;
+        ArrayList<Integer> rnaSeqMajor, rnaSeqMinor, wesMajor, wesMinor;
+        for (String chrNum: this.peakSnpReadsCount.keySet()) {
+            // 某条染色体上所有Peak记录
+            rnaSeqPeakSnvAlleleReads = this.peakSnpReadsCount.get(chrNum);
 
-            Set<Map.Entry<String, HashMap<String, LinkedList<Integer>>>> peakRanges = peaksOnChr.entrySet();
-            // 对每个peak求取p值
-            for (Map.Entry<String, HashMap<String, LinkedList<Integer>>> peakRange: peakRanges) {
-                // key记录peak的范围 => start:end
-                String peakStartToEnd = peakRange.getKey();
-                // 某个m6A信号下 major和 minor haplotype SNP reads数目
-                HashMap<String, LinkedList<Integer>> haplotypeSnpReads = peakRange.getValue();
+            if (wesSeqChrPeaks != null)
+                wesPeakSnvAlleleReads = this.peakSnpBackground.getOrDefault(chrNum, null);
+            else
+                wesPeakSnvAlleleReads = null;
 
-                LinkedList<Integer> majorSNPReadsCount = haplotypeSnpReads.get("major");
-                int[] majorCount = new int[majorSNPReadsCount.size()];
-                for (int i = 0 ; i < majorSNPReadsCount.size(); i++ ) {
-                    majorCount[i] = majorSNPReadsCount.get(i);
+            for (String peakRange: rnaSeqPeakSnvAlleleReads.keySet()) {
+                // 染色体上某个Peak覆盖的SNV记录
+                rnaSeqMutPositionAlleleReads = rnaSeqPeakSnvAlleleReads.get(peakRange);
+                if (wesPeakSnvAlleleReads != null)
+                    wesMutPositionAlleleReads = wesPeakSnvAlleleReads.getOrDefault(peakRange, null);
+                else
+                    wesMutPositionAlleleReads = null;
+
+                rnaSeqMajor = new ArrayList<>();
+                rnaSeqMinor = new ArrayList<>();
+                wesMajor = new ArrayList<>();
+                wesMinor = new ArrayList<>();
+                for (String position: rnaSeqMutPositionAlleleReads.keySet()) {
+                    rnaSeqReads = rnaSeqMutPositionAlleleReads.get(position);
+                    if (wesMutPositionAlleleReads != null)
+                        wesReads = wesMutPositionAlleleReads.getOrDefault(position, null);
+                    else
+                        wesReads = null;
+                    major = rnaSeqReads[0];
+                    minor = rnaSeqReads[1];
+                    backgroundMajor = (wesReads != null)? wesReads[0]: (minor+major)/2;
+                    backgroundMinor = (wesReads != null)? wesReads[1]: (minor+major)/2;
+                    rnaSeqMajor.add(major);
+                    rnaSeqMinor.add(minor);
+                    wesMajor.add(backgroundMajor);
+                    wesMinor.add(backgroundMinor);
                 }
-                majorSNPReadsCount = null;
-                LinkedList<Integer> minorSNPReadsCount = haplotypeSnpReads.get("minor");
-                int[] minorCount = new int[minorSNPReadsCount.size()];
-                for (int i = 0 ; i < minorSNPReadsCount.size(); i++ ) {
-                    minorCount[i] = minorSNPReadsCount.get(i);
+                majorCount = new int[rnaSeqMajor.size()];
+                minorCount = new int[rnaSeqMinor.size()];
+                majorBackground = new int[wesMajor.size()];
+                minorBackground = new int[wesMinor.size()];
+                assert majorCount.length == minorCount.length;
+                assert majorCount.length == majorBackground.length;
+                assert majorBackground.length == minorBackground.length;
+                for (int i=0; i<majorCount.length; i++) {
+                    majorCount[i] = rnaSeqMajor.get(i);
+                    minorCount[i] = rnaSeqMinor.get(i);
+                    majorBackground[i] = wesMajor.get(i);
+                    minorBackground[i] = wesMinor.get(i);
                 }
-                minorSNPReadsCount = null;
+                rnaSeqMajor.clear();
+                rnaSeqMinor.clear();
+                wesMajor.clear();
+                wesMinor.clear();
                 // 对peak下所有的SNP位点进行元分析, 得到该peak对应的 p value
                 HierarchicalBayesianModel hb = new HierarchicalBayesianModel(0, 1, this.samplingTime,
-                        this.burnIn, majorCount, minorCount);
+                        this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
                 pVal = hb.testSignificant();
-                this.asmPValue.put(chrNum+":"+peakStartToEnd, pVal);
+                this.asmPValue.put(chrNum+":"+peakRange, pVal);
                 hb = null;
             }
         }

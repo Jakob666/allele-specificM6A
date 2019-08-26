@@ -12,7 +12,7 @@ public class ModelChecking {
     private double curTau, curTauPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
     private double[] observeLogOddRatio, singleASELORMean, variances, replicatedData, minReplicatedData;
-    private int[] majorAlleleReads, minorAlleleReads;
+    private int[] majorAlleleReads, minorAlleleReads, majorBackground, minorBackground;
     private double discrepancyMeasureRatio = 0;
     private DecimalFormat df = new DecimalFormat("0.00");
 
@@ -20,20 +20,22 @@ public class ModelChecking {
      * Constructor
      */
     public ModelChecking(double minTau, double maxTau, int samplingTime, int burnIn,
-                         int[] majorAlleleReads, int[] minorAlleleReads) {
+                         int[] majorAlleleReads, int[] minorAlleleReads, int[] majorBackground, int[] minorBackground) {
         this.ts = new TauSampling(minTau, maxTau);
         this.lors = new LogOddRatioSampling();
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.majorAlleleReads = majorAlleleReads;
         this.minorAlleleReads = minorAlleleReads;
+        this.majorBackground = majorBackground;
+        this.minorBackground = minorBackground;
         this.singleASELORMean = new double[minorAlleleReads.length];
         this.replicatedData = new double[majorAlleleReads.length];
         this.minReplicatedData = new double[this.samplingTime];
     }
 
     /**
-     * 依据采样结果返回该peak的ASE显著性水平
+     * 依据采样结果返回该peak的ASM显著性水平
      */
     public void testSignificant() {
         this.initializer();
@@ -112,7 +114,7 @@ public class ModelChecking {
      * @return {"LOR": [log odd ratios], "VAR": [variances]}
      */
     private HashMap<String, double[]> getInitLORAndVar() {
-        OddRatioCalc orc = new OddRatioCalc(this.majorAlleleReads, this.minorAlleleReads);
+        OddRatioCalc orc = new OddRatioCalc(this.majorAlleleReads, this.minorAlleleReads, this.majorBackground, this.minorBackground);
         return orc.getLogOddRatio();
     }
 

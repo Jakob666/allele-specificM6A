@@ -19,12 +19,12 @@ public class PeakCoveredSNP {
     public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, Logger logger) {
         this.logger = logger;
         this.vcfFile = new File(vcfRecordFile);
-        if (!vcfFile.exists()) {
+        if (!vcfFile.exists() || !this.vcfFile.isFile()) {
             this.logger.error("vcf file not exists");
             System.exit(2);
         }
         this.peakCallingRes = new File(peakCallingRes);
-        if (!this.peakCallingRes.exists()) {
+        if (!this.peakCallingRes.exists() || !this.peakCallingRes.isFile()) {
             this.logger.error("peak calling result bed file not exists");
             System.exit(2);
         }

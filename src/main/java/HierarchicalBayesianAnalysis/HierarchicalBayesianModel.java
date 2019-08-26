@@ -12,14 +12,15 @@ public class HierarchicalBayesianModel {
     private double curTau, curTauPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
     private double[] observeLogOddRatio, singleASELORMean, variances, samplingGlobalLORs;
-    private int[] majorAlleleReads, minorAlleleReads;
+    private int[] majorAlleleReads, minorAlleleReads, majorAlleleBackground, minorAlleleBackground;
     private DecimalFormat df = new DecimalFormat("0.00");
 
     /**
      * Constructor
      */
     public HierarchicalBayesianModel(double minTau, double maxTau, int samplingTime, int burnIn,
-                                     int[] majorAlleleReads, int[] minorAlleleReads) {
+                                     int[] majorAlleleReads, int[] minorAlleleReads,
+                                     int[] majorAlleleBackground, int[] minorAlleleBackground) {
         this.ts = new TauSampling(minTau, maxTau);
         this.lors = new LogOddRatioSampling();
         this.samplingTime = samplingTime;
@@ -28,6 +29,8 @@ public class HierarchicalBayesianModel {
         this.minorAlleleReads = minorAlleleReads;
         this.samplingGlobalLORs = new double[samplingTime];
         this.singleASELORMean = new double[minorAlleleReads.length];
+        this.majorAlleleBackground = majorAlleleBackground;
+        this.minorAlleleBackground = minorAlleleBackground;
     }
 
     /**
@@ -91,7 +94,8 @@ public class HierarchicalBayesianModel {
      * @return {"LOR": [log odd ratios], "VAR": [variances]}
      */
     private HashMap<String, double[]> getInitLORAndVar() {
-        OddRatioCalc orc = new OddRatioCalc(this.majorAlleleReads, this.minorAlleleReads);
+        OddRatioCalc orc = new OddRatioCalc(this.majorAlleleReads, this.minorAlleleReads,
+                                            this.majorAlleleBackground, this.minorAlleleBackground);
         return orc.getLogOddRatio();
     }
 

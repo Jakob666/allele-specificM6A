@@ -6,7 +6,7 @@ import org.apache.log4j.Logger;
 import java.io.File;
 
 public class HierarchicalTest {
-    private String aseVcfFile, asmVcfFile, gtfFile, bedFile, peakCoveredSnpFile, aseGeneFile, asmPeakFile, finalOutput;
+    private String aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, peakCoveredSnpFile, peakCoveredSnpBackground, aseGeneFile, asmPeakFile, finalOutput;
     private int samplingTime, burnInTime;
     private Logger logger;
 
@@ -14,7 +14,7 @@ public class HierarchicalTest {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
 
-        String aseVcfFile = null, asmVcfFile = null, gtfFile = null, bedFile = null, outputDir;
+        String aseVcfFile = null, asmVcfFile = null, wesFile = null, gtfFile = null, bedFile = null, outputDir;
         int samplingTime = 5000, burnInTime = 200;
 
         if (commandLine.hasOption("o")) {
@@ -68,6 +68,8 @@ public class HierarchicalTest {
             System.exit(2);
         }
 
+        if (commandLine.hasOption("wes"))
+            wesFile = commandLine.getOptionValue("wes");
         if (commandLine.hasOption("g"))
             gtfFile = commandLine.getOptionValue("g");
         if (commandLine.hasOption("b"))
@@ -85,21 +87,27 @@ public class HierarchicalTest {
         if (commandLine.hasOption("bt"))
             burnInTime = Integer.parseInt(commandLine.getOptionValue("bt"));
 
-        HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, gtfFile, bedFile, outputDir, samplingTime,
-                                                   burnInTime, logger);
+        HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, outputDir,
+                                                   samplingTime, burnInTime, logger);
         ht.getResult();
     }
 
-    public HierarchicalTest(String aseVcfFile, String asmVcfFile, String gtfFile, String bedFile, String outputDir,
+
+    public HierarchicalTest(String aseVcfFile, String asmVcfFile, String wesFile, String gtfFile, String bedFile, String outputDir,
                             int samplingTime, int burnInTime, Logger logger) {
         this.aseVcfFile = aseVcfFile;
         this.asmVcfFile = asmVcfFile;
+        this.wesFile = wesFile;
         this.gtfFile = gtfFile;
         this.bedFile = bedFile;
         this.samplingTime = samplingTime;
         this.burnInTime = burnInTime;
         this.logger = logger;
         this.peakCoveredSnpFile = new File(outputDir, "asm_peakCoveredSNP.txt").getAbsolutePath();
+        if (this.wesFile != null)
+            this.peakCoveredSnpBackground = new File(outputDir, "asm_peakCoveredSNPBackground.txt").getAbsolutePath();
+        else
+            this.peakCoveredSnpBackground = null;
         this.asmPeakFile = new File(outputDir, "asmPeak.txt").getAbsolutePath();
         this.aseGeneFile = new File(outputDir, "aseGene.txt").getAbsolutePath();
         this.finalOutput = new File(outputDir, "finalResult.txt").getAbsolutePath();
@@ -116,8 +124,9 @@ public class HierarchicalTest {
      */
     private void asmPeakDetected() {
         this.logger.debug("detect ASM m6A signal, m6A coveredSNP sites are shown in " + this.peakCoveredSnpFile);
-        AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile, peakCoveredSnpFile, this.asmPeakFile,
-                                                    this.samplingTime, this.burnInTime);
+        AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile,this.wesFile, peakCoveredSnpFile,
+                                                    this.peakCoveredSnpBackground, this.asmPeakFile, this.samplingTime,
+                                                    this.burnInTime);
         apd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.asmPeakFile + ", ASM specific m6A signals with q-value less than 0.05");
     }
@@ -127,8 +136,8 @@ public class HierarchicalTest {
      */
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
-        AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.aseGeneFile, this.samplingTime,
-                                                    this.burnInTime);
+        AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
+                                                    this.samplingTime, this.burnInTime);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
     }
@@ -152,6 +161,10 @@ public class HierarchicalTest {
         options.addOption(option);
 
         option = new Option("asm", "asm_vcf_file", true, "IP sample SNP calling result VCF file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("wes", "wes_vcf_file", true, "WES SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
 
