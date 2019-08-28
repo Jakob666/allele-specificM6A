@@ -44,6 +44,11 @@ public class M6APeaks {
             this.geneM6aSites.put(label, peakCoverSites);
         } else {
             for (int i = 0; i < peakNum; i++) {
+                // 随机决定是否生成该peak
+                double randNum = Math.random();
+                boolean noPeak = (i==peakNum-1 && !this.geneM6aSites.keySet().contains(label));
+                if (randNum > 0.5 && !noPeak)
+                    continue;
                 int start = i * (2 * m6aPeakLength) + m6aPeakLength / 2;
                 int end = (i+1) * (2 * m6aPeakLength) - m6aPeakLength / 2;
                 int peakCenter = new UniformIntegerDistribution(start, end).sample();

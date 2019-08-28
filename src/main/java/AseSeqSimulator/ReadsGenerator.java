@@ -77,7 +77,7 @@ public class ReadsGenerator {
                 HashSet<String> chrGenes = new HashSet<>();
                 transcriptRegion = new LinkedList<int[]>();
                 // 2bit文件中不存在chrMT，线粒体
-                if (chr.equals("MT"))
+                if (chr.equals("MT") || chr.equals("X") || chr.equals("Y"))
                     continue;
                 ChromosomeRecord chromosomeRecord = chrMap.get(chr);
                 genesOnChr = chromosomeRecord.getChrGenes();
