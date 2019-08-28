@@ -9,9 +9,10 @@ import java.util.HashMap;
 public class HierarchicalBayesianModel {
     private TauSampling ts;
     private LogOddRatioSampling lors;
-    private double curTau, curTauPosteriorDensity, globalLORMean, globalLORSigma;
+    private double curTau, curGlobalLOR, curTauPosteriorDensity, curGlobalLORPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
-    private double[] observeLogOddRatio, singleASELORMean, variances, samplingGlobalLORs;
+    private double[] observeLogOddRatio, variances, singleASELORMean, singleASELORMeanPosteriorDensity, singleASELOR,
+                     singleASELORPosteriorDensity, samplingGlobalLORs;
     private int[] majorAlleleReads, minorAlleleReads, majorAlleleBackground, minorAlleleBackground;
     private DecimalFormat df = new DecimalFormat("0.00");
 
@@ -29,6 +30,9 @@ public class HierarchicalBayesianModel {
         this.minorAlleleReads = minorAlleleReads;
         this.samplingGlobalLORs = new double[samplingTime];
         this.singleASELORMean = new double[minorAlleleReads.length];
+        this.singleASELORMeanPosteriorDensity = new double[minorAlleleReads.length];
+        this.singleASELOR = new double[minorAlleleReads.length];
+        this.singleASELORPosteriorDensity = new double[minorAlleleReads.length];
         this.majorAlleleBackground = majorAlleleBackground;
         this.minorAlleleBackground = minorAlleleBackground;
     }
@@ -55,7 +59,7 @@ public class HierarchicalBayesianModel {
      * 初始化参数tau等参数
      */
     private void initializer() {
-        // 计算观测到的ASE位点的对数优势比和方差
+        // 计算观测到的ASE位点的对数优势比y和方差var
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.observeLogOddRatio = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
@@ -64,7 +68,9 @@ public class HierarchicalBayesianModel {
 
         // 从tau的先验分布中初始化一个tau值
         this.curTau = this.ts.randomTau();
-        // 依据初始的tau计算初始化的全局对数优势比的均值、方差和采样值
+
+        // 已知tau、y和var，全局对数优势比的后验概率满足 P(globalLOR|tau,y)~N(Theta, V)。正态分布的两个变量可由tau、y和var求出
+        // 初始化得到全局对数优势比的值
         double miu_denominator = 0, miu_numernator = 0;
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
             miu_denominator += 1.0 / (this.variances[i] + Math.pow(this.curTau, 2));
@@ -73,20 +79,38 @@ public class HierarchicalBayesianModel {
         this.globalLORMean = miu_numernator / miu_denominator;
         this.globalLORSigma = 1.0 / miu_denominator;
         NormalDistribution nd = new NormalDistribution(this.globalLORMean, this.globalLORSigma);
-        double globalLOR = nd.sample();
-        // 依据全局对数优势比的均值计算得到当前Tau的近似后验概率
+        this.curGlobalLOR = nd.sample();
+
+        // 当前超参数Tau的近似后验概率
         this.curTauPosteriorDensity = this.ts.posteriorTau(this.curTau, this.observeLogOddRatio, this.variances,
                                                            this.globalLORMean, this.globalLORSigma);
+        // 当前全局对数优势比的后验概率
+        this.curGlobalLORPosteriorDensity = nd.density(this.curGlobalLOR);
 //        System.out.println("initial tau: " + this.curTau+"\t initial density: " + this.curTauPosteriorDensity);
 
-        // 根据全局优势比得到各ASE位点优势比均值
+        // 已知y、var、Tau和globalLOR，各点对数优势比期望值P(LORMean_i|y,Tau,globalLOR)~N(Theta_i, Vi)。正态分布参数都可由已知量求出
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
-            double mean = (1.0 / this.variances[i] * this.observeLogOddRatio[i] + 1.0 / Math.pow(this.curTau, 2) * globalLOR) / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
+            double mean = (1.0 / this.variances[i] * this.observeLogOddRatio[i] + 1.0 / Math.pow(this.curTau, 2) * this.curGlobalLOR) / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
             double sigma = 1.0 / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
             nd = new NormalDistribution(mean, sigma);
-            this.singleASELORMean[i] = nd.sample();
+            double lor = nd.sample();
+            // 初始化各位点的对数优势比期望值，并记录初始化优势比的后验概率
+            this.singleASELORMean[i] = lor;
+            this.singleASELORMeanPosteriorDensity[i] = nd.density(lor);
         }
-//        System.out.println("initial single ASE site LOR: [" + this.getString(this.singleASELORMean) + "]");
+//        System.out.println("initial single ASE site LOR mean: [" + this.getString(this.singleASELORMean) + "]");
+
+        // 已知var、LORMean_i，各位点的对数优势比的后验概率 P(LOR_i|LORMean_i, var_i)~N(LORMean_i, var_i)
+        for (int i = 0; i < this.singleASELORMean.length; i++) {
+            double lorMean = this.singleASELORMean[i];
+            double var = this.variances[i];
+            nd = new NormalDistribution(lorMean, var);
+            double lor = nd.sample();
+            // 初始化一组LOR值并记录其后验概率
+            this.singleASELOR[i] = lor;
+            this.singleASELORPosteriorDensity[i] = nd.density(lor);
+        }
+//        System.out.println("initial single ASE site LOR: [" + this.getString(this.singleASELOR) + "]");
     }
 
     /**
@@ -103,50 +127,51 @@ public class HierarchicalBayesianModel {
      * 进行采样操作，得到 samplingTimes + burnIn个采样值
      */
     private void sampling() {
-//        BufferedWriter bfw = null;
-//        String tauRecordFile = "C:\\Users\\hbs\\Desktop\\等位基因特异的m6A修饰位点分析平台\\globalTauSample.txt";
         int totalTimes = this.samplingTime + this.burnIn;
-//        try {
-//            bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(tauRecordFile))));
+
         for (int i=0; i<totalTimes; i++) {
+//            System.out.println("iteration " + i);
             // 首先对tau进行采样
             double prevTau = this.curTau;
             double prevTauPosteriorDensity = this.curTauPosteriorDensity;
-            double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.observeLogOddRatio,
+            double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.singleASELOR,
                     this.variances, this.globalLORMean, this.globalLORSigma);
             this.curTau = samplingRes[0];
             this.curTauPosteriorDensity = samplingRes[1];
-//            if (i > this.burnIn) {
-//                bfw.write(df.format(this.curTau));
-//                bfw.newLine();
-//            }
+//            System.out.println("new Tau value: " + this.curTau);
 
             // 对全局对数优势比进行采样
-            double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio, this.variances);
+            double prevGlobalLOR = this.curGlobalLOR;
+            double prevGlobalLORPosteriorDensity = this.curGlobalLORPosteriorDensity;
+            double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio,
+                                                                            this.variances, prevGlobalLOR, prevGlobalLORPosteriorDensity);
             this.globalLORMean = globalLORSummary[0];
             this.globalLORSigma = globalLORSummary[1];
-            double globalLOR = globalLORSummary[2];
-//                System.out.println("step " + i + " current theta: " + df.format(globalLOR));
+            this.curGlobalLOR = globalLORSummary[2];
+            this.curGlobalLORPosteriorDensity = globalLORSummary[3];
             if (i > this.burnIn)
-                this.samplingGlobalLORs[i-this.burnIn] = globalLOR;
+                this.samplingGlobalLORs[i-this.burnIn] = this.curGlobalLOR;
+//            System.out.println("new global LOR value: " + this.curGlobalLOR);
 
             // 对各个ASE位点的对数优势比均值进行采样
-            this.singleASELORMean = this.lors.singleAseOddRatioSampling(this.curTau, globalLOR, this.observeLogOddRatio, this.variances);
-//                System.out.println("single ASE Site LOR: [" + this.getString(this.singleASELORMean) + "]");
-//                System.out.println("------------------------------------");
+            double[] prevSingleAseLORMean = this.singleASELORMean;
+            double[] prevSingleAseLORMeanPosteriorDensity = this.singleASELORMeanPosteriorDensity;
+            HashMap<String, double[]> singleAseMeanSampleRes = this.lors.singleAseOddRatioMeanSampling(this.curTau, this.curGlobalLOR, this.observeLogOddRatio,
+                                                                                      this.variances, prevSingleAseLORMean, prevSingleAseLORMeanPosteriorDensity);
+            this.singleASELORMean = singleAseMeanSampleRes.get("LOR");
+            this.singleASELORMeanPosteriorDensity = singleAseMeanSampleRes.get("density");
+//            System.out.println("new single site LOR mean value: [" + this.getString(this.singleASELORMean) + "]");
+
+            // 对各个ASE位点的对数优势比进行采样
+            double[] prevSingleAseLOR = this.singleASELOR;
+            double[] prevSingleAseLORPosteriorDensity = this.singleASELORPosteriorDensity;
+            HashMap<String, double[]> singleAseSampleRes = this.lors.singleAseOddRatioSampling(this.singleASELORMean, this.variances,
+                                                                                               prevSingleAseLOR, prevSingleAseLORPosteriorDensity);
+            this.singleASELOR = singleAseSampleRes.get("LOR");
+            this.singleASELORPosteriorDensity = singleAseSampleRes.get("density");
+//            System.out.println("new single site LOR value: [" + this.getString(this.singleASELOR) + "]");
+//            System.out.println("==========================");
         }
-//            bfw.close();
-//        } catch (IOException ie) {
-//            ie.printStackTrace();
-//        } finally {
-//            if (bfw != null) {
-//                try {
-//                    bfw.close();
-//                } catch (Exception e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        }
     }
 
     private String getString(double[] lorList) {

@@ -12,10 +12,10 @@ import java.util.*;
  * 通过SNP calling得到的VCF文件对ASE gene进行检验
  */
 public class AseGeneDetection {
-    // geneAlleleReads = {"geneId->geneName": {"major":[count1, count2,...], "minor": [count1, count2,...]}, ...}
+    // geneAlleleReads = {"geneId->geneName": {pos1: {majorAllele:count1, minorAllele: count1}}, ...}
     private String aseGeneFile;
     private HashMap<String, HashMap<Integer, HashMap<String, Integer>>> geneAlleleReads, geneBackgroundReads;
-    private HashMap<String, int[]> geneMajorStrand, geneBackgroundStrand;
+    private HashMap<String, int[]> geneMajorStrand;
     private HashMap<String, HashMap<String, Integer>> geneReadsCount = new HashMap<>();
     private int samplingTime, burnIn;
     private HashMap<Double, ArrayList<String>> geneAsePValue = new HashMap<>();
@@ -42,10 +42,8 @@ public class AseGeneDetection {
             vsmg = new VcfSnpMatchGene(wesFile, gtfFile);
             vsmg.parseVcfFile();
             this.geneBackgroundReads = vsmg.getGeneAlleleReads();
-            this.geneBackgroundStrand = vsmg.getGeneMajorAlleleStrand();
         } else {
             this.geneBackgroundReads = null;
-            this.geneBackgroundStrand = null;
         }
 
         this.samplingTime = samplingTime;
@@ -133,6 +131,7 @@ public class AseGeneDetection {
             minorAlleleCount = new ArrayList<>();
             majorBackgroundCount = new ArrayList<>();
             minorBackgroundCount = new ArrayList<>();
+
             // 获取RNA-seq和WES经过SNP calling流程得到的某个基因的major allele和minor allele reads数目
             HashMap<Integer, HashMap<String, Integer>> geneSNVs = this.geneAlleleReads.get(label);
             if (this.geneBackgroundReads != null)
@@ -141,8 +140,12 @@ public class AseGeneDetection {
                 wesSNVs = null;
 
             for (Integer mutPosition: geneSNVs.keySet()) {
-                int major = geneSNVs.get(mutPosition).get("major");
-                int minor = geneSNVs.get(mutPosition).get("minor");
+                HashMap<String, Integer> nucleotideReadsCount = geneSNVs.get(mutPosition);
+                String[] majorMinorNC = this.getMajorMinorNucleotide(nucleotideReadsCount);
+                String majorNC = majorMinorNC[0];
+                String minorNC = majorMinorNC[1];
+                int major = nucleotideReadsCount.get(majorNC);
+                int minor = nucleotideReadsCount.get(minorNC);
                 majorAlleleCount.add(major);
                 minorAlleleCount.add(minor);
                 if (wesSNVs == null) {
@@ -151,13 +154,13 @@ public class AseGeneDetection {
                     minorBackgroundCount.add(alleleCount);
                 } else {
                     HashMap<String, Integer> snvSite = wesSNVs.getOrDefault(mutPosition, null);
+                    int alleleCount = (major + minor) / 2;
                     if (snvSite == null) {
-                        int alleleCount = (major + minor) / 2;
                         majorBackgroundCount.add(alleleCount);
                         minorBackgroundCount.add(alleleCount);
                     } else {
-                        majorBackgroundCount.add(snvSite.get("major"));
-                        minorBackgroundCount.add(snvSite.get("minor"));
+                        majorBackgroundCount.add(snvSite.getOrDefault(majorNC, alleleCount));
+                        minorBackgroundCount.add(snvSite.getOrDefault(minorNC, alleleCount));
                     }
                 }
             }
@@ -194,6 +197,24 @@ public class AseGeneDetection {
             this.geneAsePValue.put(p, samePValGenes);
             this.geneSNVs.put(label, majorCount.length);
         }
+    }
+
+    private String[] getMajorMinorNucleotide(HashMap<String, Integer> readsRecord) {
+        String major = null, minor = null;
+        int maxReads = Integer.MIN_VALUE, minReads = Integer.MAX_VALUE;
+        Set<String> nucleotides = readsRecord.keySet();
+        for (String nc: nucleotides) {
+            int readsCount = readsRecord.get(nc);
+            if (readsCount > maxReads) {
+                maxReads = readsCount;
+                major = nc;
+            } else if (readsCount < minReads) {
+                minReads = readsCount;
+                minor = nc;
+            }
+        }
+
+        return new String[] {major, minor};
     }
 
     /**
