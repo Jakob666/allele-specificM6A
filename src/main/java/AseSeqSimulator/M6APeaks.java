@@ -6,6 +6,7 @@ import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 import java.util.HashMap;
 
 public class M6APeaks {
+    private int m6aPeakInterval = 500;
     private M6AGenerator m6AGenerator;
     private HashMap<String, HashMap<String, HashMap<Integer, Integer>>> geneM6aSites = new HashMap<>();
 
@@ -26,80 +27,53 @@ public class M6APeaks {
         String geneId = gene.getGeneId(), chrNum = gene.getChr(), strand = gene.getStrand();
         String label = String.join(":", new String[]{chrNum, geneId, strand});
         // gene上最多有多少个peak，并确定peak center
-        int maxPeakNum = exonSeqLength / (2 * m6aPeakLength);
+        int maxPeakNum = exonSeqLength / (2 * m6aPeakLength + this.m6aPeakInterval);
         int peakNum = new UniformIntegerDistribution(0, maxPeakNum).sample();
         if (peakNum == 0) {
             int start = 1;
             int end = (start + m6aPeakLength < exonSeqLength)? (start + m6aPeakLength): exonSeqLength;
-            int genomePeakStart = this.getGenomePosition(gene, start);
-            int genomePeakEnd = this.getGenomePosition(gene, end);
+            int[] m6aSite = this.geneM6aSites(gene, start, end, readLength);
+            int peakCenter = m6aSite[0];
+            int peakStart = (peakCenter - m6aPeakLength/2 > 0)? peakCenter-m6aPeakLength/2:1;
+            int peakEnd = (peakCenter + m6aPeakLength/2 < exonSeqLength)? peakCenter+m6aPeakLength/2:exonSeqLength;
+            int genomePeakStart = this.m6AGenerator.m6aGenomePosition(gene, peakStart);
+            int genomePeakEnd = this.m6AGenerator.m6aGenomePosition(gene, peakEnd);
             String[] peakGenomeRange = (genomePeakStart < genomePeakEnd)?
                     new String[]{Integer.toString(genomePeakStart), Integer.toString(genomePeakEnd),
-                                 Integer.toString(start), Integer.toString(end)}:
+                                 Integer.toString(peakStart), Integer.toString(peakEnd)}:
                     new String[]{Integer.toString(genomePeakEnd), Integer.toString(genomePeakStart),
-                                 Integer.toString(start), Integer.toString(end)};
-            HashMap<Integer, Integer> m6aSites = this.geneM6aSites(gene, start, end, readLength);
+                                 Integer.toString(peakStart), Integer.toString(peakEnd)};
+            HashMap<Integer, Integer> modifySite = new HashMap<>();
+            modifySite.put(m6aSite[0], m6aSite[1]);
             HashMap<String, HashMap<Integer, Integer>> peakCoverSites = new HashMap<>();
-            peakCoverSites.put(String.join(":", peakGenomeRange), m6aSites);
+            peakCoverSites.put(String.join(":", peakGenomeRange), modifySite);
             this.geneM6aSites.put(label, peakCoverSites);
         } else {
             for (int i = 0; i < peakNum; i++) {
-                // 随机决定是否生成该peak
-                double randNum = Math.random();
-                boolean noPeak = (i==peakNum-1 && !this.geneM6aSites.keySet().contains(label));
-                if (randNum > 0.5 && !noPeak)
-                    continue;
-                int start = i * (2 * m6aPeakLength) + m6aPeakLength / 2;
-                int end = (i+1) * (2 * m6aPeakLength) - m6aPeakLength / 2;
-                int peakCenter = new UniformIntegerDistribution(start, end).sample();
-                int exonPeakStart = peakCenter - m6aPeakLength / 2;
-                int exonPeakEnd = peakCenter + m6aPeakLength / 2;
+                int start = i * (2 * m6aPeakLength + this.m6aPeakInterval) + m6aPeakLength / 2;
+                int end = start + m6aPeakLength;
+                // 获取每个peak下覆盖的m6A修饰位点
+                int[] m6aSite = this.geneM6aSites(gene, start, end, readLength);
+                int peakStart = m6aSite[0] - m6aPeakLength/2;
+                int peakEnd = m6aSite[0] + m6aPeakLength/2;
+                int genomePeakStart = this.m6AGenerator.m6aGenomePosition(gene, peakStart);
+                int genomePeakEnd = this.m6AGenerator.m6aGenomePosition(gene, peakEnd);
 
-                int genomePeakStart = this.getGenomePosition(gene, exonPeakStart);
-                int genomePeakEnd = this.getGenomePosition(gene, exonPeakEnd);
                 String[] peakGenomeRange = (genomePeakStart < genomePeakEnd)?
                                             new String[]{Integer.toString(genomePeakStart), Integer.toString(genomePeakEnd),
-                                                         Integer.toString(start), Integer.toString(end)}:
+                                                         Integer.toString(peakStart), Integer.toString(peakEnd)}:
                                             new String[]{Integer.toString(genomePeakEnd), Integer.toString(genomePeakStart),
-                                                         Integer.toString(start), Integer.toString(end)};
-                // 获取每个peak下覆盖的m6A修饰位点
-                HashMap<Integer, Integer> m6aSites = this.geneM6aSites(gene, exonPeakStart, exonPeakEnd, readLength);
+                                                         Integer.toString(peakStart), Integer.toString(peakEnd)};
+                HashMap<Integer, Integer> modifySite = new HashMap<>();
+                modifySite.put(m6aSite[0], m6aSite[1]);
                 HashMap<String, HashMap<Integer, Integer>> peakCoveredSites = this.geneM6aSites.getOrDefault(label, new HashMap<>());
-                peakCoveredSites.put(String.join(":", peakGenomeRange), m6aSites);
+                peakCoveredSites.put(String.join(":", peakGenomeRange), modifySite);
                 this.geneM6aSites.put(label, peakCoveredSites);
             }
         }
     }
 
-    public HashMap<Integer, Integer> geneM6aSites(Gene gene, int start, int end, int readLength) {
+    public int[] geneM6aSites(Gene gene, int start, int end, int readLength) {
         return this.m6AGenerator.generateM6aSites(gene, start, end, readLength);
-    }
-
-    /**
-     * 将外显子序列的修饰位点转换为基因组上对应的位置
-     * @param gene Gene对象
-     * @param m6APos 外显子序列上的修饰位点
-     * @return 基因组对应位置
-     */
-    private int getGenomePosition(Gene gene, int m6APos) {
-        ElementRecord exon = gene.getExonList();
-        int genomePosition;
-        int length = 0, distance = m6APos;
-        while (exon != null) {
-            length = length + exon.getElementEnd() - exon.getElementStart() + 1;
-            if (length >= m6APos)
-                break;
-            exon = exon.getNextElement();
-            distance = m6APos - length;
-        }
-        if (gene.getStrand().equals("+")) {
-            int start = exon.getElementStart();
-            genomePosition = start + distance;
-        } else {
-            int end = exon.getElementEnd();
-            genomePosition = end - distance;
-        }
-
-        return genomePosition;
     }
 }

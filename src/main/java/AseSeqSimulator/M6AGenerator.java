@@ -22,40 +22,25 @@ public class M6AGenerator {
     public M6AGenerator() {}
 
     /**
-     * 随机生成基因m6A修饰位点，该方法为公有方法，供外界调用，返回m6A修饰位点外显子的位置及其基因组的位置
+     * 随机生成一个m6A修饰位点，该方法为公有方法，供外界调用，返回m6A修饰位点外显子的位置及其基因组的位置
      * @param m6aModifyGene 需要生成m6A修饰位点的Gene对象
      * @return m6A修饰位点
      */
-    public HashMap<Integer, Integer> generateM6aSites(Gene m6aModifyGene, int peakStart, int peakEnd, int readLength) {
+    public int[] generateM6aSites(Gene m6aModifyGene, int peakStart, int peakEnd, int readLength) {
         UniformIntegerDistribution uid;
-        HashSet<Integer> geneM6aModifySites = new HashSet<>();
-        int modifyNum, modifyPosition;
+        int modifyPosition;
 
         uid = new UniformIntegerDistribution(peakStart + readLength/2, peakEnd - readLength/2);
 
         // 随机选取mRNA上m6a修饰位点数目并生成m6a修饰位点(外显子序列的位点，并非基因组位点)
-        modifyNum = Math.abs((int) this.m6aFrequency.sample());
-        if (modifyNum == 0)
-            modifyNum = 1;
-        for (int i = 0; i < modifyNum; ) {
-            modifyPosition = uid.sample();
-            if (!geneM6aModifySites.contains(modifyPosition)) {
-                geneM6aModifySites.add(modifyPosition);
-                i++;
-            }
-        }
+        modifyPosition = uid.sample();
 
         int genomePosition;
-        HashMap<Integer, Integer> m6aModificationSites = new HashMap<>();
-        for (Integer m6aSite: geneM6aModifySites) {
-            genomePosition = this.m6aGenomePosition(m6aModifyGene, m6aSite);
-            m6aModificationSites.put(m6aSite, genomePosition);
-        }
+        genomePosition = this.m6aGenomePosition(m6aModifyGene, modifyPosition);
         // 释放内存
-        geneM6aModifySites.clear();
         uid = null;
 
-        return m6aModificationSites;
+        return new int[] {modifyPosition, genomePosition};
     }
 
     /**
@@ -125,7 +110,7 @@ public class M6AGenerator {
      * @param exonM6aPos 外显子序列m6A突变位置
      * @return 基因组上的对应位置
      */
-    private int m6aGenomePosition(Gene gene, int exonM6aPos) {
+    public int m6aGenomePosition(Gene gene, int exonM6aPos) {
         ElementRecord exon = gene.getExonList();
         int genomePosition;
         int length = 0, distance = exonM6aPos;
