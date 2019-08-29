@@ -1,6 +1,5 @@
 package AseSeqSimulator;
 
-import GTFComponent.ElementRecord;
 import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 
 import java.util.HashMap;
@@ -50,6 +49,9 @@ public class M6APeaks {
             this.geneM6aSites.put(label, peakCoverSites);
         } else {
             for (int i = 0; i < peakNum; i++) {
+                double randNum = Math.random();
+                if (randNum < 0.5 && this.geneM6aSites.keySet().contains(label))
+                    continue;
                 int start = i * (2 * m6aPeakLength + this.m6aPeakInterval) + m6aPeakLength / 2;
                 int end = start + m6aPeakLength;
                 // 获取每个peak下覆盖的m6A修饰位点
