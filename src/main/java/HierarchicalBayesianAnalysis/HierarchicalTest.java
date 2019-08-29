@@ -8,6 +8,7 @@ import java.io.File;
 public class HierarchicalTest {
     private String aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, peakCoveredSnpFile, peakCoveredSnpBackground, aseGeneFile, asmPeakFile, finalOutput;
     private int samplingTime, burnInTime;
+    private double tauIfimum, tauSupremum;
     private Logger logger;
 
     public static void main(String[] args) throws ParseException {
@@ -16,6 +17,7 @@ public class HierarchicalTest {
 
         String aseVcfFile = null, asmVcfFile = null, wesFile = null, gtfFile = null, bedFile = null, outputDir;
         int samplingTime = 5000, burnInTime = 200;
+        double tauInfimum = 0, tauSupremum = 2;
 
         if (commandLine.hasOption("o")) {
             outputDir = commandLine.getOptionValue("o");
@@ -82,24 +84,34 @@ public class HierarchicalTest {
             logger.error("peak calling BED format file is required");
             System.exit(2);
         }
+        if (commandLine.hasOption("tl"))
+            tauInfimum = Double.parseDouble(commandLine.getOptionValue("tl"));
+        if (commandLine.hasOption("th"))
+            tauSupremum = Double.parseDouble(commandLine.getOptionValue("th"));
+        if (tauInfimum >= tauSupremum) {
+            logger.error("invalid uniform distribution parameter for tau sampling.");
+            System.exit(2);
+        }
         if (commandLine.hasOption("st"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("st"));
         if (commandLine.hasOption("bt"))
             burnInTime = Integer.parseInt(commandLine.getOptionValue("bt"));
 
         HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, outputDir,
-                                                   samplingTime, burnInTime, logger);
+                                                   tauInfimum, tauSupremum, samplingTime, burnInTime, logger);
         ht.getResult();
     }
 
 
     public HierarchicalTest(String aseVcfFile, String asmVcfFile, String wesFile, String gtfFile, String bedFile, String outputDir,
-                            int samplingTime, int burnInTime, Logger logger) {
+                            double tauIfimum, double tauSupremum, int samplingTime, int burnInTime, Logger logger) {
         this.aseVcfFile = aseVcfFile;
         this.asmVcfFile = asmVcfFile;
         this.wesFile = wesFile;
         this.gtfFile = gtfFile;
         this.bedFile = bedFile;
+        this.tauIfimum = tauIfimum;
+        this.tauSupremum = tauSupremum;
         this.samplingTime = samplingTime;
         this.burnInTime = burnInTime;
         this.logger = logger;
@@ -137,7 +149,7 @@ public class HierarchicalTest {
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
         AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
-                                                    this.samplingTime, this.burnInTime);
+                                                    this.tauIfimum, this.tauSupremum, this.samplingTime, this.burnInTime);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
     }
@@ -177,6 +189,14 @@ public class HierarchicalTest {
         options.addOption(option);
 
         option = new Option("o", "output_dir", true, "result output directory");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("tl", "tau_low", true, "infimum of uniform distribution for sampling model hyper-parameter tau, default 0");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
         option.setRequired(false);
         options.addOption(option);
 

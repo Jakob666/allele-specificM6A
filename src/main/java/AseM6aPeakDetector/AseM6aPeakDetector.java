@@ -16,6 +16,7 @@ public class AseM6aPeakDetector {
     private String ipParamVal, inputParamVal, wesParamVal, genomeFile, gtfFile, fastqTempDir, outputDir, direct, gatk,
                    picard, samtools, bcftools, bwa, inputFormat, wesInputFormat, experimentName;
     private int execThread, samplingTime, burnInTime;
+    private double tauInfimum, tauSupremum;
     private boolean compress, wesCompress;
     private Logger log;
 
@@ -25,6 +26,7 @@ public class AseM6aPeakDetector {
                 inputFormat = "sra", wesInputFormat = null, experimentName = "m6aPeak";
         boolean compress = false, wesCompress = false;
         int samplingTime = 5000, burnInTime = 200, execThread = 2;
+        double tauIfimum = 0, tauSupremum = 2;
 
         Options options = new Options();
         CommandLine commandLine = setCommand(args, options);
@@ -175,6 +177,14 @@ public class AseM6aPeakDetector {
             bwa = commandLine.getOptionValue("bwa");
         if (commandLine.hasOption('t'))
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
+        if (commandLine.hasOption("tl"))
+            tauIfimum = Double.parseDouble(commandLine.getOptionValue("tl"));
+        if (commandLine.hasOption("th"))
+            tauSupremum = Double.parseDouble(commandLine.getOptionValue("th"));
+        if (tauIfimum >= tauSupremum) {
+            logger.error("invalid uniform distribution parameter for tau sampling.");
+            System.exit(2);
+        }
         if (commandLine.hasOption("st"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("st"));
         if (commandLine.hasOption("bt"))
@@ -182,7 +192,7 @@ public class AseM6aPeakDetector {
 
         AseM6aPeakDetector ampd = new AseM6aPeakDetector(ipParamVal, inputParamVal, wesParamVal, genomeFile, gtfFile,
                 fastqTempDir, outputDir, direct, gatk, picard, samtools, bcftools, bwa, inputFormat, wesInputFormat,
-                experimentName, execThread, samplingTime, burnInTime, compress, wesCompress, logger);
+                experimentName, execThread, samplingTime, burnInTime, tauIfimum, tauSupremum, compress, wesCompress, logger);
         ampd.getResult();
 
     }
@@ -190,7 +200,8 @@ public class AseM6aPeakDetector {
     public AseM6aPeakDetector(String ipParamVal, String inputParamVal, String wesParamVal, String genomeFile, String gtfFile,
                               String fastqTempDir, String outputDir, String direct, String gatk, String picard, String samtools,
                               String bcftools, String bwa, String inputFormat, String wesInputFormat, String experimentName,
-                              int execThread, int samplingTime, int burnInTime, boolean compress, boolean wesCompress, Logger logger) {
+                              int execThread, int samplingTime, int burnInTime, double tauInfimum, double tauSupremum,
+                              boolean compress, boolean wesCompress, Logger logger) {
         this.ipParamVal = ipParamVal;
         this.inputParamVal = inputParamVal;
         this.wesParamVal = wesParamVal;
@@ -208,6 +219,8 @@ public class AseM6aPeakDetector {
         this.wesInputFormat = wesInputFormat;
         this.experimentName = experimentName;
         this.execThread = execThread;
+        this.tauInfimum = tauInfimum;
+        this.tauSupremum = tauSupremum;
         this.samplingTime = samplingTime;
         this.burnInTime = burnInTime;
         this.compress = compress;
@@ -309,7 +322,7 @@ public class AseM6aPeakDetector {
             }
         }
         HierarchicalTest ht = new HierarchicalTest(aseSnpFile, asmSnpFile, wesSnpFile, this.gtfFile, peakBedFile, this.outputDir,
-                                                   this.samplingTime, this.burnInTime, this.log);
+                                                   this.tauInfimum, this.tauSupremum, this.samplingTime, this.burnInTime, this.log);
         ht.getResult();
     }
 
@@ -395,6 +408,14 @@ public class AseM6aPeakDetector {
         options.addOption(option);
 
         option = new Option("t", "threads", true, "number of working threads, default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("tl", "tau_low", true, "infimum of uniform distribution for sampling model hyper-parameter tau, default 0");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
         option.setRequired(false);
         options.addOption(option);
 
