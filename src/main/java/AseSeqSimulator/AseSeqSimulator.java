@@ -13,7 +13,7 @@ public class AseSeqSimulator {
         int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
             minimumMut = 0, maximumMut = 3, depth = 100, minReadsCoverage = 10, maxReadsCoverage = 70;
         // default 60% gene has SNP site;
-        double geneProp = 0.05, mutProportion = 0.6, pcrErrorProb = 0;
+        double geneProp = 0.05, mutProportion = 0.6, pcrErrorProb = 0, aseInfimum = 0.55, aseSupremum = 0.85;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
         boolean overlap = true, singleEnd = true;
         File outputDir = new File("./simulateData");
@@ -49,6 +49,14 @@ public class AseSeqSimulator {
             minReadsCoverage = Integer.parseInt(commandLine.getOptionValue("min_cover"));
         if (commandLine.hasOption("max_cover"))
             maxReadsCoverage = Integer.parseInt(commandLine.getOptionValue("max_cover"));
+        if (commandLine.hasOption("al"))
+            aseInfimum = Double.parseDouble(commandLine.getOptionValue("al"));
+        if (commandLine.hasOption("ah"))
+            aseSupremum = Double.parseDouble(commandLine.getOptionValue("ah"));
+        if (aseInfimum > aseSupremum || aseInfimum >= 1 || aseSupremum >= 1) {
+            System.out.println("invalid ASE ratio");
+            System.exit(2);
+        }
         if (commandLine.hasOption("fm"))
             fragmentMean = Integer.parseInt(commandLine.getOptionValue("fm"));
         if (commandLine.hasOption("ft"))
@@ -90,7 +98,7 @@ public class AseSeqSimulator {
             geneExpFile = null;
         }
 
-        ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, twoBitFile);
+        ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, aseInfimum, aseSupremum, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, readLength, minimumMut,
                                           maximumMut, fragmentMean, fragmentStd, minReadsCoverage, maxReadsCoverage,
                                           mutProportion, peakLength, pcrErrorProb, overlap, singleEnd, geneExpFile);
@@ -148,6 +156,14 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("max_cover", "maximum_coverage", true, "maximum reads coverage when generate RNA-seq data, default 70");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("al", "ase_infimum", true, "ASE ratio infimum, default 0.55");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("ah", "ase_supremum", true, "ASE ratio supremum, default 0.85");
         option.setRequired(false);
         options.addOption(option);
 

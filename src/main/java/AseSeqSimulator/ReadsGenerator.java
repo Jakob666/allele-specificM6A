@@ -11,7 +11,7 @@ public class ReadsGenerator {
     private HashMap<String, LinkedList<Gene>> ChrGeneMap = new HashMap<String, LinkedList<Gene>>();
     private GTFReader readGTF = new GTFReader();
     private int readLength, sequencingDepth, m6aPeakLength;
-    private double geneProp;
+    private double geneProp, aseInfimum, aseSupremum;
     private TwoBitParser twoBit;
     private long librarySize;
     private String gtfFile, outputDir;
@@ -27,11 +27,14 @@ public class ReadsGenerator {
     private HashMap<String, ArrayList<String>> geneM6aPeakRanges = new HashMap<>();
     private HashMap<String, ArrayList<Boolean>> geneM6aPeakAsm = new HashMap<>();
     private SequencingError seqErrorModel;
+    private HashMap<String, HashMap<Integer, int[]>> geneRnaMutationCoverage = new HashMap<>(), geneDnaMutationCoverage = new HashMap<>();
 
-    public ReadsGenerator(String gtfFile, double geneProp, String twoBitFile) {
+    public ReadsGenerator(String gtfFile, double geneProp, double aseInfimum, double aseSupremum, String twoBitFile) {
         this.readGTF.readFromFile(gtfFile);
         System.out.println("read GTF complete");
         this.geneProp = geneProp;
+        this.aseInfimum = aseInfimum;
+        this.aseSupremum = aseSupremum;
         this.gtfFile = gtfFile;
         try {
             this.twoBit = new TwoBitParser(new File(twoBitFile));
@@ -169,7 +172,10 @@ public class ReadsGenerator {
      * 设置具有SNP位点的基因的 major allele frequency
      */
     private void mutatedGeneAseRatio() {
-        UniformRealDistribution urd = new UniformRealDistribution(0.60, 0.95);
+        // 如果aseInfimum与aseSupremum不相等，则在其区间范围内抽取
+        UniformRealDistribution urd = null;
+        if (!(Math.abs(this.aseInfimum-this.aseSupremum) < 0.00001))
+            urd = new UniformRealDistribution(this.aseInfimum, this.aseSupremum);
         // 获取到突变基因的 geneID集合
         Set<String> mutGeneIds = this.geneMutatedPosition.keySet();
         double ref, randNum;
@@ -178,7 +184,7 @@ public class ReadsGenerator {
             if (randNum > 0.5)
                 this.aseGeneMajorAlleleRatio.put(mutGeneId, 0.5);
             else {
-                ref = urd.sample();
+                ref = (urd != null)? urd.sample(): this.aseInfimum;
                 this.aseGeneMajorAlleleRatio.put(mutGeneId, ref);
             }
         }
@@ -443,11 +449,14 @@ public class ReadsGenerator {
             bfw = new BufferedWriter(
                     new OutputStreamWriter(new FileOutputStream(new File(outputFile)))
             );
-            bfw.write("chr\tgeneId\tgenomePos\texonSeqPos\tref\talt\n");
+            bfw.write("#chr\tgeneId\tgenomePos\texonSeqPos\tref\talt\trnaMajorCoverage\trnaMinorCoverage\tdnaMajorCoverage\tdnaMinorCoverage\n");
             String locateChr, writeOut;
             List<Integer> positions;
             for (String geneId: geneIds) {
                 locateChr = this.getGeneChr(geneId);
+                HashMap<Integer, int[]> rnaMutationCoverage = this.geneRnaMutationCoverage.get(geneId),
+                                        dnaMutationCoverage = this.geneDnaMutationCoverage.get(geneId);
+
                 positions = new ArrayList<>(this.geneMutatedPosition.get(geneId));
                 Collections.sort(positions);
                 for (Integer position: positions) {
@@ -455,7 +464,14 @@ public class ReadsGenerator {
                     String[] refAndAlt = this.geneMutationRefAlt.get(geneId).get(position);
                     String ref = refAndAlt[0];
                     String alt = refAndAlt[1];
-                    writeOut = locateChr + "\t" + geneId + "\t" + genomePos + "\t" + position + "\t" + ref.toUpperCase() + "\t" + alt.toUpperCase();
+                    // 如果因为coverage过低有些位点没有被cover到，默认为0
+                    String rnaMajorCoverage = Integer.toString(rnaMutationCoverage.getOrDefault(position, new int[]{0, 0})[0]),
+                           rnaMinorCoverage = Integer.toString(rnaMutationCoverage.getOrDefault(position, new int[]{0, 0})[1]),
+                           dnaMajorCoverage = Integer.toString(dnaMutationCoverage.getOrDefault(position, new int[]{0, 0})[0]),
+                           dnaMinorCoverage = Integer.toString(dnaMutationCoverage.getOrDefault(position, new int[]{0, 0})[1]);
+                    writeOut = String.join("\t", new String[] {locateChr, geneId, Integer.toString(genomePos),
+                            Integer.toString(position), ref.toUpperCase(), alt.toUpperCase(), rnaMajorCoverage,
+                            rnaMinorCoverage, dnaMajorCoverage, dnaMinorCoverage});
                     bfw.write(writeOut);
                     bfw.newLine();
                 }
@@ -553,12 +569,16 @@ public class ReadsGenerator {
                     // 生成基因mRNA的fragment，并将其富集到INPUT和IP两个类群
                     gene.enrichInputFragment(fragmentMean, fragmentTheta, this.readLength, geneMutateSites, type);
                     gene.generateReads(inputMate1File, inputMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
-                                       mutExonSeq, direct, this.seqErrorModel, "input", null, null);
+                                       mutExonSeq, direct, this.seqErrorModel, "input", type, null, null);
+                    if (type.equals("rna"))
+                        this.geneRnaMutationCoverage.put(geneId, gene.getRnaMutationCoverage());
+                    else
+                        this.geneDnaMutationCoverage.put(geneId, gene.getDnaMutationCoverage());
                     HashMap<Integer, Double> geneM6aAsm = this.geneM6aAsmRatio.getOrDefault(geneId, null);
                     HashMap<Integer, Boolean> m6aBias = this.geneM6aAsmBias.getOrDefault(geneId, null);
                     gene.enrichIpFragment(fragmentMean, fragmentTheta, this.readLength, geneM6aSites, geneMutateSites, type);
                     gene.generateReads(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref, mutExonSeq,
-                                       direct, this.seqErrorModel, "ip", geneM6aAsm, m6aBias);
+                                       direct, this.seqErrorModel, "ip", type, geneM6aAsm, m6aBias);
                     gene.peakFragmentFromBackground(ipMate1File, ipMate2File, this.readLength, fragmentMean, fragmentTheta, ref,
                                                     mutExonSeq, direct, this.seqErrorModel, geneMutateSites, geneM6aAsm, m6aBias);
                     gene.release();
@@ -625,7 +645,7 @@ public class ReadsGenerator {
         this.randomMutateGene(vcfFile, minimumMut, maximumMut, mutProp);
         this.mutatedGeneAseRatio();
         System.out.println("complete variant");
-        this.mutateGeneInfomation(new File(this.outputDir, "mutations.txt").getAbsolutePath());
+
         // 生成简化的GTF文件
         this.createSimpleGTF(new File(outputDir, "sim.chr.gtf").getAbsolutePath());
         // 设置基因的RPKM值并写入到文件
@@ -659,6 +679,9 @@ public class ReadsGenerator {
             IpMateFile = new File(meDipOutputDir, "Ip_mate.fasta").getAbsolutePath();
             this.generateReads(fragmentMean,fragmentTheta, InputOutputFile, InputMateFile, IpOutputFile, IpMateFile, "dna");
         }
+
+        this.mutateGeneInfomation(new File(this.outputDir, "mutations.txt").getAbsolutePath());
+
         this.geneM6aGenomePosition.clear();
         this.geneM6aPeakAsm.clear();
         this.geneM6aPeakRanges.clear();
@@ -666,6 +689,8 @@ public class ReadsGenerator {
         this.geneMutGenomePosition.clear();
         this.geneM6aAsmBias.clear();
         this.ChrGeneMap.clear();
+        this.geneRnaMutationCoverage.clear();
+        this.geneDnaMutationCoverage.clear();
     }
 
     public HashMap<String, HashSet<Integer>> getGeneMutatedPosition() {

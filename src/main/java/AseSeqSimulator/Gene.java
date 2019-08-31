@@ -24,7 +24,7 @@ public class Gene {
     private HashMap<Integer, ArrayList<int[]>> m6aSiteFragments = new HashMap<>(), m6aSiteMutateFragments = new HashMap<>();
     // 对应的read覆盖SNP位点的fragment
     private HashMap<Integer, ArrayList<int[]>> inputMutateFragments = new HashMap<>(), ipMutateFragments = new HashMap<>();
-
+    private HashMap<Integer, int[]> rnaMutationCoverage = new HashMap<>(), dnaMutationCoverage = new HashMap<>();
     // 位置相同的reads的fragment在exon上面终止位点
     private ArrayList<int[]> inputFragment = new ArrayList<>(), ipFragment = new ArrayList<>(), m6aSiteNormalFragments = new ArrayList<>();
 
@@ -93,6 +93,14 @@ public class Gene {
 
     public TranscriptRecord getLongestTranscriptRecord() {
         return this.longestTranscriptRecord;
+    }
+
+    public HashMap<Integer, int[]> getRnaMutationCoverage() {
+        return this.rnaMutationCoverage;
+    }
+
+    public HashMap<Integer, int[]> getDnaMutationCoverage() {
+        return this.dnaMutationCoverage;
     }
 
     /**
@@ -249,7 +257,7 @@ public class Gene {
      */
     public void generateReads(BufferedWriter mateFile1, BufferedWriter mateFile2, int readLength, int fragmentMean,
                               int fragmentTheta, double refProp, String mutExonSeq, String direct, SequencingError seqErrorModel,
-                              String sample, HashMap<Integer, Double> geneM6aAsm, HashMap<Integer, Boolean> minorBias) {
+                              String sample, String type, HashMap<Integer, Double> geneM6aAsm, HashMap<Integer, Boolean> minorBias) {
         ArrayList<int[]> fragmentRanges;
         ArrayList<Integer> m6aSites = null;
         if (geneM6aAsm != null) {
@@ -259,6 +267,9 @@ public class Gene {
         HashMap<Integer, ArrayList<int[]>> mutateFragmentRanges;
         fragmentRanges = (sample.equals("ip"))? this.ipFragment : this.inputFragment;
         mutateFragmentRanges = (sample.equals("ip"))? this.ipMutateFragments : this.inputMutateFragments;
+        HashMap<Integer, int[]> coverageRecords = null;
+        if (!sample.equals("ip"))
+            coverageRecords = (type.equals("rna"))? rnaMutationCoverage: dnaMutationCoverage;
 
         try {
             // 生成一般fragment的reads(reads不覆盖SNP位点)
@@ -281,9 +292,13 @@ public class Gene {
                     if (count % 2 == 0)
                         majorAlleleCount = count / 2;
                     else
-                        majorAlleleCount = (count - 1) / 2;
+                        majorAlleleCount = (count + 1) / 2;
+                    if (coverageRecords != null)
+                        coverageRecords.put(mutateSite, new int[] {majorAlleleCount, majorAlleleCount});
                 } else {
-                    majorAlleleCount = (int) (count * refProp);
+                    majorAlleleCount = (int) Math.ceil(count * refProp);
+                    if (coverageRecords != null)
+                        coverageRecords.put(mutateSite, new int[] {majorAlleleCount, count-majorAlleleCount});
                 }
                 boolean bias = false;
                 if (sample.equals("ip") && m6aSites != null) {
