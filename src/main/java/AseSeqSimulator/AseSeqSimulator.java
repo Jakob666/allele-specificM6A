@@ -11,7 +11,7 @@ public class AseSeqSimulator {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
-            minimumMut = 0, maximumMut = 3, depth = 100, minReadsCoverage = 10, maxReadsCoverage = 70;
+            minimumMut = 0, maximumMut = 3, depth = 100, minReadsCoverage = 10, maxReadsCoverage = 70, maxPeakNum = -1;
         // default 60% gene has SNP site;
         double geneProp = 0.05, mutProportion = 0.6, pcrErrorProb = 0, aseInfimum = 0.55, aseSupremum = 0.85;
         String gtfFile, twoBitFile, vcfFile = null, geneExpFile = null;
@@ -41,6 +41,8 @@ public class AseSeqSimulator {
             readLength = Integer.parseInt(commandLine.getOptionValue("rl"));
         if (commandLine.hasOption("pl"))
             peakLength = Integer.parseInt(commandLine.getOptionValue("pl"));
+        if (commandLine.hasOption("pn"))
+            maxPeakNum = Integer.parseInt(commandLine.getOptionValue("pn"));
         if (commandLine.hasOption("min_mut"))
             minimumMut = Integer.parseInt(commandLine.getOptionValue("min_mut"));
         if (commandLine.hasOption("max_mut"))
@@ -101,7 +103,7 @@ public class AseSeqSimulator {
         ReadsGenerator readsGenerator = new ReadsGenerator(gtfFile, geneProp, aseInfimum, aseSupremum, twoBitFile);
         readsGenerator.simulateSequencing(outputDir.getAbsolutePath(), vcfFile, librarySize, depth, readLength, minimumMut,
                                           maximumMut, fragmentMean, fragmentStd, minReadsCoverage, maxReadsCoverage,
-                                          mutProportion, peakLength, pcrErrorProb, overlap, singleEnd, geneExpFile);
+                                          mutProportion, peakLength, maxPeakNum, pcrErrorProb, overlap, singleEnd, geneExpFile);
     }
 
     private static CommandLine parseCommandLine(String[] args) throws ParseException {
@@ -140,6 +142,10 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         option = new Option("pl", "peak_length", true, "m6A signal peak length, default 250");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("pn", "peakNum", true, "maximum peak number on a gene, default -1");
         option.setRequired(false);
         options.addOption(option);
 

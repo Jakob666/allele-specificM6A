@@ -21,13 +21,21 @@ public class M6APeaks {
         return geneM6aSites;
     }
 
-    public void geneM6aPeakRange(Gene gene, int m6aPeakLength, int readLength) {
+    public void geneM6aPeakRange(Gene gene, int m6aPeakLength, int readLength, int peakNumSupremum) {
         int exonSeqLength = gene.getExonSeq().length();
         String geneId = gene.getGeneId(), chrNum = gene.getChr(), strand = gene.getStrand();
         String label = String.join(":", new String[]{chrNum, geneId, strand});
         // gene上最多有多少个peak，并确定peak center
         int maxPeakNum = exonSeqLength / (2 * m6aPeakLength + this.m6aPeakInterval);
-        int peakNum = new UniformIntegerDistribution(0, maxPeakNum).sample();
+        int peakNum;
+        if (maxPeakNum != 0 && peakNumSupremum <= maxPeakNum) {
+            if (peakNumSupremum <0)
+                peakNum = new UniformIntegerDistribution(1, maxPeakNum).sample();
+            else
+                peakNum = new UniformIntegerDistribution(1, peakNumSupremum).sample();
+        } else
+            peakNum = 0;
+
         if (peakNum == 0) {
             int start = 1;
             int end = (start + m6aPeakLength < exonSeqLength)? (start + m6aPeakLength): exonSeqLength;

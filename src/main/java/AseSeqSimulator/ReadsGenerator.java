@@ -363,14 +363,14 @@ public class ReadsGenerator {
     /**
      * 设置基因的m6A修饰peak的范围，在此范围中生成m6A修饰位点
      */
-    private void geneM6aPeakRange() {
+    private void geneM6aPeakRange(int maxPeakNum) {
         // 用于生成模拟的m6A 信号峰以及峰下覆盖的m6A位点
         M6AGenerator m6AGenerator = new M6AGenerator();
         M6APeaks mp = M6APeaks.getInstance(m6AGenerator);
         for (String chrNum: this.ChrGeneMap.keySet()) {
             List<Gene> chrGenes = this.ChrGeneMap.get(chrNum);
             for (Gene gene: chrGenes) {
-                mp.geneM6aPeakRange(gene, this.m6aPeakLength, this.readLength);
+                mp.geneM6aPeakRange(gene, this.m6aPeakLength, this.readLength, maxPeakNum);
             }
         }
         this.geneM6aGenomePosition = mp.getGeneM6aSites();
@@ -624,8 +624,8 @@ public class ReadsGenerator {
      */
     public void simulateSequencing(String dataPath, String vcfFile, int librarySize, int sequencingDepth, int readLength,
                                    int minimumMut, int maximumMut, int fragmentMean, int fragmentTheta, int minReadsCount,
-                                   int maxReadsCount, double mutProp, int peakLength, double pcrErrorProb, boolean overlap,
-                                   boolean singleEnd, String geneExpFile) {
+                                   int maxReadsCount, double mutProp, int peakLength, int maxPeakNum, double pcrErrorProb,
+                                   boolean overlap, boolean singleEnd, String geneExpFile) {
 
         this.outputDir = new File(dataPath).getAbsolutePath();
         this.seqErrorModel = new SequencingError(pcrErrorProb);
@@ -637,7 +637,7 @@ public class ReadsGenerator {
         this.selectGene(overlap);
         System.out.println("complete select");
         // m6A修饰在mRNA上很常见，对每个选中的基因随机生成m6A修饰位点并写入文件
-        this.geneM6aPeakRange();
+        this.geneM6aPeakRange(maxPeakNum);
         String outputBedFile = new File(this.outputDir, "simulatePeak.bed").getAbsolutePath();
         this.m6aPeakBedFile(outputBedFile);
         System.out.println("complete m6A modification");
