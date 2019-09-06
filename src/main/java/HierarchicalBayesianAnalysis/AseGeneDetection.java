@@ -84,11 +84,11 @@ public class AseGeneDetection {
             gtfFile = gtf.getAbsolutePath();
         }
 
-        if (!commandLine.hasOption("ase")) {
+        if (!commandLine.hasOption("vcf")) {
             logger.error("ASE SNP calling VCF file can not be empty");
             System.exit(2);
         } else {
-            File vcf = new File(commandLine.getOptionValue("ase"));
+            File vcf = new File(commandLine.getOptionValue("vcf"));
             if (!vcf.exists() || !vcf.isFile()) {
                 logger.error("invalid file path: " + vcf.getAbsolutePath());
                 System.exit(2);
@@ -407,7 +407,7 @@ public class AseGeneDetection {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("ase", "ase_vcf_file", true, "INPUT sample SNP calling result VCF file");
+        Option option = new Option("vcf", "vcf_file", true, "INPUT sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
 

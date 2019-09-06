@@ -7,6 +7,7 @@ import java.util.HashMap;
 
 public class PeakCoveredSNP {
     private File vcfFile, peakCallingRes, outputFile;
+    int readsInfimum;
     private Logger logger;
 
     /**
@@ -14,9 +15,10 @@ public class PeakCoveredSNP {
      * @param vcfRecordFile vcf record file
      * @param peakCallingRes m6a peak calling result bed file
      * @param outputFile 输出文件路径
+     * @param readsInfimum SNP reads 对peak覆盖的SNP位点进行记录时reads数目下确界
      * @param logger Logger instance
      */
-    public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, Logger logger) {
+    public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, int readsInfimum, Logger logger) {
         this.logger = logger;
         this.vcfFile = new File(vcfRecordFile);
         if (!vcfFile.exists() || !this.vcfFile.isFile()) {
@@ -28,6 +30,7 @@ public class PeakCoveredSNP {
             this.logger.error("peak calling result bed file not exists");
             System.exit(2);
         }
+        this.readsInfimum = readsInfimum;
         this.outputFile = new File(outputFile);
     }
 
@@ -48,11 +51,11 @@ public class PeakCoveredSNP {
 
             String line = "", writeOut;
             String[] info;
-            String chrNum, refNc, altNc, refCount, altCount, majorAlleleStrand;
+            String chrNum, refNc, altNc, majorCount, minorCount, majorAlleleStrand, majorNc, minorNc;
             int[] refAndAltCount;
             int position;
             double quality;
-            bfw.write("#chr\tSNP strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleStrand\tmajorCount\tminorCount\n");
+            bfw.write("#chr\tSNP strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleStrand\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -75,16 +78,21 @@ public class PeakCoveredSNP {
                     // 设置阈值防止出现假阳性位点
                     if (refAndAltCount[1] == 0) // refAndAltCount[0] == 0 |
                         continue;
-//                    if (refAndAltCount[0] <= 1 | refAndAltCount[1] <= 1)
-//                        continue;
+                    // 通过设定的阈值对SNP进行筛选，减少误差
+                    if (refAndAltCount[0] <= this.readsInfimum | refAndAltCount[1] <= this.readsInfimum)
+                        continue;
                     if (refAndAltCount[0] >= refAndAltCount[1]) {
-                        refCount = Integer.toString(refAndAltCount[0]);
-                        altCount = Integer.toString(refAndAltCount[1]);
-                        majorAlleleStrand = "+";
+                        majorCount = Integer.toString(refAndAltCount[0]);
+                        minorCount = Integer.toString(refAndAltCount[1]);
+                        majorAlleleStrand = "ref";
+                        majorNc = refNc;
+                        minorNc = altNc;
                     } else {
-                        refCount = Integer.toString(refAndAltCount[1]);
-                        altCount = Integer.toString(refAndAltCount[0]);
-                        majorAlleleStrand = "-";
+                        majorCount = Integer.toString(refAndAltCount[1]);
+                        minorCount = Integer.toString(refAndAltCount[0]);
+                        majorAlleleStrand = "alt";
+                        majorNc = altNc;
+                        minorNc = refNc;
                     }
 
                     // 获取对应的染色体的区间树并在正负链的peak上搜寻是否被覆盖。如果被覆盖则写入文件
@@ -97,13 +105,13 @@ public class PeakCoveredSNP {
                     IntervalTreeNode negStrandSearchResult = negStrandTree.search(negStrandTree.root, position);
                     if (posStrandSearchResult != null) {
                         String[] newLine = new String[]{chrNum, "+", Integer.toString(position), Integer.toString(posStrandSearchResult.peakStart),
-                                                        Integer.toString(posStrandSearchResult.peakEnd), majorAlleleStrand, refCount, altCount};
+                                                        Integer.toString(posStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
                     }else if (negStrandSearchResult != null) {
                         String[] newLine = new String[]{chrNum, "-", Integer.toString(position), Integer.toString(negStrandSearchResult.peakStart),
-                                                        Integer.toString(negStrandSearchResult.peakEnd), majorAlleleStrand, refCount, altCount};
+                                                        Integer.toString(negStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
@@ -111,8 +119,6 @@ public class PeakCoveredSNP {
                 }
             }
             bfw.flush();
-            bfw.close();
-            bfr.close();
         } catch (IOException ie) {
             this.logger.error("load peak calling result information failed.");
             this.logger.error(ie.getMessage());

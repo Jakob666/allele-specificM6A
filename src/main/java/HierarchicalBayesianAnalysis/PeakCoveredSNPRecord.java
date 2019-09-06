@@ -7,12 +7,14 @@ import java.io.File;
 
 public class PeakCoveredSNPRecord {
     private String snpCallingFile, peakCallingFile, outputFile;
+    private int readsInfimum;
     private Logger logger;
 
-    public PeakCoveredSNPRecord(String snpCallingFile, String peakCallingFile, String outputFile) {
+    public PeakCoveredSNPRecord(String snpCallingFile, String peakCallingFile, String outputFile, int readsInfimum) {
         this.snpCallingFile = snpCallingFile;
         this.peakCallingFile = peakCallingFile;
         this.outputFile = outputFile;
+        this.readsInfimum = readsInfimum;
         this.logger = initLog(new File(snpCallingFile).getParent());
     }
 
@@ -20,7 +22,8 @@ public class PeakCoveredSNPRecord {
      * 将 peak calling与 SNP calling的结果整合，得到peak覆盖的SNP位点记录
      */
     public void getPeakCoveredSNP() {
-        PeakCoveredSNP pcs = new PeakCoveredSNP(this.snpCallingFile, this.peakCallingFile, this.outputFile, this.logger);
+        PeakCoveredSNP pcs = new PeakCoveredSNP(this.snpCallingFile, this.peakCallingFile, this.outputFile,
+                                                this.readsInfimum, this.logger);
         pcs.filterSNPAndPeak();
     }
 

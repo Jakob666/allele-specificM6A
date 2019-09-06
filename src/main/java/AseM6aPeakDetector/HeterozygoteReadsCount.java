@@ -25,8 +25,8 @@ public class HeterozygoteReadsCount {
      * 得到每个m6A信号major和minor haplotype上SNP reads count
      * @return [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
-    public HashMap<String, HashMap<String, HashMap<String, int[]>>> getMajorMinorHaplotype() {
-        HashMap<String, HashMap<String, HashMap<String, int[]>>> majorMinorHaplotype = new HashMap<>();
+    public HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getMajorMinorHaplotype() {
+        HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> majorMinorHaplotype = new HashMap<>();
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(
@@ -34,8 +34,8 @@ public class HeterozygoteReadsCount {
             );
             String line = "";
             String[] info;
-            String chr, position, peakStart, peakEnd, peakRange, majorAlleleStrand;
-            int refCount, altCount;
+            String chr, position, peakStart, peakEnd, peakRange, majorAlleleStrand, majorNc, minorNc;
+            int majorCount, minorCount;
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -48,22 +48,24 @@ public class HeterozygoteReadsCount {
                     peakEnd = info[4];
                     peakRange = peakStart +":"+peakEnd;
                     majorAlleleStrand = info[5];
-                    refCount = Integer.parseInt(info[6]);
-                    altCount = Integer.parseInt(info[7]);
+                    majorNc = info[6];
+                    minorNc = info[7];
+                    majorCount = Integer.parseInt(info[6]);
+                    minorCount = Integer.parseInt(info[7]);
 
                     this.peakMajorAlleleStrand.put(chr+":"+peakRange, majorAlleleStrand);
-                    HashMap<String, HashMap<String, int[]>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
-                    HashMap<String, int[]> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());
-                    int[] majorMinorReadsCount = peakSnp.getOrDefault(position, new int[2]);
+                    HashMap<String, HashMap<String, HashMap<String, Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
+                    HashMap<String, HashMap<String, Integer>> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());
 
-                    majorMinorReadsCount[0] = Math.max(refCount, altCount);
-                    majorMinorReadsCount[1] = Math.min(refCount, altCount);
-                    peakSnp.put(position, majorMinorReadsCount);
+                    HashMap<String, Integer> nucleotideReads = new HashMap<>();
+                    nucleotideReads.put(majorNc, majorCount);
+                    nucleotideReads.put(minorNc, minorCount);
+
+                    peakSnp.put(position, nucleotideReads);
                     chrMap.put(peakRange, peakSnp);
                     majorMinorHaplotype.put(chr, chrMap);
                 }
             }
-            bfr.close();
         } catch (IOException ie) {
             this.log.error("load file failed");
             this.log.error(ie.getMessage());

@@ -7,7 +7,7 @@ import java.io.File;
 
 public class HierarchicalTest {
     private String aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, peakCoveredSnpFile, peakCoveredSnpBackground, aseGeneFile, asmPeakFile, finalOutput;
-    private int samplingTime, burnInTime;
+    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnInTime;
     private double tauIfimum, tauSupremum;
     private Logger logger;
 
@@ -16,7 +16,7 @@ public class HierarchicalTest {
         CommandLine commandLine = setCommandLine(args, options);
 
         String aseVcfFile = null, asmVcfFile = null, wesFile = null, gtfFile = null, bedFile = null, outputDir;
-        int samplingTime = 5000, burnInTime = 200;
+        int ipSNPReadInfimum = 0, wesSNPReadInfimum = 0, samplingTime = 5000, burnInTime = 200;
         double tauInfimum = 0, tauSupremum = 2;
 
         if (commandLine.hasOption("o")) {
@@ -92,19 +92,25 @@ public class HierarchicalTest {
             logger.error("invalid uniform distribution parameter for tau sampling.");
             System.exit(2);
         }
+        if (commandLine.hasOption("ip_cov_infimum"))
+            ipSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("ip_cov_infimum"));
+        if (commandLine.hasOption("wes_cov_infimum"))
+            wesSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("wes_cov_infimum"));
         if (commandLine.hasOption("st"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("st"));
         if (commandLine.hasOption("bt"))
             burnInTime = Integer.parseInt(commandLine.getOptionValue("bt"));
 
         HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, outputDir,
-                                                   tauInfimum, tauSupremum, samplingTime, burnInTime, logger);
+                                                   tauInfimum, tauSupremum, ipSNPReadInfimum, wesSNPReadInfimum,
+                                                   samplingTime, burnInTime, logger);
         ht.getResult();
     }
 
 
     public HierarchicalTest(String aseVcfFile, String asmVcfFile, String wesFile, String gtfFile, String bedFile, String outputDir,
-                            double tauIfimum, double tauSupremum, int samplingTime, int burnInTime, Logger logger) {
+                            double tauIfimum, double tauSupremum, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            int samplingTime, int burnInTime, Logger logger) {
         this.aseVcfFile = aseVcfFile;
         this.asmVcfFile = asmVcfFile;
         this.wesFile = wesFile;
@@ -112,6 +118,8 @@ public class HierarchicalTest {
         this.bedFile = bedFile;
         this.tauIfimum = tauIfimum;
         this.tauSupremum = tauSupremum;
+        this.ipSNPReadInfimum = ipSNPReadInfimum;
+        this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
         this.burnInTime = burnInTime;
         this.logger = logger;
@@ -137,8 +145,9 @@ public class HierarchicalTest {
     private void asmPeakDetected() {
         this.logger.debug("detect ASM m6A signal, m6A coveredSNP sites are shown in " + this.peakCoveredSnpFile);
         AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile,this.wesFile, peakCoveredSnpFile,
-                                                    this.peakCoveredSnpBackground, this.asmPeakFile, this.samplingTime,
-                                                    this.burnInTime);
+                                                    this.peakCoveredSnpBackground, this.asmPeakFile, this.tauIfimum,
+                                                    this.tauSupremum, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
+                                                    this.samplingTime, this.burnInTime);
         apd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.asmPeakFile + ", ASM specific m6A signals with q-value less than 0.05");
     }
@@ -197,6 +206,14 @@ public class HierarchicalTest {
         options.addOption(option);
 
         option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("ip_cov_infimum", "ip_snp_coverage_infimum", true, "IP sample SNP site coverage infimum, default 0");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("wes_cov_infimum", "wes_snp_coverage_infimum", true, "WES sample SNP site coverage infimum, default 0");
         option.setRequired(false);
         options.addOption(option);
 
