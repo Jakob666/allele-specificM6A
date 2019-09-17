@@ -174,11 +174,12 @@ public class HierarchicalBayesianModel {
         }
     }
 
-    private String getString(double[] lorList) {
-        String[] sb = new String[lorList.length];
-        for (int i = 0; i < lorList.length; i++) {
-            sb[i] = df.format(lorList[i]);
+    private int getSum(int[] reads) {
+        int total = 0;
+        for (int r: reads) {
+            total += r;
         }
-        return String.join(", ", sb);
+
+        return total;
     }
 }

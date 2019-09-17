@@ -11,17 +11,19 @@ import java.util.HashMap;
  */
 public class VcfSnpMatchGene {
     protected String vcfFile;
+    private int readsCoverageThreshold;
     // 每条染色体的GTF区间树
     protected HashMap<String, IntervalTree> gtfIntervalTree;
     // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads = new HashMap<>();
     private HashMap<String, int[]> geneMajorAlleleNucleotide = new HashMap<>();
 
-    public VcfSnpMatchGene(String vcfFile, String gtfFile) {
+    public VcfSnpMatchGene(String vcfFile, String gtfFile, int readsCoverageThreshold) {
         this.vcfFile = vcfFile;
         GTFIntervalTree git = new GTFIntervalTree(gtfFile);
         git.parseGTFFile();
         this.gtfIntervalTree = git.getGtfIntervalTrees();
+        this.readsCoverageThreshold = readsCoverageThreshold;
     }
 
     public HashMap<String, HashMap<Integer, String[]>> getGeneAlleleReads() {
@@ -66,7 +68,9 @@ public class VcfSnpMatchGene {
                     referenceCount = readsCount[0] + readsCount[1];
                     alternativeCount = readsCount[2] + readsCount[3];
                     // 过滤掉纯合的SNV位点
-                    if (referenceCount==0 || alternativeCount==0)
+                    if (alternativeCount==0)
+                        continue;
+                    if (Math.min(referenceCount, alternativeCount) < this.readsCoverageThreshold)
                         continue;
                     // 确定major allele是reference还是alternative
                     if (referenceCount > alternativeCount)

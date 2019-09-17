@@ -7,7 +7,7 @@ import java.io.File;
 
 public class HierarchicalTest {
     private String aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, peakCoveredSnpFile, peakCoveredSnpBackground, aseGeneFile, asmPeakFile, finalOutput;
-    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnInTime;
+    private int ipSNPReadInfimum, wesSNPReadInfimum, readsCoverageThreshold, samplingTime, burnInTime;
     private double tauIfimum, tauSupremum;
     private Logger logger;
 
@@ -16,7 +16,7 @@ public class HierarchicalTest {
         CommandLine commandLine = setCommandLine(args, options);
 
         String aseVcfFile = null, asmVcfFile = null, wesFile = null, gtfFile = null, bedFile = null, outputDir;
-        int ipSNPReadInfimum = 0, wesSNPReadInfimum = 0, samplingTime = 5000, burnInTime = 200;
+        int ipSNPReadInfimum = 0, wesSNPReadInfimum = 0, readsCoverageThreshold = 10, samplingTime = 5000, burnInTime = 200;
         double tauInfimum = 0, tauSupremum = 2;
 
         if (commandLine.hasOption("o")) {
@@ -96,6 +96,8 @@ public class HierarchicalTest {
             ipSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("ip_cov_infimum"));
         if (commandLine.hasOption("wes_cov_infimum"))
             wesSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("wes_cov_infimum"));
+        if (commandLine.hasOption("rc"))
+            readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("st"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("st"));
         if (commandLine.hasOption("bt"))
@@ -103,14 +105,14 @@ public class HierarchicalTest {
 
         HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, outputDir,
                                                    tauInfimum, tauSupremum, ipSNPReadInfimum, wesSNPReadInfimum,
-                                                   samplingTime, burnInTime, logger);
+                                                   readsCoverageThreshold, samplingTime, burnInTime, logger);
         ht.getResult();
     }
 
 
     public HierarchicalTest(String aseVcfFile, String asmVcfFile, String wesFile, String gtfFile, String bedFile, String outputDir,
                             double tauIfimum, double tauSupremum, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                            int samplingTime, int burnInTime, Logger logger) {
+                            int readsCoverageThreshold, int samplingTime, int burnInTime, Logger logger) {
         this.aseVcfFile = aseVcfFile;
         this.asmVcfFile = asmVcfFile;
         this.wesFile = wesFile;
@@ -120,6 +122,7 @@ public class HierarchicalTest {
         this.tauSupremum = tauSupremum;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
+        this.readsCoverageThreshold = readsCoverageThreshold;
         this.samplingTime = samplingTime;
         this.burnInTime = burnInTime;
         this.logger = logger;
@@ -158,7 +161,8 @@ public class HierarchicalTest {
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
         AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
-                                                    this.tauIfimum, this.tauSupremum, this.samplingTime, this.burnInTime);
+                                                    this.tauIfimum, this.tauSupremum, this.readsCoverageThreshold,
+                                                    this.samplingTime, this.burnInTime);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
     }
@@ -214,6 +218,10 @@ public class HierarchicalTest {
         options.addOption(option);
 
         option = new Option("wes_cov_infimum", "wes_snp_coverage_infimum", true, "WES sample SNP site coverage infimum, default 0");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("rc", "readsCoverage", true, "reads coverage threshold using for filter SNV records, default 10");
         option.setRequired(false);
         options.addOption(option);
 

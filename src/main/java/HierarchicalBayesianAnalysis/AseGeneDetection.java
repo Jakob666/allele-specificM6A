@@ -34,17 +34,18 @@ public class AseGeneDetection {
      * @param aseGeneFile 结果输出文件
      * @param infimum tau采样时的下确界
      * @param supremum tau采样时的上确界
+     * @param readsCoverageThreshold SNV筛选时设置的reads coverage阈值
      * @param samplingTime 采样次数
      * @param burnIn burn in次数
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String aseGeneFile,
-                            double infimum, double supremum, int samplingTime, int burnIn) {
-        VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile);
+                            double infimum, double supremum, int readsCoverageThreshold, int samplingTime, int burnIn) {
+        VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
         vsmg.parseVcfFile();
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
         this.geneMajorStrand = vsmg.getGeneMajorAlleleNucleotide();
         if (wesFile != null) {
-            vsmg = new VcfSnpMatchGene(wesFile, gtfFile);
+            vsmg = new VcfSnpMatchGene(wesFile, gtfFile, readsCoverageThreshold);
             vsmg.parseVcfFile();
             this.geneBackgroundReads = vsmg.getGeneAlleleReads();
         } else {
@@ -61,9 +62,8 @@ public class AseGeneDetection {
     public static void main(String[] args) throws ParseException {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
-
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir;
-        int samplingTime = 5000, burn_in = 200;
+        int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10;
         double infimum = 0, supremum = 2;
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
@@ -104,7 +104,8 @@ public class AseGeneDetection {
             }
             wesVcfFile = vcf.getAbsolutePath();
         }
-
+        if (commandLine.hasOption("rc"))
+            readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("s"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
         if (commandLine.hasOption("b"))
@@ -123,7 +124,7 @@ public class AseGeneDetection {
         }
 
         AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, outputFile,
-                                                    infimum, supremum,samplingTime, burn_in);
+                                                    infimum, supremum, readsCoverageThreshold, samplingTime, burn_in);
         agd.getTestResult();
     }
 
@@ -428,6 +429,10 @@ public class AseGeneDetection {
         options.addOption(option);
 
         option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("rc", "readsCoverage", true, "reads coverage threshold using for filter SNV records, default 10");
         option.setRequired(false);
         options.addOption(option);
 
