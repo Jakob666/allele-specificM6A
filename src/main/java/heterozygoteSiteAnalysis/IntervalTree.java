@@ -194,7 +194,7 @@ public class IntervalTree {
         int treeRootEnd = treeRoot.intervalEnd;
         if (searchValue <= treeRootEnd & searchValue >= treeRootStart)
             searchResult = treeRoot;
-        else if (treeRoot.leftChild != null && searchValue < treeRoot.leftChild.max)
+        else if (searchValue < treeRootStart)
             searchResult = this.search(treeRoot.leftChild, searchValue);
         else
             searchResult = this.search(treeRoot.rightChild, searchValue);
