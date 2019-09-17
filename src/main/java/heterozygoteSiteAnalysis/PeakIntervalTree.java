@@ -77,7 +77,6 @@ public class PeakIntervalTree {
         // 获取个标题对应的索引
         HashMap<String, Integer> fieldIdx = this.getFieldIndex();
         // 为每个染色体构建peak的区间树
-        String preChr = null;
         HashMap<String, HashMap<String, IntervalTree>> peakTreeMap = new HashMap<>();
         BufferedReader bfr = null;
         String chrNum, start, end, strand, blockCount, blockSize, blockStart;
@@ -133,12 +132,8 @@ public class PeakIntervalTree {
                         it = it.insertNode(it, newNode);
                         peakTreeMap.get(chrNum).put(strand, it);
                     }
-                    preChr = chrNum;
                 }
             }
-
-            bfr.close();
-
         } catch (IOException ie) {
             this.logger.error("build m6a peak tree failed");
             this.logger.error(ie.getMessage());

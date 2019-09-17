@@ -18,7 +18,8 @@ public class AsmPeakDetection {
     private HashMap<Double, ArrayList<String>> asmPValue = new HashMap<>();
     private HashMap<String, HashMap<String, Integer>> peakMajorMinorAlleleCount = new HashMap<>(), peakMajorMinorBackground = new HashMap<>();
     private HashMap<String, Double> peakMajorAlleleFrequency = new HashMap<>();
-    private HashMap<String, String> peakCoveredGene = new HashMap<>(), peakMajorAlleleStrand;
+    private HashMap<String, String> peakCoveredGene = new HashMap<>();
+    private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
@@ -150,7 +151,6 @@ public class AsmPeakDetection {
         this.getPeakCoveredSnpResult();
         if (this.wesFile != null)
             this.getPeakCoveredSnpBackground();
-        this.getPeakSNPReadsCount();
         this.asmPeakTest();
         this.bhRecalibrationOfEachPeak();
         this.outputResult();
@@ -217,12 +217,12 @@ public class AsmPeakDetection {
 
     /**
      * 获取RNA-seq得到的每个m6A信号范围内SNV位点上的 major allele和 minor allele的reads count
-     * @return [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
+     * [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
-    private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getPeakSNPReadsCount() {
+    private void getPeakSNPReadsCount() {
         HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.log);
-        this.peakMajorAlleleStrand = hrc.getPeakMajorAlleleStrand();
-        return hrc.getMajorMinorHaplotype();
+        this.peakMajorAlleleNucleotide = hrc.getPeakMajorAlleleNucleotides();
+        this.peakSnpReadsCount = hrc.getMajorMinorHaplotype();
     }
 
     /**
@@ -239,7 +239,7 @@ public class AsmPeakDetection {
      */
     private void asmPeakTest() {
         // [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
-        this.peakSnpReadsCount = this.getPeakSNPReadsCount();
+        this.getPeakSNPReadsCount();
         if (this.wesFile != null)
             this.peakSnpBackground = this.getPeakSNPBackground();
         else
@@ -294,7 +294,7 @@ public class AsmPeakDetection {
                     Collections.sort(nucleotides, new Comparator<Map.Entry<String, Integer>>() {
                         @Override
                         public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
-                            return o1.getValue().compareTo(o2.getValue());
+                            return o2.getValue().compareTo(o1.getValue());
                         }
                     });
 
@@ -456,11 +456,12 @@ public class AsmPeakDetection {
         try {
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.asmPeakFile))));
             String line, label, geneId, chrNum, peakStart, peakEnd, majorAlleleReads, minorAlleleReads,
-                   majorAlleleBackground, minorAlleleBackground, majorAlleleStrand, pValue, qValue;
+                   majorAlleleBackground, minorAlleleBackground, pValue, qValue;
+            LinkedList<String> majorAlleleNucleotides;
             String[] info, rec, finalInfo;
             int snvNum;
             double majorAlleleFrequency;
-            bfw.write("#chr\tpeakStart\tpeakEnd\tgeneId\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleStrand\n");
+            bfw.write("#chr\tpeakStart\tpeakEnd\tgeneId\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleNC\n");
             for (String record: this.asmQValue) {
                 rec = record.split("->");
                 label = rec[0];
@@ -473,7 +474,8 @@ public class AsmPeakDetection {
                 qValue = rec[2];
                 geneId = this.peakCoveredGene.get(label);
                 majorAlleleFrequency = this.peakMajorAlleleFrequency.get(label);
-                majorAlleleStrand = this.peakMajorAlleleStrand.get(label);
+                majorAlleleNucleotides = this.peakMajorAlleleNucleotide.get(label);
+                String majorAlleleStrand = this.getString(majorAlleleNucleotides);
                 snvNum = this.peakSNVNum.get(label);
                 majorAlleleReads = this.peakMajorMinorAlleleCount.get(label).get("major").toString();
                 minorAlleleReads = this.peakMajorMinorAlleleCount.get(label).get("minor").toString();
@@ -497,7 +499,6 @@ public class AsmPeakDetection {
                     if (snvCount1 - snvCount2 != 0)
                         return snvCount2.compareTo(snvCount1);
                     // 若SNV数目相同，则依据major reads和minor reads的差异大小进行排序，差异大的靠前
-
                     Double maf1 = Double.parseDouble(o1[9]), maf2 = Double.parseDouble(o2[9]);
                     return maf2.compareTo(maf1);
                 }
@@ -527,6 +528,26 @@ public class AsmPeakDetection {
         }
 
         return total;
+    }
+
+    private String getString(LinkedList<String> list) {
+        Collections.sort(list, new Comparator<String>() {
+            @Override
+            public int compare(String o1, String o2) {
+                Integer pos1 = Integer.parseInt(o1.split(":")[0]);
+                Integer pos2 = Integer.parseInt(o2.split(":")[0]);
+                return pos2.compareTo(pos1);
+            }
+        });
+
+        String[] str = new String[list.size()];
+        for (int i=0; i<list.size(); i++) {
+            str[i] = list.get(i);
+        }
+        String res = String.join(";", str);
+        str = null;
+
+        return res;
     }
 
     /**

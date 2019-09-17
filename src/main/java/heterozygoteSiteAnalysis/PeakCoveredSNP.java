@@ -54,7 +54,6 @@ public class PeakCoveredSNP {
             String chrNum, refNc, altNc, majorCount, minorCount, majorAlleleStrand, majorNc, minorNc;
             int[] refAndAltCount;
             int position;
-            double quality;
             bfw.write("#chr\tSNP strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleStrand\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
@@ -66,12 +65,11 @@ public class PeakCoveredSNP {
                     chrNum = info[0];
                     refNc = info[3];
                     altNc = info[4];
-                    quality = Double.parseDouble(info[5]);
+                    HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
+                    if (chrTree == null)
+                        continue;
                     // 只保留单核苷酸突变
                     if (refNc.length() > 1 | altNc.length() > 1)
-                        continue;
-                    // 对质量进行筛选
-                    if (quality < 10.0)
                         continue;
                     position = Integer.parseInt(info[1]);
                     refAndAltCount = this.getReadsCountViaDp4(info[7]);
@@ -79,7 +77,7 @@ public class PeakCoveredSNP {
                     if (refAndAltCount[1] == 0) // refAndAltCount[0] == 0 |
                         continue;
                     // 通过设定的阈值对SNP进行筛选，减少误差
-                    if (refAndAltCount[0] <= this.readsInfimum | refAndAltCount[1] <= this.readsInfimum)
+                    if (Math.max(refAndAltCount[0], refAndAltCount[1]) < this.readsInfimum)
                         continue;
                     if (refAndAltCount[0] >= refAndAltCount[1]) {
                         majorCount = Integer.toString(refAndAltCount[0]);
@@ -96,21 +94,18 @@ public class PeakCoveredSNP {
                     }
 
                     // 获取对应的染色体的区间树并在正负链的peak上搜寻是否被覆盖。如果被覆盖则写入文件
-                    HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
-                    if (chrTree == null)
-                        continue;
                     IntervalTree posStrandTree = chrTree.get("+");
                     IntervalTree negStrandTree = chrTree.get("-");
                     IntervalTreeNode posStrandSearchResult = posStrandTree.search(posStrandTree.root, position);
                     IntervalTreeNode negStrandSearchResult = negStrandTree.search(negStrandTree.root, position);
                     if (posStrandSearchResult != null) {
-                        String[] newLine = new String[]{chrNum, "+", Integer.toString(position), Integer.toString(posStrandSearchResult.peakStart),
+                        String[] newLine = new String[]{chrNum, "+", info[1], Integer.toString(posStrandSearchResult.peakStart),
                                                         Integer.toString(posStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
                     }else if (negStrandSearchResult != null) {
-                        String[] newLine = new String[]{chrNum, "-", Integer.toString(position), Integer.toString(negStrandSearchResult.peakStart),
+                        String[] newLine = new String[]{chrNum, "-", info[1], Integer.toString(negStrandSearchResult.peakStart),
                                                         Integer.toString(negStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
