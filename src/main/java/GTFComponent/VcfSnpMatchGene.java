@@ -13,10 +13,10 @@ public class VcfSnpMatchGene {
     protected String vcfFile;
     private int readsCoverageThreshold;
     // 每条染色体的GTF区间树
-    protected HashMap<String, IntervalTree> gtfIntervalTree;
+    public HashMap<String, IntervalTree> gtfIntervalTree;
     // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads = new HashMap<>();
-    private HashMap<String, int[]> geneMajorAlleleNucleotide = new HashMap<>();
+    private HashMap<String, HashMap<Integer, String>> geneMajorAlleleNucleotide = new HashMap<>();
 
     public VcfSnpMatchGene(String vcfFile, String gtfFile, int readsCoverageThreshold) {
         this.vcfFile = vcfFile;
@@ -30,7 +30,7 @@ public class VcfSnpMatchGene {
         return this.geneAlleleReads;
     }
 
-    public HashMap<String, int[]> getGeneMajorAlleleNucleotide() {
+    public HashMap<String, HashMap<Integer, String>> getGeneMajorAlleleNucleotide() {
         return this.geneMajorAlleleNucleotide;
     }
 
@@ -70,7 +70,7 @@ public class VcfSnpMatchGene {
                     // 过滤掉纯合的SNV位点
                     if (alternativeCount==0)
                         continue;
-                    if (Math.min(referenceCount, alternativeCount) < this.readsCoverageThreshold)
+                    if (Math.max(referenceCount, alternativeCount) < this.readsCoverageThreshold)
                         continue;
                     // 确定major allele是reference还是alternative
                     if (referenceCount > alternativeCount)
@@ -157,11 +157,13 @@ public class VcfSnpMatchGene {
         String geneName = gitn.geneName;
         String geneId = gitn.geneId;
         this.renewGeneAlleleReads(geneId, geneName, referenceAllele, alternativeAllele, position, referenceCount, alternativeCount);
-        int[] majorAlleleRecord;
+        HashMap<Integer, String> majorAlleleRecord;
         // 更新记录，major SNP属于reference还是alternative
-        majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new int[] {0, 0});
-        if (refOrAlt >= 0)
-            majorAlleleRecord[refOrAlt] = majorAlleleRecord[refOrAlt] + 1;
+        majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new HashMap<>());
+        if (refOrAlt == 1)
+            majorAlleleRecord.put(position, "alt");
+        else
+            majorAlleleRecord.put(position, "ref");
         this.geneMajorAlleleNucleotide.put(geneId, majorAlleleRecord);
 
         if (gitn.rightChild != null) {

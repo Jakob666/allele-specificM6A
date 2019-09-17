@@ -15,7 +15,7 @@ public class AseGeneDetection {
     private String aseGeneFile;
     // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads, geneBackgroundReads;
-    private HashMap<String, int[]> geneMajorStrand;
+    private HashMap<String, HashMap<Integer, String>> geneMajorStrand;
     private HashMap<String, HashMap<String, Integer>> geneReadsCount = new HashMap<>(), geneBackgroundCount = new HashMap<>();
     private int samplingTime, burnIn;
     private HashMap<Double, ArrayList<String>> geneAsePValue = new HashMap<>();
@@ -140,17 +140,14 @@ public class AseGeneDetection {
     private void aseGeneTest() {
         HashMap<Integer, String[]> geneSNVs, wesSNVs;
         ArrayList<Integer> majorAlleleCount, minorAlleleCount, majorBackgroundCount, minorBackgroundCount;
-        int[] refOrAlt, majorCount, minorCount, majorBackground, minorBackground;
+        int[] majorCount, minorCount, majorBackground, minorBackground;
+        HashMap<Integer, String> refOrAlt;
         HierarchicalBayesianModel hb;
         double p;
         String geneId;
         for (String label: this.geneAlleleReads.keySet()) {
             geneId = label.split("->")[0];
             refOrAlt = this.geneMajorStrand.get(geneId);
-            if (refOrAlt[0] >= refOrAlt[1])
-                this.geneMajorNucleotide.put(geneId, "ref");
-            else
-                this.geneMajorNucleotide.put(geneId, "alt");
             int majorReadsCount = 0, minorReadsCount = 0;
             majorAlleleCount = new ArrayList<>();
             minorAlleleCount = new ArrayList<>();
@@ -164,11 +161,13 @@ public class AseGeneDetection {
             else
                 wesSNVs = null;
 
+            // 记录major allele的位置和对应的碱基
+            LinkedList<String> majorNcRecords = new LinkedList<>();
             for (Integer mutPosition: geneSNVs.keySet()) {
                 String[] nucleotideReadsCount = geneSNVs.get(mutPosition);
                 String majorAlleleRecord, minorAlleleRecord, majorNC, minorNC;
                 // 获取major allele和minor allele及reads
-                if (refOrAlt[0] >= refOrAlt[1]) {
+                if ((refOrAlt.get(mutPosition)).equals("ref")) {
                     majorAlleleRecord = nucleotideReadsCount[0];
                     minorAlleleRecord = nucleotideReadsCount[1];
                 } else {
@@ -181,6 +180,7 @@ public class AseGeneDetection {
                 int minor = Integer.parseInt(minorAlleleRecord.split(":")[1]);
                 majorAlleleCount.add(major);
                 minorAlleleCount.add(minor);
+                majorNcRecords.add(String.join(":", new String[] {Integer.toString(mutPosition), majorNC}));
 
                 // WES数据是否存在相应碱基reads count的background
                 if (wesSNVs == null) {
@@ -206,6 +206,7 @@ public class AseGeneDetection {
                     }
                 }
             }
+            this.geneMajorNucleotide.put(geneId, this.getString(majorNcRecords));
 
             HashMap<String, Integer> readsCount = new HashMap<>();
             readsCount.put("major", this.getSum(majorAlleleCount));
@@ -231,8 +232,7 @@ public class AseGeneDetection {
                 majorBackground[i] = majorBackgroundCount.get(i);
                 minorBackground[i] = minorBackgroundCount.get(i);
             }
-//            if (majorCount.length == 1 && (minorCount[0] ==0 && majorCount[0] < 10))  // majorCount[0] - minorCount[0] <= 4
-//                continue;
+
             this.geneMajorAlleleFrequency.put(label, (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount));
             hb = new HierarchicalBayesianModel(this.infimum, supremum, this.samplingTime, this.burnIn,
                                                 majorCount, minorCount, majorBackground, minorBackground);
@@ -331,7 +331,7 @@ public class AseGeneDetection {
             String[] info;
             int snvNum, majorCount, minorCount, majorBackground, minorBackground;
             double majorAlleleFrequency;
-            bfw.write("#geneId\tgeneName\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleStrand\n");
+            bfw.write("#geneId\tgeneName\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleNC\n");
             for (String record: this.geneAseQValue) {
                 info = record.split("->");
                 geneId = info[0];
@@ -400,6 +400,26 @@ public class AseGeneDetection {
             total += i;
 
         return total;
+    }
+
+    private String getString(LinkedList<String> list) {
+        Collections.sort(list, new Comparator<String>() {
+            @Override
+            public int compare(String o1, String o2) {
+                Integer pos1 = Integer.parseInt(o1.split(":")[0]);
+                Integer pos2 = Integer.parseInt(o2.split(":")[0]);
+                return pos2.compareTo(pos1);
+            }
+        });
+
+        String[] str = new String[list.size()];
+        for (int i=0; i<list.size(); i++) {
+            str[i] = list.get(i);
+        }
+        String res = String.join(";", str);
+        str = null;
+
+        return res;
     }
 
     private static Logger initLog(String logHome) {
