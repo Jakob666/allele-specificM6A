@@ -22,9 +22,10 @@ public class AseGeneDetection {
     private HashMap<String, Integer> geneSNVs = new HashMap<>();
     private HashMap<String, Double> geneMajorAlleleFrequency = new HashMap<>();
     private HashMap<String, String> geneMajorNucleotide = new HashMap<>();
+    private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
-    private double infimum, supremum;
+    private double degreeOfFreedom;
 
     /**
      * Constructor
@@ -32,14 +33,13 @@ public class AseGeneDetection {
      * @param vcfFile INPUT样本 SNP calling得到的VCF文件
      * @param wesFile WES样本 SNP calling得到的VCF文件
      * @param aseGeneFile 结果输出文件
-     * @param infimum tau采样时的下确界
-     * @param supremum tau采样时的上确界
+     * @param degreeOfFreedom tau采样时inverse-Chi-square的自由度
      * @param readsCoverageThreshold SNV筛选时设置的reads coverage阈值
      * @param samplingTime 采样次数
      * @param burnIn burn in次数
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String aseGeneFile,
-                            double infimum, double supremum, int readsCoverageThreshold, int samplingTime, int burnIn) {
+                            double degreeOfFreedom, int readsCoverageThreshold, int samplingTime, int burnIn) {
         VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
         vsmg.parseVcfFile();
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
@@ -52,8 +52,7 @@ public class AseGeneDetection {
             this.geneBackgroundReads = null;
         }
 
-        this.infimum = infimum;
-        this.supremum = supremum;
+        this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
@@ -64,7 +63,7 @@ public class AseGeneDetection {
         CommandLine commandLine = setCommandLine(args, options);
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir;
         int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10;
-        double infimum = 0, supremum = 2;
+        double degreeOfFreedom = 10;
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
         else
@@ -114,17 +113,15 @@ public class AseGeneDetection {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("tl"))
-            infimum = Double.parseDouble(commandLine.getOptionValue("tl"));
-        if (commandLine.hasOption("th"))
-            supremum = Double.parseDouble(commandLine.getOptionValue("th"));
-        if (infimum >= supremum) {
-            System.out.println("invalid uniform distribution parameter for tau sampling.");
+        if (commandLine.hasOption("df"))
+            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("th"));
+        if (degreeOfFreedom <= 1) {
+            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
             System.exit(2);
         }
 
         AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, outputFile,
-                                                    infimum, supremum, readsCoverageThreshold, samplingTime, burn_in);
+                                                    degreeOfFreedom, readsCoverageThreshold, samplingTime, burn_in);
         agd.getTestResult();
     }
 
@@ -163,7 +160,7 @@ public class AseGeneDetection {
 
             // 记录major allele的位置和对应的碱基
             LinkedList<String> majorNcRecords = new LinkedList<>();
-            for (Integer mutPosition: geneSNVs.keySet()) {
+            for (Integer mutPosition : geneSNVs.keySet()) {
                 String[] nucleotideReadsCount = geneSNVs.get(mutPosition);
                 String majorAlleleRecord, minorAlleleRecord, majorNC, minorNC;
                 // 获取major allele和minor allele及reads
@@ -180,7 +177,7 @@ public class AseGeneDetection {
                 int minor = Integer.parseInt(minorAlleleRecord.split(":")[1]);
                 majorAlleleCount.add(major);
                 minorAlleleCount.add(minor);
-                majorNcRecords.add(String.join(":", new String[] {Integer.toString(mutPosition), majorNC}));
+                majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), majorNC}));
 
                 // WES数据是否存在相应碱基reads count的background
                 if (wesSNVs == null) {
@@ -223,7 +220,7 @@ public class AseGeneDetection {
             minorCount = new int[minorAlleleCount.size()];
             majorBackground = new int[majorBackgroundCount.size()];
             minorBackground = new int[minorBackgroundCount.size()];
-            for (int i=0; i<majorAlleleCount.size(); i++) {
+            for (int i = 0; i < majorAlleleCount.size(); i++) {
                 majorCount[i] = majorAlleleCount.get(i);
                 majorReadsCount += majorAlleleCount.get(i);
                 minorCount[i] = minorAlleleCount.get(i);
@@ -234,7 +231,23 @@ public class AseGeneDetection {
             }
 
             this.geneMajorAlleleFrequency.put(label, (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount));
-            hb = new HierarchicalBayesianModel(this.infimum, supremum, this.samplingTime, this.burnIn,
+            ArrayList<int[]> statistic = new ArrayList<>(4);
+            statistic.add(majorCount);
+            statistic.add(minorCount);
+            statistic.add(majorBackground);
+            statistic.add(minorBackground);
+            this.statisticForTest.put(label, statistic);
+        }
+
+        double lorStd = this.calcLorStd();
+
+        for (String label: this.statisticForTest.keySet()) {
+            ArrayList<int[]> statistic = this.statisticForTest.get(label);
+            majorCount = statistic.get(0);
+            minorCount = statistic.get(1);
+            majorBackground = statistic.get(2);
+            minorBackground = statistic.get(3);
+            hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime, this.burnIn,
                                                 majorCount, minorCount, majorBackground, minorBackground);
             p = hb.testSignificant();
 
@@ -243,6 +256,50 @@ public class AseGeneDetection {
             this.geneAsePValue.put(p, samePValGenes);
             this.geneSNVs.put(label, majorCount.length);
         }
+        this.statisticForTest.clear();
+    }
+
+    /**
+     * 计算全部SNV位点LOR的标准差
+     * @return LOR Std
+     */
+    private double calcLorStd() {
+        ArrayList<Double> lorList = new ArrayList<>();
+        int[] majorCount, minorCount, majorBackground, minorBackground;
+        double lor, cum = 0;
+        for (String label: this.statisticForTest.keySet()) {
+            ArrayList<int[]> statistic = this.statisticForTest.get(label);
+            majorCount = statistic.get(0);
+            minorCount = statistic.get(1);
+            majorBackground = statistic.get(2);
+            minorBackground = statistic.get(3);
+
+            for (int i=0; i<majorCount.length; i++) {
+                double major = majorCount[i], minor = minorCount[i],
+                       majorBack = majorBackground[i], minorBack = minorBackground[i];
+                if ((minor - 0) < 0.00001)
+                    minor = 0.1;
+                if ((minorBack - 0) < 0.00001) {
+                    majorBack = (major + minor) / 2;
+                    minorBack = (major + minor) / 2;
+                }
+
+                lor = (major / minor) / (majorBack / minorBack);
+                lor = Math.log(lor);
+                lorList.add(lor);
+                cum += lor;
+            }
+        }
+        double lorMean = cum / lorList.size();
+        double variance = 0.0;
+        for (Double val: lorList) {
+            variance += Math.pow((val - lorMean), 2);
+        }
+
+        double lorStd = Math.sqrt(variance / lorList.size());
+        lorList.clear();
+
+        return lorStd;
     }
 
     private int[] getWesReads(String[] wesRecord, String majorNC, String minorNC) {
@@ -444,11 +501,7 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("tl", "tau_low", true, "infimum of uniform distribution for sampling model hyper-parameter tau, default 0");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
         option.setRequired(false);
         options.addOption(option);
 

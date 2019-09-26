@@ -1,18 +1,17 @@
 package HierarchicalBayesianAnalysis;
 
-import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 public class TauSampling extends MHSampling {
-    private UniformRealDistribution priorTau;
+    private InvChiSquareParams priorTau;
 
     /**
      * Constructor
-     * @param low Tau先验分布服从的均匀分布的下界
-     * @param high Tau先验分布服从的均匀分布的上界
+     * @param lorStd 全部SNV位点LOR的标准差
+     * @param df Inv-Chi-square degree of freedom
      */
-    public TauSampling(double low, double high) {
+    public TauSampling(double lorStd, double df) {
         super();
-        this.priorTau = new UniformRealDistribution(low, high);
+        this.priorTau = new InvChiSquareParams(lorStd, df);
     }
 
     /**

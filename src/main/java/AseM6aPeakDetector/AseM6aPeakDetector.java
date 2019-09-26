@@ -16,7 +16,7 @@ public class AseM6aPeakDetector {
     private String ipParamVal, inputParamVal, wesParamVal, genomeFile, gtfFile, fastqTempDir, outputDir, direct, gatk,
                    picard, samtools, bcftools, bwa, inputFormat, wesInputFormat, experimentName;
     private int execThread, samplingTime, burnInTime, ipSNPReadInfimum, wesSNPReadInfimum, readsCoverageThreshold;
-    private double tauInfimum, tauSupremum;
+    private double degreeOfFreedom;
     private boolean compress, wesCompress;
     private Logger log;
 
@@ -26,7 +26,7 @@ public class AseM6aPeakDetector {
                 inputFormat = "sra", wesInputFormat = null, experimentName = "m6aPeak";
         boolean compress = false, wesCompress = false;
         int ipSNPReadInfimum = 0, wesSNPReadInfimum = 0, samplingTime = 5000, burnInTime = 200, execThread = 2, readsCoverageThreshold = 10;
-        double tauIfimum = 0, tauSupremum = 2;
+        double degreeOfFreedom = 10;
 
         Options options = new Options();
         CommandLine commandLine = setCommand(args, options);
@@ -177,16 +177,14 @@ public class AseM6aPeakDetector {
             bwa = commandLine.getOptionValue("bwa");
         if (commandLine.hasOption('t'))
             execThread = Integer.parseInt(commandLine.getOptionValue('t'));
-        if (commandLine.hasOption("tl"))
-            tauIfimum = Double.parseDouble(commandLine.getOptionValue("tl"));
-        if (commandLine.hasOption("th"))
-            tauSupremum = Double.parseDouble(commandLine.getOptionValue("th"));
+        if (commandLine.hasOption("df"))
+            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("th"));
         if (commandLine.hasOption("ip_cov_infimum"))
             ipSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("ip_cov_infimum"));
         if (commandLine.hasOption("wes_cov_infimum"))
             wesSNPReadInfimum = Integer.parseInt(commandLine.getOptionValue("wes_cov_infimum"));
-        if (tauIfimum >= tauSupremum) {
-            logger.error("invalid uniform distribution parameter for tau sampling.");
+        if (degreeOfFreedom <= 1.0) {
+            logger.error("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
             System.exit(2);
         }
         if (commandLine.hasOption("rc"))
@@ -198,7 +196,7 @@ public class AseM6aPeakDetector {
 
         AseM6aPeakDetector ampd = new AseM6aPeakDetector(ipParamVal, inputParamVal, wesParamVal, genomeFile, gtfFile,
                 fastqTempDir, outputDir, direct, gatk, picard, samtools, bcftools, bwa, inputFormat, wesInputFormat,
-                experimentName, execThread, readsCoverageThreshold, samplingTime, burnInTime, tauIfimum, tauSupremum,
+                experimentName, execThread, readsCoverageThreshold, samplingTime, burnInTime, degreeOfFreedom,
                 ipSNPReadInfimum, wesSNPReadInfimum, compress, wesCompress, logger);
         ampd.getResult();
 
@@ -207,7 +205,7 @@ public class AseM6aPeakDetector {
     public AseM6aPeakDetector(String ipParamVal, String inputParamVal, String wesParamVal, String genomeFile, String gtfFile,
                               String fastqTempDir, String outputDir, String direct, String gatk, String picard, String samtools,
                               String bcftools, String bwa, String inputFormat, String wesInputFormat, String experimentName,
-                              int execThread, int readsCoverageThreshold, int samplingTime, int burnInTime, double tauInfimum, double tauSupremum,
+                              int execThread, int readsCoverageThreshold, int samplingTime, int burnInTime, double degreeOfFreedom,
                               int ipSNPReadInfimum, int wesSNPReadInfimum, boolean compress, boolean wesCompress, Logger logger) {
         this.ipParamVal = ipParamVal;
         this.inputParamVal = inputParamVal;
@@ -226,8 +224,7 @@ public class AseM6aPeakDetector {
         this.wesInputFormat = wesInputFormat;
         this.experimentName = experimentName;
         this.execThread = execThread;
-        this.tauInfimum = tauInfimum;
-        this.tauSupremum = tauSupremum;
+        this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.readsCoverageThreshold = readsCoverageThreshold;
@@ -332,7 +329,7 @@ public class AseM6aPeakDetector {
             }
         }
         HierarchicalTest ht = new HierarchicalTest(aseSnpFile, asmSnpFile, wesSnpFile, this.gtfFile, peakBedFile, this.outputDir,
-                                                   this.tauInfimum, this.tauSupremum, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
+                                                   this.degreeOfFreedom, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
                                                    this.readsCoverageThreshold, this.samplingTime, this.burnInTime, this.log);
         ht.getResult();
     }

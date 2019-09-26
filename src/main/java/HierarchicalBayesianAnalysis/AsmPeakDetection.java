@@ -12,13 +12,14 @@ import java.util.*;
 public class AsmPeakDetection {
     private String peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn;
-    double tauInfimum, tauSupremum;
+    private double degreeOfFreedom;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
     private HashMap<Double, ArrayList<String>> asmPValue = new HashMap<>();
     private HashMap<String, HashMap<String, Integer>> peakMajorMinorAlleleCount = new HashMap<>(), peakMajorMinorBackground = new HashMap<>();
     private HashMap<String, Double> peakMajorAlleleFrequency = new HashMap<>();
     private HashMap<String, String> peakCoveredGene = new HashMap<>();
+    private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
     private ArrayList<String> asmQValue = new ArrayList<>();
@@ -32,15 +33,14 @@ public class AsmPeakDetection {
      * @param peakCoveredSnpFile 记录peak信号覆盖的RNA-seq SNP位点的文件
      * @param peakCoveredWesSnpFile 记录peak信号覆盖的WES SNP位点的文件
      * @param asmPeakFile ASM peak检验结果输出文件
-     * @param tauInfimum tau采样时的下确界
-     * @param tauSupremum tau采样时的上确界
+     * @param degreeOfFreedom tau采样时inverse-Chi-square的自由度
      * @param ipSNPReadInfimum 记录IP样本Peak覆盖的SNP位点时，对SNP位点筛选所用的阈值
      * @param wesSNPReadInfimum 记录WES样本Peak覆盖的SNP位点时，对SNP位点筛选所用的阈值
      * @param samplingTime 采样次数
      * @param burnIn burn in次数
      */
     public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String peakCoveredSnpFile,
-                            String peakCoveredWesSnpFile, String asmPeakFile, double tauInfimum, double tauSupremum,
+                            String peakCoveredWesSnpFile, String asmPeakFile, double degreeOfFreedom,
                             int ipSNPReadInfimum, int wesSNPReadInfimum, int samplingTime, int burnIn) {
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
@@ -50,8 +50,7 @@ public class AsmPeakDetection {
         if (this.wesFile != null)
             assert this.peakCoveredWesSnpFile != null;
         this.asmPeakFile = asmPeakFile;
-        this.tauInfimum = tauInfimum;
-        this.tauSupremum = tauSupremum;
+        this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
@@ -141,7 +140,7 @@ public class AsmPeakDetection {
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wes_cov_infimum"));
 
         AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, outputFile, peakCoveredSnpFile,
-                                                    peakCoveredSnpBackgroundFile, infimum, supremum, ipSNPCoverageInfimum,
+                                                    peakCoveredSnpBackgroundFile, supremum, ipSNPCoverageInfimum,
                                                     wesSNPCoverageInfimum, samplingTime, burn_in);
         apd.getTestResult();
     }
@@ -282,7 +281,7 @@ public class AsmPeakDetection {
                 rnaSeqMinor = new ArrayList<>();
                 wesMajor = new ArrayList<>();
                 wesMinor = new ArrayList<>();
-                for (String position: rnaSeqMutPositionAlleleReads.keySet()) {
+                for (String position : rnaSeqMutPositionAlleleReads.keySet()) {
                     rnaSeqReads = rnaSeqMutPositionAlleleReads.get(position);
                     if (wesMutPositionAlleleReads != null)
                         wesReads = wesMutPositionAlleleReads.getOrDefault(position, null);
@@ -300,7 +299,7 @@ public class AsmPeakDetection {
 
                     ArrayList<String> ncs = new ArrayList<>();
                     ArrayList<Integer> counts = new ArrayList<>();
-                    for (Map.Entry<String, Integer> entry: nucleotides) {
+                    for (Map.Entry<String, Integer> entry : nucleotides) {
                         String nc = entry.getKey();
                         Integer reads = entry.getValue();
                         ncs.add(nc);
@@ -317,8 +316,8 @@ public class AsmPeakDetection {
                         backgroundMajor = wesReads.get(majorAllele);
                         backgroundMinor = wesReads.get(minorAllele);
                     } else {
-                        backgroundMajor = (minor+major)/2;
-                        backgroundMinor = (minor+major)/2;
+                        backgroundMajor = (minor + major) / 2;
+                        backgroundMinor = (minor + major) / 2;
                     }
                     wesMajor.add(backgroundMajor);
                     wesMinor.add(backgroundMinor);
@@ -330,7 +329,7 @@ public class AsmPeakDetection {
                 assert majorCount.length == minorCount.length;
                 assert majorCount.length == majorBackground.length;
                 assert majorBackground.length == minorBackground.length;
-                for (int i=0; i<majorCount.length; i++) {
+                for (int i = 0; i < majorCount.length; i++) {
                     majorCount[i] = rnaSeqMajor.get(i);
                     minorCount[i] = rnaSeqMinor.get(i);
                     majorBackground[i] = wesMajor.get(i);
@@ -341,6 +340,13 @@ public class AsmPeakDetection {
                 maf = this.calcMajorAlleleFrequency(majorCount, minorCount);
                 this.peakMajorAlleleFrequency.put(label, maf);
                 this.peakSNVNum.put(label, majorCount.length);
+
+                ArrayList<int[]> statistic = new ArrayList<>(4);
+                statistic.add(majorCount);
+                statistic.add(minorCount);
+                statistic.add(majorBackground);
+                statistic.add(minorBackground);
+                this.statisticForTest.put(label, statistic);
 
                 Integer totalMajor = this.getSum(majorCount), totalMinor = this.getSum(minorCount);
                 HashMap<String, Integer> record = new HashMap<>();
@@ -365,19 +371,77 @@ public class AsmPeakDetection {
                 rnaSeqMinor.clear();
                 wesMajor.clear();
                 wesMinor.clear();
+            }
 
+            double lorStd = this.calcLorStd();
+
+            for (String str: this.statisticForTest.keySet()) {
+                ArrayList<int[]> statistic = this.statisticForTest.get(str);
+                majorCount = statistic.get(0);
+                minorCount = statistic.get(1);
+                majorBackground = statistic.get(2);
+                minorBackground = statistic.get(3);
                 // 对peak下所有的SNP位点进行元分析, 得到该peak对应的 p value
-                HierarchicalBayesianModel hb = new HierarchicalBayesianModel(this.tauInfimum, this.tauSupremum, this.samplingTime,
+                HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
                         this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
                 pVal = hb.testSignificant();
                 ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
-                samePValPeaks.add(label);
+                samePValPeaks.add(str);
                 this.asmPValue.put(pVal, samePValPeaks);
                 hb = null;
             }
         }
     }
 
+    /**
+     * 计算全部SNV位点LOR的标准差
+     * @return LOR Std
+     */
+    private double calcLorStd() {
+        ArrayList<Double> lorList = new ArrayList<>();
+        int[] majorCount, minorCount, majorBackground, minorBackground;
+        double lor, cum = 0;
+        for (String label: this.statisticForTest.keySet()) {
+            ArrayList<int[]> statistic = this.statisticForTest.get(label);
+            majorCount = statistic.get(0);
+            minorCount = statistic.get(1);
+            majorBackground = statistic.get(2);
+            minorBackground = statistic.get(3);
+
+            for (int i=0; i<majorCount.length; i++) {
+                double major = majorCount[i], minor = minorCount[i],
+                        majorBack = majorBackground[i], minorBack = minorBackground[i];
+                if ((minor - 0) < 0.00001)
+                    minor = 0.1;
+                if ((minorBack - 0) < 0.00001) {
+                    majorBack = (major + minor) / 2;
+                    minorBack = (major + minor) / 2;
+                }
+
+                lor = (major / minor) / (majorBack / minorBack);
+                lor = Math.log(lor);
+                lorList.add(lor);
+                cum += lor;
+            }
+        }
+        double lorMean = cum / lorList.size();
+        double variance = 0.0;
+        for (Double val: lorList) {
+            variance += Math.pow((val - lorMean), 2);
+        }
+
+        double lorStd = Math.sqrt(variance / lorList.size());
+        lorList.clear();
+
+        return lorStd;
+    }
+
+    /**
+     * 计算SNV位点的major allele frequency
+     * @param majorCounts major allele reads count
+     * @param minorCounts minor allele reads count
+     * @return major allele frequency
+     */
     private double calcMajorAlleleFrequency(int[] majorCounts, int[] minorCounts) {
         int major = 0, minor = 0;
         for (int i=0; i<majorCounts.length; i++) {

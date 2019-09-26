@@ -8,7 +8,7 @@ import java.io.File;
 public class HierarchicalTest {
     private String aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, peakCoveredSnpFile, peakCoveredSnpBackground, aseGeneFile, asmPeakFile, finalOutput;
     private int ipSNPReadInfimum, wesSNPReadInfimum, readsCoverageThreshold, samplingTime, burnInTime;
-    private double tauIfimum, tauSupremum;
+    private double degreeOfFreedom;
     private Logger logger;
 
     public static void main(String[] args) throws ParseException {
@@ -104,22 +104,21 @@ public class HierarchicalTest {
             burnInTime = Integer.parseInt(commandLine.getOptionValue("bt"));
 
         HierarchicalTest ht = new HierarchicalTest(aseVcfFile, asmVcfFile, wesFile, gtfFile, bedFile, outputDir,
-                                                   tauInfimum, tauSupremum, ipSNPReadInfimum, wesSNPReadInfimum,
+                                                   tauSupremum, ipSNPReadInfimum, wesSNPReadInfimum,
                                                    readsCoverageThreshold, samplingTime, burnInTime, logger);
         ht.getResult();
     }
 
 
     public HierarchicalTest(String aseVcfFile, String asmVcfFile, String wesFile, String gtfFile, String bedFile, String outputDir,
-                            double tauIfimum, double tauSupremum, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
                             int readsCoverageThreshold, int samplingTime, int burnInTime, Logger logger) {
         this.aseVcfFile = aseVcfFile;
         this.asmVcfFile = asmVcfFile;
         this.wesFile = wesFile;
         this.gtfFile = gtfFile;
         this.bedFile = bedFile;
-        this.tauIfimum = tauIfimum;
-        this.tauSupremum = tauSupremum;
+        this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.readsCoverageThreshold = readsCoverageThreshold;
@@ -148,8 +147,8 @@ public class HierarchicalTest {
     private void asmPeakDetected() {
         this.logger.debug("detect ASM m6A signal, m6A coveredSNP sites are shown in " + this.peakCoveredSnpFile);
         AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile,this.wesFile, peakCoveredSnpFile,
-                                                    this.peakCoveredSnpBackground, this.asmPeakFile, this.tauIfimum,
-                                                    this.tauSupremum, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
+                                                    this.peakCoveredSnpBackground, this.asmPeakFile,
+                                                    this.degreeOfFreedom, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
                                                     this.samplingTime, this.burnInTime);
         apd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.asmPeakFile + ", ASM specific m6A signals with q-value less than 0.05");
@@ -161,7 +160,7 @@ public class HierarchicalTest {
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
         AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
-                                                    this.tauIfimum, this.tauSupremum, this.readsCoverageThreshold,
+                                                    this.degreeOfFreedom, this.readsCoverageThreshold,
                                                     this.samplingTime, this.burnInTime);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
@@ -205,11 +204,7 @@ public class HierarchicalTest {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("tl", "tau_low", true, "infimum of uniform distribution for sampling model hyper-parameter tau, default 0");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
         option.setRequired(false);
         options.addOption(option);
 

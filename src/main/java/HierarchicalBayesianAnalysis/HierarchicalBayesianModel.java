@@ -19,10 +19,10 @@ public class HierarchicalBayesianModel {
     /**
      * Constructor
      */
-    public HierarchicalBayesianModel(double minTau, double maxTau, int samplingTime, int burnIn,
+    public HierarchicalBayesianModel(double lorStd, double df, int samplingTime, int burnIn,
                                      int[] majorAlleleReads, int[] minorAlleleReads,
                                      int[] majorAlleleBackground, int[] minorAlleleBackground) {
-        this.ts = new TauSampling(minTau, maxTau);
+        this.ts = new TauSampling(lorStd, df);
         this.lors = new LogOddRatioSampling();
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;

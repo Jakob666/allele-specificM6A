@@ -37,11 +37,11 @@ public class OddRatioCalc {
             if (this.majorAlleleBackground == null)
                 majorBackground = (majorReads + minorReads) / 2;
             else
-                majorBackground = this.majorAlleleBackground[i];
+                majorBackground = (this.majorAlleleBackground[i] == 0)? (majorReads + minorReads) / 2: this.majorAlleleBackground[i];
             if (this.minorAlleleBackground == null)
                 minorBackground = (majorReads + minorReads) / 2;
             else
-                minorBackground = this.minorAlleleBackground[i];
+                minorBackground = (this.minorAlleleBackground[i] == 0)? (majorReads + minorReads) / 2: this.minorAlleleBackground[i];
             logOddratio = this.calculateLogOddRatio(majorReads, minorReads, majorBackground, minorBackground);
             var = this.calculateVariance(majorReads, minorReads, majorBackground, minorBackground);
             logOR[i] = logOddratio;
