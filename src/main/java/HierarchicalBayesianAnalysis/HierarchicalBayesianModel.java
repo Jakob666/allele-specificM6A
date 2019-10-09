@@ -2,8 +2,6 @@ package HierarchicalBayesianAnalysis;
 
 import org.apache.commons.math3.distribution.NormalDistribution;
 
-//import java.io.*;
-import java.text.DecimalFormat;
 import java.util.HashMap;
 
 public class HierarchicalBayesianModel {
@@ -14,7 +12,6 @@ public class HierarchicalBayesianModel {
     private double[] observeLogOddRatio, variances, singleASELORMean, singleASELORMeanPosteriorDensity, singleASELOR,
                      singleASELORPosteriorDensity, samplingGlobalLORs;
     private int[] majorAlleleReads, minorAlleleReads, majorAlleleBackground, minorAlleleBackground;
-    private DecimalFormat df = new DecimalFormat("0.00");
 
     /**
      * Constructor
@@ -38,8 +35,8 @@ public class HierarchicalBayesianModel {
     }
 
     /**
-     * 依据采样结果返回该peak的ASE显著性水平
-     * @return p值
+     * test for ASE or ASM significance. Return significant p value
+     * @return p value
      */
     public double testSignificant() {
         this.initializer();
@@ -56,21 +53,22 @@ public class HierarchicalBayesianModel {
     }
 
     /**
-     * 初始化参数tau等参数
+     * hierarchical model parameters initialization
      */
     private void initializer() {
-        // 计算观测到的ASE位点的对数优势比y和方差var
+        // calculate the LOR(y) and variance(var) for each bi-allele sites
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.observeLogOddRatio = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
 //        System.out.println("observeLOR: [" + this.getString(this.observeLogOddRatio) + "]");
 //        System.out.println("observeVAR: [" + this.getString(this.variances) + "]");
 
-        // 从tau的先验分布中初始化一个tau值
+        // randomly sample a value tau from priority distribution as initial value
         this.curTau = this.ts.randomTau();
 
-        // 已知tau、y和var，全局对数优势比的后验概率满足 P(globalLOR|tau,y)~N(Theta, V)。正态分布的两个变量可由tau、y和var求出
-        // 初始化得到全局对数优势比的值
+        // when tau、y and var are known, the average LOR(globalLOR) posterior distribution of gene or m6A signal
+        //          P(globalLOR|tau,y)~N(Theta, V) can be calculate via y, var and tau
+        // initial the average LOR
         double miu_denominator = 0, miu_numernator = 0;
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
             miu_denominator += 1.0 / (this.variances[i] + Math.pow(this.curTau, 2));
@@ -81,32 +79,34 @@ public class HierarchicalBayesianModel {
         NormalDistribution nd = new NormalDistribution(this.globalLORMean, this.globalLORSigma);
         this.curGlobalLOR = nd.sample();
 
-        // 当前超参数Tau的近似后验概率
+        // the approximate posterior distribution of hyper-parameter tau
         this.curTauPosteriorDensity = this.ts.posteriorTau(this.curTau, this.observeLogOddRatio, this.variances,
                                                            this.globalLORMean, this.globalLORSigma);
-        // 当前全局对数优势比的后验概率
+        // the approximate posterior distribution of average LOR
         this.curGlobalLORPosteriorDensity = nd.density(this.curGlobalLOR);
 //        System.out.println("initial tau: " + this.curTau+"\t initial density: " + this.curTauPosteriorDensity);
 
-        // 已知y、var、Tau和globalLOR，各点对数优势比期望值P(LORMean_i|y,Tau,globalLOR)~N(Theta_i, Vi)。正态分布参数都可由已知量求出
+        // when y, var, tau and globalLOR are known, the expectation LOR of each SNV sites(LORMean_i) satisfy normal distribution
+        //               P(LORMean_i|y,Tau,globalLOR)~N(Theta_i, Vi)
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
             double mean = (1.0 / this.variances[i] * this.observeLogOddRatio[i] + 1.0 / Math.pow(this.curTau, 2) * this.curGlobalLOR) / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
             double sigma = 1.0 / (1.0 / this.variances[i] + 1.0 / Math.pow(this.curTau, 2));
             nd = new NormalDistribution(mean, sigma);
             double lor = nd.sample();
-            // 初始化各位点的对数优势比期望值，并记录初始化优势比的后验概率
+            // initial the expected LOR for each SNV sites and record the corresponding posterior probability
             this.singleASELORMean[i] = lor;
             this.singleASELORMeanPosteriorDensity[i] = nd.density(lor);
         }
 //        System.out.println("initial single ASE site LOR mean: [" + this.getString(this.singleASELORMean) + "]");
 
-        // 已知var、LORMean_i，各位点的对数优势比的后验概率 P(LOR_i|LORMean_i, var_i)~N(LORMean_i, var_i)
+        // when var, LORMean_i are known，LOR for each SNV sites satisfy normal distribution
+        //          P(LOR_i|LORMean_i, var_i)~N(LORMean_i, var_i)
         for (int i = 0; i < this.singleASELORMean.length; i++) {
             double lorMean = this.singleASELORMean[i];
             double var = this.variances[i];
             nd = new NormalDistribution(lorMean, var);
             double lor = nd.sample();
-            // 初始化一组LOR值并记录其后验概率
+            // initial LOR
             this.singleASELOR[i] = lor;
             this.singleASELORPosteriorDensity[i] = nd.density(lor);
         }
@@ -114,7 +114,7 @@ public class HierarchicalBayesianModel {
     }
 
     /**
-     * 第一轮采样前根据已有数据计算得到每个ASE位点的对数优势比及对数优势比的方差，相当于初始化值
+     * calculate LOR and variance via observed data
      * @return {"LOR": [log odd ratios], "VAR": [variances]}
      */
     private HashMap<String, double[]> getInitLORAndVar() {
@@ -124,14 +124,14 @@ public class HierarchicalBayesianModel {
     }
 
     /**
-     * 进行采样操作，得到 samplingTimes + burnIn个采样值
+     * sampling the average LOR of gene or m6A peak，times = samplingTimes + burnIn
      */
     private void sampling() {
         int totalTimes = this.samplingTime + this.burnIn;
 
         for (int i=0; i<totalTimes; i++) {
 //            System.out.println("iteration " + i);
-            // 首先对tau进行采样
+            // sampling for tau
             double prevTau = this.curTau;
             double prevTauPosteriorDensity = this.curTauPosteriorDensity;
             double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.singleASELOR,
@@ -140,7 +140,7 @@ public class HierarchicalBayesianModel {
             this.curTauPosteriorDensity = samplingRes[1];
 //            System.out.println("new Tau value: " + this.curTau);
 
-            // 对全局对数优势比进行采样
+            // sampling for average LOR
             double prevGlobalLOR = this.curGlobalLOR;
             double prevGlobalLORPosteriorDensity = this.curGlobalLORPosteriorDensity;
             double[] globalLORSummary = this.lors.globalLogOddRatioSampling(this.curTau, this.observeLogOddRatio,
@@ -153,7 +153,7 @@ public class HierarchicalBayesianModel {
                 this.samplingGlobalLORs[i-this.burnIn] = this.curGlobalLOR;
 //            System.out.println("new global LOR value: " + this.curGlobalLOR);
 
-            // 对各个ASE位点的对数优势比均值进行采样
+            // sampling for the expected LOR for each SNV site
             double[] prevSingleAseLORMean = this.singleASELORMean;
             double[] prevSingleAseLORMeanPosteriorDensity = this.singleASELORMeanPosteriorDensity;
             HashMap<String, double[]> singleAseMeanSampleRes = this.lors.singleAseOddRatioMeanSampling(this.curTau, this.curGlobalLOR, this.observeLogOddRatio,
@@ -162,7 +162,7 @@ public class HierarchicalBayesianModel {
             this.singleASELORMeanPosteriorDensity = singleAseMeanSampleRes.get("density");
 //            System.out.println("new single site LOR mean value: [" + this.getString(this.singleASELORMean) + "]");
 
-            // 对各个ASE位点的对数优势比进行采样
+            // sampling for LOR for each SNV site
             double[] prevSingleAseLOR = this.singleASELOR;
             double[] prevSingleAseLORPosteriorDensity = this.singleASELORPosteriorDensity;
             HashMap<String, double[]> singleAseSampleRes = this.lors.singleAseOddRatioSampling(this.singleASELORMean, this.variances,
@@ -174,6 +174,11 @@ public class HierarchicalBayesianModel {
         }
     }
 
+    /**
+     * Deprecated!
+     * @param reads Deprecated!
+     * @return Deprecated!
+     */
     private int getSum(int[] reads) {
         int total = 0;
         for (int r: reads) {

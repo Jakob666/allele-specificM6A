@@ -10,12 +10,12 @@ public class MHSampling {
     }
 
     /**
-     * 根据随机抽取的u和接受率的值决定本轮采样结果
-     * @param curSamplingVal 本轮采样得到的样本值
-     * @param curSamplingDensity 本轮采样样本值对应的概率密度
-     * @param prevSamplingVal 上一轮采样得到的样本值
-     * @param prevSamplingDensity 上一轮采样样本值对应的概率密度
-     * @return 本轮采样结果
+     * get new round sampling result via random u and receptance
+     * @param curSamplingVal sampling result of new round
+     * @param curSamplingDensity posterior density of sampling result of new round
+     * @param prevSamplingVal sampling result of last round
+     * @param prevSamplingDensity posterior density of sampling result of last round
+     * @return sampling result
      */
     public double[] getSamplingRes(double curSamplingVal, double curSamplingDensity,
                                  double prevSamplingVal, double prevSamplingDensity) {
@@ -29,16 +29,16 @@ public class MHSampling {
     }
 
     /**
-     * 随机在均匀分布(0, 1)中抽取一个值
-     * @return uniform(0, 1)中的值
+     * randomly sample from uniform(0, 1)
+     * @return sampling result
      */
     protected double getRandomVal() {
         return urd.sample();
     }
 
     /**
-     * 计算MH采样的接受率
-     * @return 接受率
+     * calculate MH sampling receptance
+     * @return receptance
      */
     protected double getReceptance(double curSamplingDensity, double prevSamplingDensity) {
         return Math.min(1, curSamplingDensity/prevSamplingDensity);

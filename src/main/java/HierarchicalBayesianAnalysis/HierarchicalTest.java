@@ -161,7 +161,7 @@ public class HierarchicalTest {
         this.logger.debug("detect ASE Gene");
         AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
                                                     this.degreeOfFreedom, this.readsCoverageThreshold,
-                                                    this.samplingTime, this.burnInTime);
+                                                    this.wesSNPReadInfimum, this.samplingTime, this.burnInTime);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
     }

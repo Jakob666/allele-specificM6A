@@ -3,9 +3,7 @@ package HierarchicalBayesianAnalysis;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 
-import java.io.*;
 import java.util.HashMap;
-import java.util.HashSet;
 
 public class LogOddRatioSampling {
     private UniformRealDistribution urd;
@@ -15,13 +13,13 @@ public class LogOddRatioSampling {
     }
 
     /**
-     * 通过新一轮采样得到的tau，获取新一轮的全局对数优势比均值、方差及采样值
-     * @param curTau 新一轮采样得到的tau
-     * @param logOddRatios 现有的ASE位点的对数优势比
-     * @param variances 现有的ASE位点的对数优势比的方差
-     * @param prevGlobalLOR 上一轮抽样的全局对数优势比的值
-     * @param prevGlobalLORPosteriorDensity 上一轮抽样的全局对数优势比的后验概率
-     * @return 新一轮采样的对数优势比均值、方差及采样值
+     * start a new round and sample for tau, globalLOR
+     * @param curTau current tau
+     * @param logOddRatios current LOR for SNV sites
+     * @param variances current variance for SNV sites
+     * @param prevGlobalLOR globalLOR in last round
+     * @param prevGlobalLORPosteriorDensity the posterior probability of last round globalLOR
+     * @return sampling globalLOR, variance value in the new round
      */
     public double[] globalLogOddRatioSampling(double curTau, double[] logOddRatios, double[] variances,
                                               double prevGlobalLOR, double prevGlobalLORPosteriorDensity) {
@@ -46,12 +44,12 @@ public class LogOddRatioSampling {
     }
 
     /**
-     * 通过新一轮采样得到的tau和全局对数优势比采样值，采样每个ASE位点的对数优势比均值
-     * @param curTau 新一轮采样得到的tau
-     * @param curGlobalOddRatio 新一轮采样得到的全局对数优势比
-     * @param logOddRatios 现有的ASE位点的对数优势比
-     * @param variances 现有的ASE位点的对数优势比的方差
-     * @return ASE位点新一轮对数优势比的采样值
+     * start a new round and sample for SNV sites expected LOR
+     * @param curTau current tau
+     * @param curGlobalOddRatio current globalLOR
+     * @param logOddRatios LOR in last round
+     * @param variances LOR variance in last round
+     * @return sampling result in new round
      */
     public HashMap<String, double[]> singleAseOddRatioMeanSampling(double curTau, double curGlobalOddRatio, double[] logOddRatios,
                                             double[] variances, double[] prevLOR, double[] prevLORPosteriorDensity) {

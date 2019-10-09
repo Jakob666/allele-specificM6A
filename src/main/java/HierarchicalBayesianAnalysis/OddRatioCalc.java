@@ -3,17 +3,17 @@ package HierarchicalBayesianAnalysis;
 import java.util.HashMap;
 
 /**
- * 计算某个peak覆盖范围内，各ASE位点上major allele reads的对数优势比及优势比的方差
+ * calculate the LOR and its variance of SNV sites locate in the range of a gene or m6A signal
  */
 public class OddRatioCalc {
     private int[] majorSNPReads, minorSNPReads, majorAlleleBackground, minorAlleleBackground;
 
     /**
      * Constructor
-     * @param majorSNPReads 某个m6A信号下各 ASE位点上 major allele reads的数目
-     * @param minorSNPReads 某个m6A信号下各 ASE位点上 minor allele reads的数目
-     * @param majorAlleleBackground WES数据得到的major allele背景域的reads数
-     * @param minorAlleleBackground WES数据得到的minor allele背景域的reads数
+     * @param majorSNPReads MeRIP-seq INPUT data major allele reads count
+     * @param minorSNPReads MeRIP-seq INPUT data minor allele reads count
+     * @param majorAlleleBackground WES data major allele reads count
+     * @param minorAlleleBackground WES data minor allele reads count
      */
     public OddRatioCalc(int[] majorSNPReads, int[] minorSNPReads, int[] majorAlleleBackground, int[] minorAlleleBackground) {
         this.majorSNPReads = majorSNPReads;
@@ -23,7 +23,7 @@ public class OddRatioCalc {
     }
 
     /**
-     * 计算得到peak覆盖范围内每个位点上major allele reads的对数优势比及对数优势比的方差
+     * calculate major allele LOR and the variance
      * @return {"LOR": [log orr ratios], "VAR": [variances]}
      */
     public HashMap<String, double[]> getLogOddRatio() {
@@ -55,14 +55,14 @@ public class OddRatioCalc {
     }
 
     /**
-     * 计算某个ASE位点上 major allele reads的对数优势比，计算公式为
+     * formula of LOR calculation
      *      yi = ln[y_major/(total-y_major)] - ln[0.5*total/(total-0.5*total)]
      *         = ln[y_major/(total-y_major)]
-     * @param majorAlleleReads ASE位点上 major allele reads的数目
-     * @param minorAlleleReads ASE位点上 minor allele reads的数目
-     * @param majorBackground WES得到的 major allele reads数目
-     * @param minorBackground WES得到的 minor allele reads数目
-     * @return 该位点上 major allele reads的对数优势比
+     * @param majorAlleleReads MeRIP-seq INPUT data major allele reads count
+     * @param minorAlleleReads MeRIP-seq INPUT data minor allele reads count
+     * @param majorBackground WES data major allele reads count
+     * @param minorBackground WES data minor allele reads count
+     * @return LOR of a SNV site
      */
     private double calculateLogOddRatio(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
         double oddRatio = (double) majorAlleleReads / (double) (minorAlleleReads) / ((double) (majorBackground) / (double) minorBackground);
@@ -70,13 +70,13 @@ public class OddRatioCalc {
     }
 
     /**
-     * 计算某个位点上 major allele reads对数优势比的方差，计算公式为
+     * formula of LOR variance calculation
      *      s = 1/y_major + 1/(total-y_major) + 1/majorBackground + 1/minorBackground
-     * @param majorAlleleReads ASE位点上 major allele reads的数目
-     * @param minorAlleleReads ASE位点上 minor allele reads的数目
-     * @param majorBackground WES得到的 major allele reads数目
-     * @param minorBackground WES得到的 minor allele reads数目
-     * @return 该位点上 major allele reads的对数优势比的方差
+     * @param majorAlleleReads MeRIP-seq INPUT data major allele reads count
+     * @param minorAlleleReads MeRIP-seq INPUT data minor allele reads count
+     * @param majorBackground WES data major allele reads count
+     * @param minorBackground WES data minor allele reads count
+     * @return LOR variance of a SNV site
      */
     private double calculateVariance(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
         return 1/(double) majorAlleleReads + 1/(double) (minorAlleleReads) + 1/(double) (majorBackground) + 1/(double) (minorBackground);

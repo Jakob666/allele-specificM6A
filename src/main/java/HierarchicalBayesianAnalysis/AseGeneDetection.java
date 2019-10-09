@@ -9,7 +9,7 @@ import java.text.DecimalFormat;
 import java.util.*;
 
 /**
- * 通过SNP calling得到的VCF文件对ASE gene进行检验
+ * Test ASE genes with VCF format file
  */
 public class AseGeneDetection {
     private String aseGeneFile;
@@ -29,23 +29,24 @@ public class AseGeneDetection {
 
     /**
      * Constructor
-     * @param gtfFile GTF文件
-     * @param vcfFile INPUT样本 SNP calling得到的VCF文件
-     * @param wesFile WES样本 SNP calling得到的VCF文件
-     * @param aseGeneFile 结果输出文件
-     * @param degreeOfFreedom tau采样时inverse-Chi-square的自由度
-     * @param readsCoverageThreshold SNV筛选时设置的reads coverage阈值
-     * @param samplingTime 采样次数
-     * @param burnIn burn in次数
+     * @param gtfFile GTF annotation file
+     * @param vcfFile VCF format file via MeRIP-seq INPUT data
+     * @param wesFile VCF format file via WES data, optional
+     * @param aseGeneFile test result output file
+     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
+     * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
+     * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
+     * @param samplingTime sampling time, default 5000
+     * @param burnIn burn in time, default 200
      */
-    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String aseGeneFile,
-                            double degreeOfFreedom, int readsCoverageThreshold, int samplingTime, int burnIn) {
+    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String aseGeneFile, double degreeOfFreedom,
+                            int readsCoverageThreshold, int wesCoverageThreshold, int samplingTime, int burnIn) {
         VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
         vsmg.parseVcfFile();
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
         this.geneMajorStrand = vsmg.getGeneMajorAlleleNucleotide();
         if (wesFile != null) {
-            vsmg = new VcfSnpMatchGene(wesFile, gtfFile, readsCoverageThreshold);
+            vsmg = new VcfSnpMatchGene(wesFile, gtfFile, wesCoverageThreshold);
             vsmg.parseVcfFile();
             this.geneBackgroundReads = vsmg.getGeneAlleleReads();
         } else {
@@ -62,7 +63,7 @@ public class AseGeneDetection {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir;
-        int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10;
+        int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
         double degreeOfFreedom = 10;
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
@@ -105,6 +106,8 @@ public class AseGeneDetection {
         }
         if (commandLine.hasOption("rc"))
             readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
+        if (commandLine.hasOption("wc"))
+            wesCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("wc"));
         if (commandLine.hasOption("s"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
         if (commandLine.hasOption("b"))
@@ -114,14 +117,14 @@ public class AseGeneDetection {
             System.exit(2);
         }
         if (commandLine.hasOption("df"))
-            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("th"));
+            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
         if (degreeOfFreedom <= 1) {
             System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
             System.exit(2);
         }
 
-        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, outputFile,
-                                                    degreeOfFreedom, readsCoverageThreshold, samplingTime, burn_in);
+        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, outputFile, degreeOfFreedom,
+                                       readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in);
         agd.getTestResult();
     }
 
@@ -132,7 +135,7 @@ public class AseGeneDetection {
     }
 
     /**
-     * 使用层次模型对基因的ASE进行检验得到显著性p值
+     * get ASE significant p value with hierarchical model
      */
     private void aseGeneTest() {
         HashMap<Integer, String[]> geneSNVs, wesSNVs;
@@ -143,6 +146,15 @@ public class AseGeneDetection {
         double p;
         String geneId;
         for (String label: this.geneAlleleReads.keySet()) {
+            // WES data exists, but there is no WES SNV sites locate in the gene
+            if (this.geneBackgroundReads != null) {
+                if (this.geneBackgroundReads.keySet().contains(label))
+                    wesSNVs = this.geneBackgroundReads.getOrDefault(label, null);
+                else
+                    continue;
+            } else
+                wesSNVs = null;
+
             geneId = label.split("->")[0];
             refOrAlt = this.geneMajorStrand.get(geneId);
             int majorReadsCount = 0, minorReadsCount = 0;
@@ -151,19 +163,19 @@ public class AseGeneDetection {
             majorBackgroundCount = new ArrayList<>();
             minorBackgroundCount = new ArrayList<>();
 
-            // 获取RNA-seq和WES经过SNP calling流程得到的某个基因的reference allele和alternative allele 的类型和reads数目
+            // get reference allele and alternative allele nucleotide and reads count
             geneSNVs = this.geneAlleleReads.get(label);
-            if (this.geneBackgroundReads != null)
-                wesSNVs = this.geneBackgroundReads.getOrDefault(label, null);
-            else
-                wesSNVs = null;
 
-            // 记录major allele的位置和对应的碱基
+            // record the genome positions of major alleles and the corresponding nucleotides
             LinkedList<String> majorNcRecords = new LinkedList<>();
             for (Integer mutPosition : geneSNVs.keySet()) {
+
+                if (wesSNVs != null && !wesSNVs.keySet().contains(mutPosition))
+                    continue;
+
                 String[] nucleotideReadsCount = geneSNVs.get(mutPosition);
                 String majorAlleleRecord, minorAlleleRecord, majorNC, minorNC;
-                // 获取major allele和minor allele及reads
+                // get major allele and minor allele with their reads
                 if ((refOrAlt.get(mutPosition)).equals("ref")) {
                     majorAlleleRecord = nucleotideReadsCount[0];
                     minorAlleleRecord = nucleotideReadsCount[1];
@@ -179,30 +191,18 @@ public class AseGeneDetection {
                 minorAlleleCount.add(minor);
                 majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), majorNC}));
 
-                // WES数据是否存在相应碱基reads count的background
-                if (wesSNVs == null) {
-                    int alleleCount = (major + minor) / 2;
-                    majorBackgroundCount.add(alleleCount);
-                    minorBackgroundCount.add(alleleCount);
-                } else {
-                    String[] snvSite = wesSNVs.getOrDefault(mutPosition, null);
-                    int alleleCount = (major + minor) / 2;
-                    if (snvSite == null) {
-                        majorBackgroundCount.add(alleleCount);
-                        minorBackgroundCount.add(alleleCount);
-                    } else {
-                        int[] wesReads = this.getWesReads(snvSite, majorNC, minorNC);
-                        if (wesReads != null) {
-                            majorBackgroundCount.add(wesReads[0]);
-                            minorBackgroundCount.add(wesReads[1]);
-                        } else {
-                            majorBackgroundCount.add(alleleCount);
-                            minorBackgroundCount.add(alleleCount);
-                        }
-
-                    }
-                }
+                int alleleCount = (major + minor) / 2;
+                majorBackgroundCount.add(alleleCount);
+                minorBackgroundCount.add(alleleCount);
             }
+            if (majorAlleleCount.size() == 0) {
+                majorAlleleCount = null;
+                minorAlleleCount = null;
+                majorBackgroundCount = null;
+                minorBackgroundCount = null;
+                continue;
+            }
+
             this.geneMajorNucleotide.put(geneId, this.getString(majorNcRecords));
 
             HashMap<String, Integer> readsCount = new HashMap<>();
@@ -260,7 +260,7 @@ public class AseGeneDetection {
     }
 
     /**
-     * 计算全部SNV位点LOR的标准差
+     * calculate the standard deviation of LOR of all SNV sites on genome
      * @return LOR Std
      */
     private double calcLorStd() {
@@ -302,6 +302,13 @@ public class AseGeneDetection {
         return lorStd;
     }
 
+    /**
+     * Deprecated!
+     * @param wesRecord Deprecated!
+     * @param majorNC Deprecated!
+     * @param minorNC Deprecated!
+     * @return Deprecated!
+     */
     private int[] getWesReads(String[] wesRecord, String majorNC, String minorNC) {
         int[] res = null;
         HashMap<String, Integer> wesNC = new HashMap<>();
@@ -316,11 +323,11 @@ public class AseGeneDetection {
     }
 
     /**
-     * 对基因ASE的p值进行BH校正, 得到 Q value.
+     * recalibrate p value with BH method, and get corresponding q value
      */
     private void bhRecalibrationOfEachPeak() {
         ArrayList<Map.Entry<Double, ArrayList<String>>> sortedPVals = new ArrayList<>(this.geneAsePValue.entrySet());
-        // p值从小到大排序
+        // sort p value from small to large
         Collections.sort(sortedPVals, new Comparator<Map.Entry<Double, ArrayList<String>>>() {
             @Override
             public int compare(Map.Entry<Double, ArrayList<String>> o1, Map.Entry<Double, ArrayList<String>> o2) {
@@ -333,16 +340,16 @@ public class AseGeneDetection {
         String pValString, qValString;
         this.geneAseQValue = new ArrayList<>(totalGenes);
 
-        // 对相同p值的基因进行排序
+        // sort genes with same p value
         for (Map.Entry<Double, ArrayList<String>> entry: sortedPVals) {
             Double pVal = entry.getKey();
             ArrayList<String> samePValGenes = entry.getValue();
 
-            // 相同p值的基因上SNV的数目
+            // sort by SNV numbers
             HashMap<String, Integer> samePValGeneSNVs = new HashMap<>();
             for (String gene: samePValGenes)
                 samePValGeneSNVs.put(gene, this.geneSNVs.get(gene));
-            // 相同p值的基因的major allele frequency
+            // sort by major allele frequency(MAF)
             HashMap<String, Double> samePValGeneMajorAlleleFrequency = new HashMap<>();
             for (String gene: samePValGenes)
                 samePValGeneMajorAlleleFrequency.put(gene, this.geneMajorAlleleFrequency.get(gene));
@@ -352,7 +359,7 @@ public class AseGeneDetection {
                 @Override
                 public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
 
-                    // 首先按照MAF进行排序，若MAF相同，则按照SNV的数目进行排序
+                    // first sort genes with same p value with their MAF, then sort by SNV numbers if get same MAF
                     String gene1 = o1.getKey(), gene2 = o2.getKey();
                     Double gene1MAF = samePValGeneMajorAlleleFrequency.get(gene1), gene2MAF = samePValGeneMajorAlleleFrequency.get(gene2);
                     if (Math.abs(gene1MAF - gene2MAF) < 0.00001) {
@@ -366,7 +373,6 @@ public class AseGeneDetection {
             for (Map.Entry<String, Integer> geneEntry: samePValGeneEntry) {
                 String geneName = geneEntry.getKey();
                 qValue = Math.min(1.0, pVal * totalGenes / rankage);
-//                System.out.println(geneName + "\t" + geneEntry.getValue() + "\t" + pVal + "\t" + qValue + samePValGeneMajorAlleleFrequency.get(geneEntry.getKey()) + "\t" + rankage);
                 rankage--;
 
                 pValString = Double.toString(pVal);
@@ -377,7 +383,7 @@ public class AseGeneDetection {
     }
 
     /**
-     * 将检验结果写入文件
+     * write the test result into file
      */
     private void outputResult() {
         HashMap<String, String[]> finalRecords = new HashMap<>();
@@ -400,6 +406,7 @@ public class AseGeneDetection {
                 minorCount = this.geneReadsCount.get(label).get("minor");
                 majorAlleleFrequency = (double) majorCount / (double) (majorCount + minorCount);
                 majorAlleleStrand = this.geneMajorNucleotide.get(geneId);
+
                 snvNum = this.geneSNVs.get(label);
                 majorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("major");
                 minorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("minor");
@@ -410,7 +417,7 @@ public class AseGeneDetection {
             }
 
             List<Map.Entry<String, String[]>> records = new ArrayList<>(finalRecords.entrySet());
-            // 按照q值进行排序
+            // sort items with its q value
             Collections.sort(records, new Comparator<Map.Entry<String, String[]>>() {
                 @Override
                 public int compare(Map.Entry<String, String[]> o1, Map.Entry<String, String[]> o2) {
@@ -418,11 +425,11 @@ public class AseGeneDetection {
                     Double q1 = Double.parseDouble(data1[3]), q2 = Double.parseDouble(data2[3]);
                     if (!q1.equals(q2))
                         return q1.compareTo(q2);
-                    // BH校正后q-value有相同值，此时依据SNV的数目进行降序排列
+                    // sort gene records with SNV numbers if has same q value
                     Integer snvCount1 = Integer.parseInt(data1[4]), snvCount2 = Integer.parseInt(data2[4]);
                     if (snvCount1 - snvCount2 != 0)
                         return snvCount2.compareTo(snvCount1);
-                    // 若SNV数目相同，则依据major reads和minor reads的差异大小进行排序，差异大的靠前
+                    // sort gene records with MAF if has same q value
                     Integer majorCount1 = Integer.parseInt(data1[5]), minorCount1 = Integer.parseInt(data1[6]),
                             majorCount2 = Integer.parseInt(data2[5]), minorCount2 = Integer.parseInt(data2[6]);
                     Double maf1 = (double) majorCount1 / (double)(majorCount1 + minorCount1),
@@ -505,7 +512,11 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "readsCoverage", true, "reads coverage threshold using for filter SNV records, default 10");
+        option = new Option("rc", "reads_coverage", true, "RNA-seq coverage threshold using for filter SNV records, default 10");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("wc", "wes_coverage", true, "WES coverage threshold using for filter SNV records, default 30");
         option.setRequired(false);
         options.addOption(option);
 

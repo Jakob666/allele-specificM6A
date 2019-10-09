@@ -6,7 +6,7 @@ public class TauSampling extends MHSampling {
 
     /**
      * Constructor
-     * @param lorStd 全部SNV位点LOR的标准差
+     * @param lorStd the standard deviation of LOR
      * @param df Inv-Chi-square degree of freedom
      */
     public TauSampling(double lorStd, double df) {
@@ -15,14 +15,14 @@ public class TauSampling extends MHSampling {
     }
 
     /**
-     * 获取新一轮采样最终结果
-     * @param prevTau 当前的tau
-     * @param prevTauDensity 当前tau对应的后验概率
-     * @param logOddRatios 当前各个ASE位点major allele reads对数优势比
-     * @param variances 当前各个ASE位点major allele reads对数优势比的方差
-     * @param miu 当前全局对数优势比的均值
-     * @param sigma 当前全局对数优势比的方差
-     * @return 采样结果及该结果对应的后验概率
+     * sampling tau in new round
+     * @param prevTau current tau
+     * @param prevTauDensity the posterior density of current tau
+     * @param logOddRatios LOR for each SNV sites
+     * @param variances LOR variance for each SNV sites
+     * @param miu expectation of globalLOR
+     * @param sigma variance of globalLOR
+     * @return sampling result and its posterior density
      */
     public double[] sampling(double prevTau, double prevTauDensity, double[] logOddRatios, double[] variances,
                              double miu, double sigma) {
@@ -33,30 +33,30 @@ public class TauSampling extends MHSampling {
     }
 
     /**
-     * 从先验分布中随机抽取一个值作为tau的值作为新一轮采样值
-     * @return 随机抽取的tau的值
+     * sampling a new tau from its priority distribution
+     * @return randomly sample tau
      */
     public double randomTau() {
         return this.priorTau.sample();
     }
 
     /**
-     * 随机采样的新一轮的tau在先验分布中对应的概率
-     * @param prevSamplingTau 上一轮采样得到的tau的值
-     * @return 对应的先验概率密度
+     * the priority density of new round sampling tau
+     * @param prevSamplingTau last round sampling tau
+     * @return corresponding priority density
      */
     public double priorTauDensity(double prevSamplingTau) {
         return this.priorTau.density(prevSamplingTau);
     }
 
     /**
-     * 随机抽取的新一轮采样tau的值对应的后验概率近似值
-     * @param curSamplingTau 新一轮采样的tau值
-     * @param logOddRatios 当前各个ASE位点major allele reads对数优势比
-     * @param variances 当前各个ASE位点major allele reads对数优势比的方差
-     * @param miu 当前全局对数优势比的均值
-     * @param sigma 当前全局对数优势比的方差
-     * @return 后验概率近似值
+     * approximate posterior probability of sampling tau in new round
+     * @param curSamplingTau new round sampling tau
+     * @param logOddRatios LOR for each SNV sites
+     * @param variances LOR variance for each SNV sites
+     * @param miu expectation of globalLOR
+     * @param sigma variance of globalLOR
+     * @return approximate posterior density
      */
     public double posteriorTau(double curSamplingTau, double[] logOddRatios, double[] variances, double miu, double sigma) {
         double cumProd = 1;

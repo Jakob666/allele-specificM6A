@@ -9,6 +9,9 @@ import java.io.*;
 import java.text.DecimalFormat;
 import java.util.*;
 
+/**
+ * Test ASM peaks with VCF format file and BED format file
+ */
 public class AsmPeakDetection {
     private String peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn;
@@ -27,17 +30,17 @@ public class AsmPeakDetection {
 
     /**
      * Constructor
-     * @param peakBedFile peak calling得到的BED格式文件
-     * @param vcfFile RNA-seq数据SNP Calling得到的VCF格式文件
-     * @param wesFile WES数据SNP Calling得到的VCF格式文件
-     * @param peakCoveredSnpFile 记录peak信号覆盖的RNA-seq SNP位点的文件
-     * @param peakCoveredWesSnpFile 记录peak信号覆盖的WES SNP位点的文件
-     * @param asmPeakFile ASM peak检验结果输出文件
-     * @param degreeOfFreedom tau采样时inverse-Chi-square的自由度
-     * @param ipSNPReadInfimum 记录IP样本Peak覆盖的SNP位点时，对SNP位点筛选所用的阈值
-     * @param wesSNPReadInfimum 记录WES样本Peak覆盖的SNP位点时，对SNP位点筛选所用的阈值
-     * @param samplingTime 采样次数
-     * @param burnIn burn in次数
+     * @param peakBedFile BED format file via MeRIP-seq IP data
+     * @param vcfFile VCF format file via MeRIP-seq INPUT data
+     * @param wesFile VCF format file via WES data, optional
+     * @param peakCoveredSnpFile output file which record MeRIP-seq INPUT data SNV sites covered by m6A signal
+     * @param peakCoveredWesSnpFile output file which record WES data SNV sites covered by m6A signal
+     * @param asmPeakFile test result output file
+     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
+     * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
+     * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
+     * @param samplingTime sampling time, default 5000
+     * @param burnIn burn in time, default 200
      */
     public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String peakCoveredSnpFile,
                             String peakCoveredWesSnpFile, String asmPeakFile, double degreeOfFreedom,
@@ -64,8 +67,8 @@ public class AsmPeakDetection {
 
         String bedFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
-        int ipSNPCoverageInfimum = 0, wesSNPCoverageInfimum = 0, samplingTime = 5000, burn_in = 200;
-        double infimum = 0, supremum = 2;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 5000, burn_in = 200;
+        double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "asmPeak.txt").getAbsolutePath();
@@ -126,21 +129,19 @@ public class AsmPeakDetection {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("tl"))
-            infimum = Double.parseDouble(commandLine.getOptionValue("tl"));
-        if (commandLine.hasOption("th"))
-            supremum = Double.parseDouble(commandLine.getOptionValue("th"));
-        if (infimum >= supremum) {
-            System.out.println("invalid uniform distribution parameter for tau sampling.");
+        if (commandLine.hasOption("df"))
+            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
+        if (degreeOfFreedom <= 1) {
+            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
             System.exit(2);
         }
-        if (commandLine.hasOption("ip_cov_infimum"))
-            ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("ip_cov_infimum"));
-        if (commandLine.hasOption("wes_cov_infimum"))
-            wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wes_cov_infimum"));
+        if (commandLine.hasOption("rc"))
+            ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
+        if (commandLine.hasOption("wc"))
+            wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
 
         AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, outputFile, peakCoveredSnpFile,
-                                                    peakCoveredSnpBackgroundFile, supremum, ipSNPCoverageInfimum,
+                                                    peakCoveredSnpBackgroundFile, degreeOfFreedom, ipSNPCoverageInfimum,
                                                     wesSNPCoverageInfimum, samplingTime, burn_in);
         apd.getTestResult();
     }
@@ -156,7 +157,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * peak覆盖的基因 peakCoveredGene = {chr:peakStart:peakEnd -> geneId, ...}
+     * locate m6A signal in BED format file to corresponding gene, peakCoveredGene = {chr:peakStart:peakEnd -> geneId, ...}
      */
     private void getPeakCoveredGene() {
         BufferedReader bfr = null;
@@ -193,7 +194,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 通过INPUT样本的VCF结果和IP样本的BED结果，得到被peak覆盖的SNP位点，并将记录写入文件。文件记录内容
+     * get m6A signal covered MeRIP-seq INPUT sample SNV sites
      * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
      */
     private void getPeakCoveredSnpResult() {
@@ -203,7 +204,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 当存在WES数据SNP calling结果时，得到被peak覆盖的SNP位点，将结果写入文件作为背景。文件记录内容
+     * get m6A signal covered WES SNV sites
      * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
      */
     private void getPeakCoveredSnpBackground() {
@@ -215,7 +216,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 获取RNA-seq得到的每个m6A信号范围内SNV位点上的 major allele和 minor allele的reads count
+     * get major allele and minor allele nucleotide and reads counts of each MeRIP-seq INPUT sample SNV sites covered by m6A peak
      * [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
     private void getPeakSNPReadsCount() {
@@ -225,7 +226,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 获取WES得到的每个m6A信号范围内SNV位点上的 major allele和 minor allele的reads count
+     * get major allele and minor allele nucleotide and reads counts of each WES SNV sites covered by m6A peak
      * @return [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getPeakSNPBackground() {
@@ -234,7 +235,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 对每个覆盖SNP的peak进行检验
+     * test the ASM significant p value of a m6A peak
      */
     private void asmPeakTest() {
         // [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
@@ -247,7 +248,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 对每个覆盖了SNP的peak进行检验，得到ASM显著性p值
+     * calculate m6A signal p value via hierarchical model
      */
     private void hierarchicalModelTest() {
         double pVal, maf;
@@ -260,7 +261,7 @@ public class AsmPeakDetection {
         ArrayList<Integer> rnaSeqMajor, rnaSeqMinor, wesMajor, wesMinor;
 
         for (String chrNum: this.peakSnpReadsCount.keySet()) {
-            // 某条染色体上所有Peak记录
+            // m6A signal on a particular chromosome
             rnaSeqPeakSnvAlleleReads = this.peakSnpReadsCount.get(chrNum);
 
             if (this.peakSnpBackground != null)
@@ -269,7 +270,7 @@ public class AsmPeakDetection {
                 wesPeakSnvAlleleReads = null;
 
             for (String peakRange: rnaSeqPeakSnvAlleleReads.keySet()) {
-                // 染色体上某个Peak覆盖的SNV记录
+                // SNV sites covered by the m6A signal
                 rnaSeqMutPositionAlleleReads = rnaSeqPeakSnvAlleleReads.get(peakRange);
 
                 if (wesPeakSnvAlleleReads != null)
@@ -288,7 +289,7 @@ public class AsmPeakDetection {
                     else
                         wesReads = null;
 
-                    // 依据reads count从大到小排序
+                    // sorted by reads counts
                     List<Map.Entry<String, Integer>> nucleotides = new ArrayList<>(rnaSeqReads.entrySet());
                     Collections.sort(nucleotides, new Comparator<Map.Entry<String, Integer>>() {
                         @Override
@@ -381,7 +382,7 @@ public class AsmPeakDetection {
                 minorCount = statistic.get(1);
                 majorBackground = statistic.get(2);
                 minorBackground = statistic.get(3);
-                // 对peak下所有的SNP位点进行元分析, 得到该peak对应的 p value
+                // get p value via hierarchical model
                 HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
                         this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
                 pVal = hb.testSignificant();
@@ -394,7 +395,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 计算全部SNV位点LOR的标准差
+     * calculate the standard deviation of LOR of all SNV sites covered by m6A signals on genome
      * @return LOR Std
      */
     private double calcLorStd() {
@@ -437,7 +438,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 计算SNV位点的major allele frequency
+     * calculate major allele frequency of SNV site
      * @param majorCounts major allele reads count
      * @param minorCounts minor allele reads count
      * @return major allele frequency
@@ -453,11 +454,11 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 对Peak ASM的p值进行BH校正, 得到 Q value.
+     * recalibrate the p value with BH method, get significant q value
      */
     private void bhRecalibrationOfEachPeak() {
         ArrayList<Map.Entry<Double, ArrayList<String>>> sortedPVals = new ArrayList<>(this.asmPValue.entrySet());
-        // p值从小到大排序
+        // sort p value from small to large
         Collections.sort(sortedPVals, new Comparator<Map.Entry<Double, ArrayList<String>>>() {
             @Override
             public int compare(Map.Entry<Double, ArrayList<String>> o1, Map.Entry<Double, ArrayList<String>> o2) {
@@ -473,11 +474,11 @@ public class AsmPeakDetection {
             Double pVal = entry.getKey();
             ArrayList<String> samePValPeaks = entry.getValue();
 
-            // 相同p值的Peak上SNV的数目
+            // sort items with its SNV number when p value is same
             HashMap<String, Integer> samePValPeaksSNVs = new HashMap<>();
             for (String peak: samePValPeaks)
                 samePValPeaksSNVs.put(peak, this.peakSNVNum.get(peak));
-            // 相同p值的Peak的major allele frequency
+            // sort items with its major allele frequency when p value and SNV numbers are same
             HashMap<String, Double> samePValPeakMajorAlleleFrequency = new HashMap<>();
             for (String peak: samePValPeaks)
                 samePValPeakMajorAlleleFrequency.put(peak, this.peakMajorAlleleFrequency.get(peak));
@@ -487,7 +488,6 @@ public class AsmPeakDetection {
                 @Override
                 public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
 
-                    // 首先按照MAF进行排序，若MAF相同，则按照SNV的数目进行排序
                     String peak1 = o1.getKey(), peak2 = o2.getKey();
                     Double peak1MAF = samePValPeakMajorAlleleFrequency.get(peak1), peak2MAF = samePValPeakMajorAlleleFrequency.get(peak2);
                     if (Math.abs(peak1MAF - peak2MAF) < 0.00001) {
@@ -501,7 +501,6 @@ public class AsmPeakDetection {
             for (Map.Entry<String, Integer> geneEntry: samePValPeakEntry) {
                 String peak = geneEntry.getKey();
                 qValue = Math.min(1.0, pVal * totalPeak / rankage);
-//                System.out.println(geneName + "\t" + geneEntry.getValue() + "\t" + pVal + "\t" + qValue + samePValGeneMajorAlleleFrequency.get(geneEntry.getKey()) + "\t" + rankage);
                 rankage--;
 
                 pValString = Double.toString(pVal);
@@ -512,7 +511,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 将ASM的检验结果输出到文件
+     * write the test result into file
      */
     private void outputResult() {
         ArrayList<String[]> outputRecord = new ArrayList<>();
@@ -615,7 +614,7 @@ public class AsmPeakDetection {
     }
 
     /**
-     * 初始化log4j Logger 对象
+     * initial log4j Logger instance
      * @param logHome output directory of log file
      * @return Logger instance
      */
@@ -649,19 +648,15 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("tl", "tau_low", true, "infimum of uniform distribution for sampling model hyper-parameter tau, default 0");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("th", "tau_high", true, "supremum of uniform distribution for sampling model hyper-parameter tau, default 2");
+        option = new Option("rc", "reads_coverage", true, "IP sample SNP site coverage infimum, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("ip_cov_infimum", "ip_snp_coverage_infimum", true, "IP sample SNP site coverage infimum, default 0");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("wes_cov_infimum", "wes_snp_coverage_infimum", true, "WES sample SNP site coverage infimum, default 0");
+        option = new Option("wc", "wes_coverage", true, "WES sample SNP site coverage infimum, default 30");
         option.setRequired(false);
         options.addOption(option);
 

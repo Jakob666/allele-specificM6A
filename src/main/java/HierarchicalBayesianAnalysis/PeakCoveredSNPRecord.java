@@ -19,7 +19,7 @@ public class PeakCoveredSNPRecord {
     }
 
     /**
-     * 将 peak calling与 SNP calling的结果整合，得到peak覆盖的SNP位点记录
+     * get m6A signal covered SNV sites
      */
     public void getPeakCoveredSNP() {
         PeakCoveredSNP pcs = new PeakCoveredSNP(this.snpCallingFile, this.peakCallingFile, this.outputFile,
@@ -28,7 +28,7 @@ public class PeakCoveredSNPRecord {
     }
 
     /**
-     * 初始化log4j Logger 对象
+     * initialize log4j Logger instance
      * @param logHome output directory of log file
      * @return Logger instance
      */
