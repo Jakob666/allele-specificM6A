@@ -1,6 +1,7 @@
 package HierarchicalBayesianAnalysis;
 
 import GTFComponent.VcfSnpMatchGene;
+import heterozygoteSiteAnalysis.DbsnpAnnotation;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
@@ -23,6 +24,7 @@ public class AseGeneDetection {
     private HashMap<String, Double> geneMajorAlleleFrequency = new HashMap<>();
     private HashMap<String, String> geneMajorNucleotide = new HashMap<>();
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
+    private HashMap<String, HashSet<String>> dbsnpRecord;
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
     private double degreeOfFreedom;
@@ -32,6 +34,7 @@ public class AseGeneDetection {
      * @param gtfFile GTF annotation file
      * @param vcfFile VCF format file via MeRIP-seq INPUT data
      * @param wesFile VCF format file via WES data, optional
+     * @param dbsnpFile dbsnp annotation file for SNP filtering
      * @param aseGeneFile test result output file
      * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
@@ -39,15 +42,23 @@ public class AseGeneDetection {
      * @param samplingTime sampling time, default 5000
      * @param burnIn burn in time, default 200
      */
-    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String aseGeneFile, double degreeOfFreedom,
-                            int readsCoverageThreshold, int wesCoverageThreshold, int samplingTime, int burnIn) {
+    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
+                            double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
+                            int samplingTime, int burnIn) {
+        if (dbsnpFile != null) {
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile);
+            da.parseDbsnpFile();
+            this.dbsnpRecord = da.getDbsnpRecord();
+        } else
+            this.dbsnpRecord = null;
+
         VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
-        vsmg.parseVcfFile();
+        vsmg.parseVcfFile(this.dbsnpRecord);
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
         this.geneMajorStrand = vsmg.getGeneMajorAlleleNucleotide();
         if (wesFile != null) {
             vsmg = new VcfSnpMatchGene(wesFile, gtfFile, wesCoverageThreshold);
-            vsmg.parseVcfFile();
+            vsmg.parseVcfFile(this.dbsnpRecord);
             this.geneBackgroundReads = vsmg.getGeneAlleleReads();
         } else {
             this.geneBackgroundReads = null;
@@ -62,7 +73,7 @@ public class AseGeneDetection {
     public static void main(String[] args) throws ParseException {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
-        String gtfFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir;
+        String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
         int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
         double degreeOfFreedom = 10;
         if (!commandLine.hasOption("o"))
@@ -104,6 +115,15 @@ public class AseGeneDetection {
             }
             wesVcfFile = vcf.getAbsolutePath();
         }
+        if (commandLine.hasOption("db")) {
+            File dbsnp = new File(commandLine.getOptionValue("db"));
+            if (!dbsnp.exists() || !dbsnp.isFile()) {
+                logger.error("invalid file path: " + dbsnp.getAbsolutePath());
+                System.exit(2);
+            }
+            dbsnpFile = dbsnp.getAbsolutePath();
+        }
+
         if (commandLine.hasOption("rc"))
             readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("wc"))
@@ -123,8 +143,8 @@ public class AseGeneDetection {
             System.exit(2);
         }
 
-        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, outputFile, degreeOfFreedom,
-                                       readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in);
+        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
+                degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in);
         agd.getTestResult();
     }
 
@@ -230,7 +250,12 @@ public class AseGeneDetection {
                 minorBackground[i] = minorBackgroundCount.get(i);
             }
 
-            this.geneMajorAlleleFrequency.put(label, (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount));
+            double majorAlleleFrequency = (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount);
+            // MAF threshold for reducing false positive ASE genes. Genes with MAF < 0.55 are seen as normal gene
+            // cause by alignment error
+            if (majorAlleleFrequency - 0.55 < 0.00001)
+                continue;
+            this.geneMajorAlleleFrequency.put(label, majorAlleleFrequency);
             ArrayList<int[]> statistic = new ArrayList<>(4);
             statistic.add(majorCount);
             statistic.add(minorCount);
@@ -241,6 +266,7 @@ public class AseGeneDetection {
 
         double lorStd = this.calcLorStd();
 
+        // test ASE gene with Hierarchical model
         for (String label: this.statisticForTest.keySet()) {
             ArrayList<int[]> statistic = this.statisticForTest.get(label);
             majorCount = statistic.get(0);
@@ -501,6 +527,10 @@ public class AseGeneDetection {
         options.addOption(option);
 
         option = new Option("g", "gtf", true, "GTF annotation file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("db", "dbsnp", true, "dbsnp file for filtering SNP site");
         option.setRequired(false);
         options.addOption(option);
 

@@ -2,6 +2,7 @@ package HierarchicalBayesianAnalysis;
 
 
 import AseM6aPeakDetector.HeterozygoteReadsCount;
+import heterozygoteSiteAnalysis.DbsnpAnnotation;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
@@ -25,6 +26,7 @@ public class AsmPeakDetection {
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
+    private HashMap<String, HashSet<String>> dbsnpRecord;
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
 
@@ -33,6 +35,7 @@ public class AsmPeakDetection {
      * @param peakBedFile BED format file via MeRIP-seq IP data
      * @param vcfFile VCF format file via MeRIP-seq INPUT data
      * @param wesFile VCF format file via WES data, optional
+     * @param dbsnpFile dbsnp file for SNP filtering
      * @param peakCoveredSnpFile output file which record MeRIP-seq INPUT data SNV sites covered by m6A signal
      * @param peakCoveredWesSnpFile output file which record WES data SNV sites covered by m6A signal
      * @param asmPeakFile test result output file
@@ -42,7 +45,7 @@ public class AsmPeakDetection {
      * @param samplingTime sampling time, default 5000
      * @param burnIn burn in time, default 200
      */
-    public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String peakCoveredSnpFile,
+    public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String dbsnpFile, String peakCoveredSnpFile,
                             String peakCoveredWesSnpFile, String asmPeakFile, double degreeOfFreedom,
                             int ipSNPReadInfimum, int wesSNPReadInfimum, int samplingTime, int burnIn) {
         this.peakBedFile = peakBedFile;
@@ -52,6 +55,12 @@ public class AsmPeakDetection {
         this.peakCoveredWesSnpFile = peakCoveredWesSnpFile;
         if (this.wesFile != null)
             assert this.peakCoveredWesSnpFile != null;
+        if (dbsnpFile != null) {
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile);
+            da.parseDbsnpFile();
+            this.dbsnpRecord = da.getDbsnpRecord();
+        } else
+            this.dbsnpRecord = null;
         this.asmPeakFile = asmPeakFile;
         this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
@@ -65,7 +74,7 @@ public class AsmPeakDetection {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
 
-        String bedFile = null, aseVcfFile = null, wesVcfFile = null, outputFile, outputDir,
+        String bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
         int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 5000, burn_in = 200;
         double degreeOfFreedom = 10;
@@ -111,6 +120,15 @@ public class AsmPeakDetection {
             wesVcfFile = vcf.getAbsolutePath();
         }
 
+        if (commandLine.hasOption("db")) {
+            File dbsnp = new File(commandLine.getOptionValue("db"));
+            if (!dbsnp.exists() || !dbsnp.isFile()) {
+                logger.error("invalid file path: " + dbsnp.getAbsolutePath());
+                System.exit(2);
+            }
+            dbsnpFile = dbsnp.getAbsolutePath();
+        }
+
         if (commandLine.hasOption("peak_cover_snp"))
             peakCoveredSnpFile = commandLine.getOptionValue("peak_cover_snp");
         else
@@ -140,7 +158,7 @@ public class AsmPeakDetection {
         if (commandLine.hasOption("wc"))
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
 
-        AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, outputFile, peakCoveredSnpFile,
+        AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile, peakCoveredSnpFile,
                                                     peakCoveredSnpBackgroundFile, degreeOfFreedom, ipSNPCoverageInfimum,
                                                     wesSNPCoverageInfimum, samplingTime, burn_in);
         apd.getTestResult();
@@ -283,6 +301,10 @@ public class AsmPeakDetection {
                 wesMajor = new ArrayList<>();
                 wesMinor = new ArrayList<>();
                 for (String position : rnaSeqMutPositionAlleleReads.keySet()) {
+                    // filter SNV sites which
+                    if (this.dbsnpRecord != null && !this.dbsnpRecord.get(chrNum).contains(position))
+                        continue;
+
                     rnaSeqReads = rnaSeqMutPositionAlleleReads.get(position);
                     if (wesMutPositionAlleleReads != null)
                         wesReads = wesMutPositionAlleleReads.getOrDefault(position, null);
@@ -339,6 +361,10 @@ public class AsmPeakDetection {
 
                 label = String.join(":", new String[]{chrNum, peakRange});
                 maf = this.calcMajorAlleleFrequency(majorCount, minorCount);
+                // MAF threshold for reducing false positive ASM peaks. Peaks with MAF < 0.55 are seen as normal peak
+                // caused by alignment error
+                if (maf - 0.55 < 0.00001)
+                    continue;
                 this.peakMajorAlleleFrequency.put(label, maf);
                 this.peakSNVNum.put(label, majorCount.length);
 
@@ -633,6 +659,10 @@ public class AsmPeakDetection {
         options.addOption(option);
 
         option = new Option("bed", "peak_bed_file", true, "Peak calling output result in BED format");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("db", "dbsnp", true, "dbsnp file for SNP filtering");
         option.setRequired(false);
         options.addOption(option);
 

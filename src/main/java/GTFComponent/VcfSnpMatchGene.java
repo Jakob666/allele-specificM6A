@@ -5,6 +5,7 @@ import heterozygoteSiteAnalysis.IntervalTreeNode;
 
 import java.io.*;
 import java.util.HashMap;
+import java.util.HashSet;
 
 /**
  * 将VCF文件中的record对应到各个基因中
@@ -12,7 +13,7 @@ import java.util.HashMap;
 public class VcfSnpMatchGene {
     protected String vcfFile;
     private int readsCoverageThreshold;
-    // 每条染色体的GTF区间树
+    // GTF interval tree for each chromosome
     public HashMap<String, IntervalTree> gtfIntervalTree;
     // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads = new HashMap<>();
@@ -37,7 +38,7 @@ public class VcfSnpMatchGene {
     /**
      * 解析SNP calling输出的VCF文件，使用其中的信息更新 geneAlleleReads和geneMajorAlleleStrand
      */
-    public void parseVcfFile() {
+    public void parseVcfFile(HashMap<String, HashSet<String>> dbsnpRecord) {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.vcfFile))));
@@ -56,23 +57,26 @@ public class VcfSnpMatchGene {
                     info = line.split("\t");
                     refNc = info[3];
                     altNc = info[4];
-                    // 只考虑单核苷酸突变的情况
+                    // only take single nucleotide mutations into consideration
                     if (refNc.length() > 1 || altNc.length() > 1)
                         continue;
                     chrNum = info[0];
                     it = this.gtfIntervalTree.getOrDefault(chrNum, null);
                     if (it == null)
                         continue;
+                    // the mutation not in dbsnp record
+                    if (dbsnpRecord != null && !dbsnpRecord.get(chrNum).contains(info[1]))
+                        continue;
                     position = Integer.parseInt(info[1]);
                     readsCount = this.parseDp4(info[7]);
                     referenceCount = readsCount[0] + readsCount[1];
                     alternativeCount = readsCount[2] + readsCount[3];
-                    // 过滤掉纯合的SNV位点
-                    if (alternativeCount==0)
+                    // filter homo SNP sites
+                    if (referenceCount == 0 || alternativeCount==0)
                         continue;
                     if (Math.max(referenceCount, alternativeCount) < this.readsCoverageThreshold)
                         continue;
-                    // 确定major allele是reference还是alternative
+                    // make sure the major allele equals to reference or alternative
                     if (referenceCount > alternativeCount)
                         refOrAlt = 0;
                     else if (referenceCount < alternativeCount)
@@ -80,7 +84,7 @@ public class VcfSnpMatchGene {
                     else
                         refOrAlt = Integer.MIN_VALUE;
 
-                    // 在GTF区间树中搜索该SNV位点落在哪个基因上
+                    // locate the SNV site on particular gene using GTF interval tree
                     itn = it.search(it.root, position);
                     if (itn == null)
                         continue;

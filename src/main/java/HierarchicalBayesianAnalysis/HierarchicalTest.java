@@ -146,7 +146,7 @@ public class HierarchicalTest {
      */
     private void asmPeakDetected() {
         this.logger.debug("detect ASM m6A signal, m6A coveredSNP sites are shown in " + this.peakCoveredSnpFile);
-        AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile,this.wesFile, peakCoveredSnpFile,
+        AsmPeakDetection apd = new AsmPeakDetection(this.bedFile, this.asmVcfFile,this.wesFile, null, peakCoveredSnpFile,
                                                     this.peakCoveredSnpBackground, this.asmPeakFile,
                                                     this.degreeOfFreedom, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
                                                     this.samplingTime, this.burnInTime);
@@ -159,7 +159,7 @@ public class HierarchicalTest {
      */
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
-        AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, this.aseGeneFile,
+        AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, null, this.aseGeneFile,
                                                     this.degreeOfFreedom, this.readsCoverageThreshold,
                                                     this.wesSNPReadInfimum, this.samplingTime, this.burnInTime);
         agd.getTestResult();
