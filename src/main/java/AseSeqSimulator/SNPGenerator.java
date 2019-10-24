@@ -7,7 +7,7 @@ import org.apache.commons.math3.distribution.UniformIntegerDistribution;
 import java.util.*;
 
 /**
- * 在选取的基因外显子序列上随机生成SNP位点
+ * randomly generate SNV site on gene exonic region
  */
 public class SNPGenerator {
     private ArrayList<String> bases = new ArrayList<String>(Arrays.asList("A", "C", "T", "G"));
@@ -23,13 +23,13 @@ public class SNPGenerator {
     private String vcfFile;
 
     /**
-     * 构造方法
-     * @param selectedGenes 传入各个染色体上选取的基因，HashMap<String, LinkedList<Gene>> 键是染色体号，值是Gene对象链表
-     * @param geneM6aPeakRanges 各个基因上m6A修饰信号的区域
-     * @param mutateProportion 突变基因占选取基因总数的比例
-     * @param vcfFile 如果通过已有的VCF文件生成SNP。如果没有VCF文件，参数值为null
-     * @param minMutNum 基因每个m6A peak下最少突变数
-     * @param maxMutNum 基因每个m6A peak下最多突变数
+     * Constructor
+     * @param selectedGenes gene on each chromosome HashMap<String, LinkedList<Gene>>
+     * @param geneM6aPeakRanges m6A signal range on each gene
+     * @param mutateProportion the proportion of the mutation gene in total genes
+     * @param vcfFile simulate mutations via existed VCF file. If there is no VCF file, set null
+     * @param minMutNum minimum mutation under m6A signal
+     * @param maxMutNum maximum mutation under m6A signal
      */
     public SNPGenerator(HashMap<String, LinkedList<Gene>> selectedGenes, HashMap<String, ArrayList<String>> geneM6aPeakRanges,
                         double mutateProportion, String vcfFile, int minMutNum, int maxMutNum) {
@@ -41,7 +41,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 随机生成SNP的方法，该方法是公有方法，供外界调用
+     * randomly generate SNV sites
      */
     public void generateSNP() {
         // if no VCF file support, randomly generate SNP on exon sequence
@@ -53,7 +53,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 设置基因外显子序列上突变位点的数目
+     * set mutation number on exonic region
      */
     private void setMutSiteNum(int minNum, int maxNum) {
 //        ArrayList<Integer> mutNum = new ArrayList<>();
@@ -65,7 +65,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 在选取的所有基因中，选取一定比例的基因作为突变基因。在这些基因的外显子区域挑选随机数目的突变位点
+     * randomly select mutation genes from all genes, and generate mutation sites
      */
     protected void randomMutateGene() {
         for (LinkedList<Gene> chrGenes: selectedGenes.values()) {
@@ -81,7 +81,7 @@ public class SNPGenerator {
                 ArrayList<String> geneM6aPeaks = this.geneM6aPeakRanges.get(geneId);
                 int peakStart, peakEnd, genomeStart, genomeEnd;
                 HashSet<Integer> geneMutPosition = new HashSet<>();
-                // 在每个模拟的m6A peak下生成随机数目的突变位点
+                // mutations under simulated m6A peak
                 for (String peak: geneM6aPeaks) {
                     String[] info = peak.split(":");
                     genomeStart = Integer.parseInt(info[0]);
@@ -112,10 +112,10 @@ public class SNPGenerator {
     }
 
     /**
-     * 将外显子序列的突变位点转换为基因组上对应的位置
-     * @param gene Gene对象
-     * @param exonMutPos 外显子序列的突变位点
-     * @return 基因组对应的位置
+     * get genome position of mutation site via exon position
+     * @param gene Gene instance
+     * @param exonMutPos mutation position in exonic region
+     * @return genome position
      */
     private int getGenomePosition(Gene gene, int exonMutPos) {
         ElementRecord exon = gene.getExonList();
@@ -140,7 +140,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 通过VCF文件生成基因的SNP位点
+     * generate SNV sites via existed VCF file
      */
     protected void vcfFileMutateGene() {
         HashMap<String, HashSet<Integer>> mutatedGenePos = new HashMap<>();
@@ -176,7 +176,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 构建基因的外显子区域的区间树
+     * build interval tree for gene exonic region
      * @return Interval trees
      */
     private HashMap<String, IntervalTree> generateChrExonTrees() {
@@ -200,7 +200,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 从VCF文件中获取每条染色体上的SNP位点
+     * get SNV sites on each chromosome from VCF file
      * @return HashMap
      */
     private HashMap<String, LinkedList<VcfRecord>> getVcfFromFile() {
@@ -212,7 +212,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 依据之前生成的随机位点对外显子序列进行突变
+     * exon sequence mutation according to simulated mutation
      */
     private void randomMutatedExonSequence() {
         for (String geneId: this.mutGenePosition.keySet()) {
@@ -225,7 +225,7 @@ public class SNPGenerator {
     }
 
     /**
-     * 依据VCF文件的信息对基因的外显子序列进行突变
+     * exon sequence mutation according to VCF file
      */
     private void mutateViaVcfRecord(String chrNum, String geneId, int mutatePosition, String alt) {
         LinkedList<Gene> chrGenes = this.selectedGenes.get(chrNum);
@@ -253,9 +253,9 @@ public class SNPGenerator {
     }
 
     /**
-     * 单核苷酸多态性的模拟过程
-     * @param geneId 基因的 geneID
-     * @param mutPosition 突变位点
+     * single nucleotide mutation
+     * @param geneId geneID
+     * @param mutPosition mutation position
      */
     private void singleSiteMutation(String geneId, int mutPosition) {
         HashMap<Integer, String[]> mutationType = this.mutationRefAlt.getOrDefault(geneId, new HashMap<>());

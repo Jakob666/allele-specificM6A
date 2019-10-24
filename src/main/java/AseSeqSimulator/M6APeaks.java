@@ -25,7 +25,7 @@ public class M6APeaks {
         int exonSeqLength = gene.getExonSeq().length();
         String geneId = gene.getGeneId(), chrNum = gene.getChr(), strand = gene.getStrand();
         String label = String.join(":", new String[]{chrNum, geneId, strand});
-        // gene上最多有多少个peak，并确定peak center
+        // calculate maximum number of m6A peaks on gene, and measure the peak center
         int maxPeakNum = exonSeqLength / (2 * m6aPeakLength + this.m6aPeakInterval);
         int peakNum;
         if (maxPeakNum != 0 && peakNumSupremum <= maxPeakNum) {
@@ -62,7 +62,7 @@ public class M6APeaks {
                     continue;
                 int start = i * (2 * m6aPeakLength + this.m6aPeakInterval) + m6aPeakLength / 2;
                 int end = start + m6aPeakLength;
-                // 获取每个peak下覆盖的m6A修饰位点
+                // get m6A modification sites under each peak
                 int[] m6aSite = this.geneM6aSites(gene, start, end, readLength);
                 int peakStart = m6aSite[0] - m6aPeakLength/2;
                 int peakEnd = m6aSite[0] + m6aPeakLength/2;

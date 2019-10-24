@@ -9,7 +9,7 @@ import java.io.*;
 import java.util.*;
 
 /**
- * 给每个基因的mRNA上生成随机数目个m6A修饰位点
+ * randomly generate m6A sites for each mRNA
  */
 public class M6AGenerator {
     private NormalDistribution m6aFrequency = new NormalDistribution(3, 1);
@@ -17,14 +17,14 @@ public class M6AGenerator {
     private HashMap<String, HashMap<Integer, Boolean>> asmBias = new HashMap<>();
 
     /**
-     * 构造方法
+     * Constructor
      */
     public M6AGenerator() {}
 
     /**
-     * 随机生成一个m6A修饰位点，该方法为公有方法，供外界调用，返回m6A修饰位点外显子的位置及其基因组的位置
-     * @param m6aModifyGene 需要生成m6A修饰位点的Gene对象
-     * @return m6A修饰位点
+     * randomly generate m6A sites
+     * @param m6aModifyGene Gene instance
+     * @return m6A modification sites
      */
     public int[] generateM6aSites(Gene m6aModifyGene, int peakStart, int peakEnd, int readLength) {
         UniformIntegerDistribution uid;
@@ -32,21 +32,21 @@ public class M6AGenerator {
 
         uid = new UniformIntegerDistribution(peakStart + readLength/2, peakEnd - readLength/2);
 
-        // 随机选取mRNA上m6a修饰位点数目并生成m6a修饰位点(外显子序列的位点，并非基因组位点)
+        // randomly select m6A modification sites on exon
         modifyPosition = uid.sample();
 
         int genomePosition;
         genomePosition = this.m6aGenomePosition(m6aModifyGene, modifyPosition);
-        // 释放内存
+        // release
         uid = null;
 
         return new int[] {modifyPosition, genomePosition};
     }
 
     /**
-     * 将随机生成的基因的m6A位点写入到文件中
-     * @param simulatedM6aSites 记录每个基因修饰位点的哈希表，HashMap<String, HashMap<Integer, Integer>> geneId: exon position: genome position
-     * @param outputFile 输出文件
+     * write the generated m6A sites into file
+     * @param simulatedM6aSites HashMap<String, HashMap<Integer, Integer>> geneId: exon position: genome position
+     * @param outputFile output file path
      */
     public void storeGeneM6aSites(HashMap<String, HashMap<String, HashMap<Integer, Integer>>> simulatedM6aSites, File outputFile,
                                   HashMap<String, ArrayList<String>> peakRanges, HashMap<String, ArrayList<Boolean>> asmPeaks) {
@@ -65,7 +65,7 @@ public class M6AGenerator {
                 ArrayList<Boolean> asms = asmPeaks.get(geneId);
                 HashMap<String, HashMap<Integer, Integer>> peakCoveredM6aSites = simulatedM6aSites.get(label);
                 assert genePeaks.size() == asms.size();
-                // 确定每个m6A ASM ratio
+                // get m6A ASM ratio
                 for (int i = 0; i < genePeaks.size(); i++) {
                     boolean asm = asms.get(i);
                     String peak = genePeaks.get(i);
@@ -105,10 +105,10 @@ public class M6AGenerator {
     public HashMap<String, HashMap<Integer, Boolean>> getAseBias() {return asmBias;}
 
     /**
-     * 通过m6A在基因外显子区域的位置，得到其基因组上的位置
-     * @param gene Gene对象
-     * @param exonM6aPos 外显子序列m6A突变位置
-     * @return 基因组上的对应位置
+     * get m6A site genome location via exon location
+     * @param gene Gene instance
+     * @param exonM6aPos m6A exon modification position
+     * @return genome position
      */
     public int m6aGenomePosition(Gene gene, int exonM6aPos) {
         ElementRecord exon = gene.getExonList();
