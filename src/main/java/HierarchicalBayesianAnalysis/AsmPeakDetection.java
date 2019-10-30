@@ -15,7 +15,7 @@ import java.util.*;
  */
 public class AsmPeakDetection {
     private String peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
-    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn;
+    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0;
     private double degreeOfFreedom;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
@@ -26,7 +26,7 @@ public class AsmPeakDetection {
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
-    private HashMap<String, HashSet<String>> dbsnpRecord;
+    private HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord;
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
 
@@ -53,10 +53,11 @@ public class AsmPeakDetection {
         this.wesFile = wesFile;
         this.peakCoveredSnpFile = peakCoveredSnpFile;
         this.peakCoveredWesSnpFile = peakCoveredWesSnpFile;
+        this.log = initLog(new File(asmPeakFile).getParent());
         if (this.wesFile != null)
             assert this.peakCoveredWesSnpFile != null;
         if (dbsnpFile != null) {
-            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile);
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, this.log);
             da.parseDbsnpFile();
             this.dbsnpRecord = da.getDbsnpRecord();
         } else
@@ -67,7 +68,6 @@ public class AsmPeakDetection {
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
-        this.log = initLog(new File(asmPeakFile).getParent());
     }
 
     public static void main(String[] args) throws ParseException {
@@ -158,8 +158,8 @@ public class AsmPeakDetection {
         if (commandLine.hasOption("wc"))
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
 
-        AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile, peakCoveredSnpFile,
-                                                    peakCoveredSnpBackgroundFile, degreeOfFreedom, ipSNPCoverageInfimum,
+        AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, dbsnpFile, peakCoveredSnpFile,
+                                                    peakCoveredSnpBackgroundFile, outputFile, degreeOfFreedom, ipSNPCoverageInfimum,
                                                     wesSNPCoverageInfimum, samplingTime, burn_in);
         apd.getTestResult();
     }
@@ -239,8 +239,8 @@ public class AsmPeakDetection {
      */
     private void getPeakSNPReadsCount() {
         HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.log);
-        this.peakMajorAlleleNucleotide = hrc.getPeakMajorAlleleNucleotides();
         this.peakSnpReadsCount = hrc.getMajorMinorHaplotype();
+        this.peakMajorAlleleNucleotide = hrc.getPeakMajorAlleleNucleotides();
     }
 
     /**
@@ -302,7 +302,7 @@ public class AsmPeakDetection {
                 wesMinor = new ArrayList<>();
                 for (String position : rnaSeqMutPositionAlleleReads.keySet()) {
                     // filter SNV sites which
-                    if (this.dbsnpRecord != null && !this.dbsnpRecord.get(chrNum).contains(position))
+                    if (this.dbsnpRecord != null && DbsnpAnnotation.getSearchRes(this.dbsnpRecord, chrNum, position))
                         continue;
 
                     rnaSeqReads = rnaSeqMutPositionAlleleReads.get(position);
@@ -344,7 +344,12 @@ public class AsmPeakDetection {
                     }
                     wesMajor.add(backgroundMajor);
                     wesMinor.add(backgroundMinor);
+                    ncs = null;
+                    counts = null;
                 }
+                // with no mutation site record in dbsnp
+                if (rnaSeqMajor.size() == 0)
+                    continue;
                 majorCount = new int[rnaSeqMajor.size()];
                 minorCount = new int[rnaSeqMinor.size()];
                 majorBackground = new int[wesMajor.size()];
@@ -364,6 +369,10 @@ public class AsmPeakDetection {
                 // MAF threshold for reducing false positive ASM peaks. Peaks with MAF < 0.55 are seen as normal peak
                 // caused by alignment error
                 if (maf - 0.55 < 0.00001)
+                    continue;
+                // MAF threshold for reducing false positive ASE genes. Genes with MAF > 0.95 are seen as homo-zygote gene
+                // cause by alignment error
+                if (maf - 0.95 > 0.00001)
                     continue;
                 this.peakMajorAlleleFrequency.put(label, maf);
                 this.peakSNVNum.put(label, majorCount.length);
@@ -394,29 +403,30 @@ public class AsmPeakDetection {
                 background.put("minor", totalMinorBkg);
                 this.peakMajorMinorBackground.put(label, background);
 
-                rnaSeqMajor.clear();
-                rnaSeqMinor.clear();
-                wesMajor.clear();
-                wesMinor.clear();
+                rnaSeqMajor = null;
+                rnaSeqMinor = null;
+                wesMajor = null;
+                wesMinor = null;
             }
+        }
+        this.dbsnpRecord = null;
 
-            double lorStd = this.calcLorStd();
-
-            for (String str: this.statisticForTest.keySet()) {
-                ArrayList<int[]> statistic = this.statisticForTest.get(str);
-                majorCount = statistic.get(0);
-                minorCount = statistic.get(1);
-                majorBackground = statistic.get(2);
-                minorBackground = statistic.get(3);
-                // get p value via hierarchical model
-                HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
-                        this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
-                pVal = hb.testSignificant();
-                ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
-                samePValPeaks.add(str);
-                this.asmPValue.put(pVal, samePValPeaks);
-                hb = null;
-            }
+        double lorStd = this.calcLorStd();
+        for (String str: this.statisticForTest.keySet()) {
+            this.totalPeakCount++;
+            ArrayList<int[]> statistic = this.statisticForTest.get(str);
+            majorCount = statistic.get(0);
+            minorCount = statistic.get(1);
+            majorBackground = statistic.get(2);
+            minorBackground = statistic.get(3);
+            // get p value via hierarchical model
+            HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
+                    this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
+            pVal = hb.testSignificant();
+            ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
+            samePValPeaks.add(str);
+            this.asmPValue.put(pVal, samePValPeaks);
+            hb = null;
         }
     }
 
@@ -460,7 +470,8 @@ public class AsmPeakDetection {
         double lorStd = Math.sqrt(variance / lorList.size());
         lorList.clear();
 
-        return lorStd;
+        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
+        return lorStd + 0.0001;
     }
 
     /**
@@ -492,8 +503,7 @@ public class AsmPeakDetection {
             }
         });
 
-
-        int totalPeak = sortedPVals.size(), rankage = totalPeak;
+        int totalPeak = this.totalPeakCount, rankage = totalPeak;
         double qValue;
         String pValString, qValString;
         for (Map.Entry<Double, ArrayList<String>> entry: sortedPVals) {
@@ -548,8 +558,8 @@ public class AsmPeakDetection {
                    majorAlleleBackground, minorAlleleBackground, pValue, qValue;
             LinkedList<String> majorAlleleNucleotides;
             String[] info, rec, finalInfo;
+            String majorAlleleFrequency;
             int snvNum;
-            double majorAlleleFrequency;
             bfw.write("#chr\tpeakStart\tpeakEnd\tgeneId\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleNC\n");
             for (String record: this.asmQValue) {
                 rec = record.split("->");
@@ -562,18 +572,18 @@ public class AsmPeakDetection {
                 pValue = rec[1];
                 qValue = rec[2];
                 geneId = this.peakCoveredGene.get(label);
-                majorAlleleFrequency = this.peakMajorAlleleFrequency.get(label);
+                majorAlleleFrequency = this.df.format(this.peakMajorAlleleFrequency.get(label));
                 majorAlleleNucleotides = this.peakMajorAlleleNucleotide.get(label);
-                String majorAlleleStrand = this.getString(majorAlleleNucleotides);
+                String majorAlleleRecords = this.getString(majorAlleleNucleotides);
                 snvNum = this.peakSNVNum.get(label);
-                majorAlleleReads = this.peakMajorMinorAlleleCount.get(label).get("major").toString();
-                minorAlleleReads = this.peakMajorMinorAlleleCount.get(label).get("minor").toString();
-                majorAlleleBackground = this.peakMajorMinorBackground.get(label).get("major").toString();
-                minorAlleleBackground = this.peakMajorMinorBackground.get(label).get("minor").toString();
+                majorAlleleReads = String.valueOf(this.peakMajorMinorAlleleCount.get(label).get("major"));
+                minorAlleleReads = String.valueOf(this.peakMajorMinorAlleleCount.get(label).get("minor"));
+                majorAlleleBackground = String.valueOf(this.peakMajorMinorBackground.get(label).get("major"));
+                minorAlleleBackground = String.valueOf(this.peakMajorMinorBackground.get(label).get("minor"));
                 finalInfo = new String[]{chrNum, peakStart, peakEnd, geneId, pValue, qValue,
-                                   Integer.toString(snvNum), majorAlleleReads + "," + minorAlleleReads,
-                                   majorAlleleBackground+","+minorAlleleBackground, Double.toString(majorAlleleFrequency),
-                                   majorAlleleStrand};
+                                         Integer.toString(snvNum), majorAlleleReads + "," + minorAlleleReads,
+                                         majorAlleleBackground+","+minorAlleleBackground, majorAlleleFrequency,
+                                         majorAlleleRecords};
                 outputRecord.add(finalInfo);
             }
 
@@ -583,13 +593,13 @@ public class AsmPeakDetection {
                     Double q1 = Double.parseDouble(o1[5]), q2 = Double.parseDouble(o2[5]);
                     if (!q1.equals(q2))
                         return q1.compareTo(q2);
-                    // BH校正后q-value有相同值，此时依据SNV的数目进行降序排列
+                    // sort records with same q-value after BH recalibration by SNV number
                     Integer snvCount1 = Integer.parseInt(o1[6]), snvCount2 = Integer.parseInt(o2[6]);
-                    if (snvCount1 - snvCount2 != 0)
-                        return snvCount2.compareTo(snvCount1);
-                    // 若SNV数目相同，则依据major reads和minor reads的差异大小进行排序，差异大的靠前
-                    Double maf1 = Double.parseDouble(o1[9]), maf2 = Double.parseDouble(o2[9]);
-                    return maf2.compareTo(maf1);
+//                    if (snvCount1 - snvCount2 != 0)
+                    return snvCount2.compareTo(snvCount1);
+                    // sort records with same q-value and SNV number with MAF
+//                    Double maf1 = Double.parseDouble(o1[9]), maf2 = Double.parseDouble(o2[9]);
+//                    return maf2.compareTo(maf1);
                 }
             });
             for (String[] record: outputRecord) {
@@ -666,7 +676,7 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "output", true, "ASE gene test output file, default ./asmPeak.txt");
+        option = new Option("o", "output", true, "ASM peak test output file, default ./asmPeak.txt");
         option.setRequired(false);
         options.addOption(option);
 

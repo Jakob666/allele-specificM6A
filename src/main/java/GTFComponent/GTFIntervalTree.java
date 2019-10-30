@@ -6,7 +6,7 @@ import java.io.*;
 import java.util.HashMap;
 
 /**
- * 构建GTF文件的区间树
+ * build GTF interval tree
  */
 public class GTFIntervalTree {
     private String gtfFile;
@@ -14,14 +14,14 @@ public class GTFIntervalTree {
 
     /**
      * Constructor
-     * @param gtfFile GTF文件的文件路径
+     * @param gtfFile GTF file path
      */
     public GTFIntervalTree(String gtfFile) {
         this.gtfFile = gtfFile;
     }
 
     /**
-     * 解析GTF文件中的基因信息，并给每条染色体建立基因信息的区间树
+     * parse GTF file, build interval tree for each chromosome
      */
     public void parseGTFFile() {
         BufferedReader bfr = null;
@@ -67,9 +67,9 @@ public class GTFIntervalTree {
     }
 
     /**
-     * 从信息文本中获取基因的名称
-     * @param recordInfo 传入信息
-     * @return 基因名称
+     * get gene name
+     * @param recordInfo GTF information
+     * @return gene name
      */
     private String[] getGeneInfo(String recordInfo) {
         String[] info = recordInfo.split("; ");
@@ -89,8 +89,8 @@ public class GTFIntervalTree {
     }
 
     /**
-     * 获取GTF文件对应的区间树
-     * @return 区间树
+     * return interval tree
+     * @return interval tree
      */
     public HashMap<String, IntervalTree> getGtfIntervalTrees() {
         return this.gtfIntervalTrees;

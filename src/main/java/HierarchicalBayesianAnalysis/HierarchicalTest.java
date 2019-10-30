@@ -161,7 +161,7 @@ public class HierarchicalTest {
         this.logger.debug("detect ASE Gene");
         AseGeneDetection agd = new AseGeneDetection(this.gtfFile, this.aseVcfFile, this.wesFile, null, this.aseGeneFile,
                                                     this.degreeOfFreedom, this.readsCoverageThreshold,
-                                                    this.wesSNPReadInfimum, this.samplingTime, this.burnInTime);
+                                                    this.wesSNPReadInfimum, this.samplingTime, this.burnInTime, this.logger);
         agd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.aseGeneFile + ", ASE specific Genes with q-value less than 0.05");
     }
@@ -170,7 +170,7 @@ public class HierarchicalTest {
      * 依据ASE和ASM的检验结果，将IP样本的m6A信号分为4类
      */
     private void finalOutput() {
-        AseSpecificM6aSignal asms = new AseSpecificM6aSignal(this.aseGeneFile, this.asmPeakFile, this.finalOutput, this.logger);
+        AlleleSpecificM6aSignal asms = new AlleleSpecificM6aSignal(this.aseGeneFile, this.asmPeakFile, this.finalOutput, this.logger);
         asms.detect();
     }
 

@@ -13,8 +13,8 @@ public class HeterozygoteReadsCount {
 
     /**
      * Constructor
-     * @param peakCoveredSnpFile heterozygoteSiteAnalysis.PeakCoveredSNP类生成的文件
-     * @param log 日志对象
+     * @param peakCoveredSnpFile file which record peak covered SNV information
+     * @param log log4j instance
      */
     public HeterozygoteReadsCount(String peakCoveredSnpFile, Logger log) {
         this.peakCoveredSNPFile = new File(peakCoveredSnpFile);
@@ -22,7 +22,7 @@ public class HeterozygoteReadsCount {
     }
 
     /**
-     * 得到每个m6A信号major和minor haplotype上SNP reads count
+     * allele reads count of each SNV sites under m6A signal range
      * @return [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
     public HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getMajorMinorHaplotype() {
@@ -34,7 +34,7 @@ public class HeterozygoteReadsCount {
             );
             String line = "";
             String[] info;
-            String chr, position, peakStart, peakEnd, peakRange, majorAlleleStrand, majorNc, minorNc;
+            String chr, position, peakStart, peakEnd, peakRange, type, majorNc, minorNc;
             int majorCount, minorCount;
             while (line != null) {
                 line = bfr.readLine();
@@ -47,7 +47,7 @@ public class HeterozygoteReadsCount {
                     peakStart = info[3];
                     peakEnd = info[4];
                     peakRange = peakStart +":"+peakEnd;
-                    majorAlleleStrand = info[5];
+                    type = info[5];
                     majorNc = info[6];
                     minorNc = info[7];
                     majorCount = Integer.parseInt(info[8]);
@@ -55,7 +55,7 @@ public class HeterozygoteReadsCount {
 
                     String label = chr+":"+peakRange;
                     LinkedList<String> majorAlleleNcRecords = this.peakMajorAlleleNc.getOrDefault(label, new LinkedList<>());
-                    majorAlleleNcRecords.add(info[2]+":"+majorNc);
+                    majorAlleleNcRecords.add(String.join(":", new String[]{position, type, majorNc}));
                     this.peakMajorAlleleNc.put(label, majorAlleleNcRecords);
                     HashMap<String, HashMap<String, HashMap<String, Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
                     HashMap<String, HashMap<String, Integer>> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());

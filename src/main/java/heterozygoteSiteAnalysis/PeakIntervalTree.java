@@ -17,8 +17,8 @@ public class PeakIntervalTree {
     }
 
     /**
-     * 获取bed文件对应的 peak构成的区间树
-     * @return 每条染色体正负链上的peak分别建立区间树构成的HashMap
+     * parse peak calling BED file form interval tree
+     * @return m6A signal interval tree for each chromosome
      */
     public HashMap<String, HashMap<String, IntervalTree>> getPeakTrees() {
         HashMap<String, HashMap<String, IntervalTree>> treeMap = this.buildPeakIntervalTree();
@@ -26,7 +26,7 @@ public class PeakIntervalTree {
     }
 
     /**
-     * 解析bed文件头的内容
+     * parse BED file column field
      */
     private HashMap<String, Integer> getFieldIndex() {
         HashMap<String, Integer> fieldIdx = new HashMap<String, Integer>();
@@ -70,13 +70,13 @@ public class PeakIntervalTree {
     }
 
     /**
-     * 对每条染色体正负链上的peak分别建立区间树
+     * build m6A peak interval tree for each strand on each chromosome
      * @return a nested HashMap, the keys of outer layer are chromosome number, and inner layer keys are pos and neg strand.
      */
     private HashMap<String, HashMap<String, IntervalTree>> buildPeakIntervalTree() {
-        // 获取个标题对应的索引
+        // column index
         HashMap<String, Integer> fieldIdx = this.getFieldIndex();
-        // 为每个染色体构建peak的区间树
+        // build interval tree
         HashMap<String, HashMap<String, IntervalTree>> peakTreeMap = new HashMap<>();
         BufferedReader bfr = null;
         String chrNum, start, end, strand, blockCount, blockSize, blockStart;
@@ -93,7 +93,7 @@ public class PeakIntervalTree {
                         continue;
                     lineInfo = line.split("\t");
                     chrNum = lineInfo[fieldIdx.get("chr")];
-                    // 遇到新的染色体
+
                     if (!peakTreeMap.containsKey(chrNum)) {
                         IntervalTree posStrandTree = new IntervalTree();
                         IntervalTree negStrandTree = new IntervalTree();
@@ -109,7 +109,7 @@ public class PeakIntervalTree {
                     blockCount = lineInfo[fieldIdx.get("blockcount")];
                     blockSize = lineInfo[fieldIdx.get("blocksizes")];
                     blockStart = lineInfo[fieldIdx.get("blockstarts")];
-                    // 如果block size大于1，则需要对该记录进行解析；反之，则直接加入树即可
+                    // if block size > 1, the information need to be parsed; otherwise, directly add into interval tree
                     if (Integer.parseInt(blockCount) > 1) {
                         IntervalTreeNode[] nodes = this.multiBlock(start, end, blockSize, blockStart);
                         for (IntervalTreeNode node : nodes) {
@@ -151,7 +151,7 @@ public class PeakIntervalTree {
     }
 
     /**
-     * 当一个peak的block size大于1时，对该记录进行解析
+     * when peak block size > 1, parse for the BED file information
      * @param start chromosome start site
      * @param blockSize block size records
      * @param blockStarts block start records

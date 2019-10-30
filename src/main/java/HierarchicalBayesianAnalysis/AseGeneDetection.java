@@ -24,10 +24,10 @@ public class AseGeneDetection {
     private HashMap<String, Double> geneMajorAlleleFrequency = new HashMap<>();
     private HashMap<String, String> geneMajorNucleotide = new HashMap<>();
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
-    private HashMap<String, HashSet<String>> dbsnpRecord;
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
     private double degreeOfFreedom;
+    private Logger logger;
 
     /**
      * Constructor
@@ -44,30 +44,34 @@ public class AseGeneDetection {
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
                             double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
-                            int samplingTime, int burnIn) {
+                            int samplingTime, int burnIn, Logger logger) {
+        HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
-            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile);
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, logger);
             da.parseDbsnpFile();
-            this.dbsnpRecord = da.getDbsnpRecord();
-        } else
-            this.dbsnpRecord = null;
+            dbsnpRecord = da.getDbsnpRecord();
+        }
 
         VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
-        vsmg.parseVcfFile(this.dbsnpRecord);
+        vsmg.parseVcfFile(dbsnpRecord);
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
+        // {geneId: {pos: ref/alt, pos:ref/alt...}, ...}
         this.geneMajorStrand = vsmg.getGeneMajorAlleleNucleotide();
         if (wesFile != null) {
             vsmg = new VcfSnpMatchGene(wesFile, gtfFile, wesCoverageThreshold);
-            vsmg.parseVcfFile(this.dbsnpRecord);
+            vsmg.parseVcfFile(dbsnpRecord);
             this.geneBackgroundReads = vsmg.getGeneAlleleReads();
         } else {
             this.geneBackgroundReads = null;
         }
+        if (dbsnpRecord != null)
+            dbsnpRecord = null;
 
         this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
+        this.logger = logger;
     }
 
     public static void main(String[] args) throws ParseException {
@@ -144,7 +148,7 @@ public class AseGeneDetection {
         }
 
         AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
-                degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in);
+                degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, logger);
         agd.getTestResult();
     }
 
@@ -164,7 +168,7 @@ public class AseGeneDetection {
         HashMap<Integer, String> refOrAlt;
         HierarchicalBayesianModel hb;
         double p;
-        String geneId;
+        String geneId, type;
         for (String label: this.geneAlleleReads.keySet()) {
             // WES data exists, but there is no WES SNV sites locate in the gene
             if (this.geneBackgroundReads != null) {
@@ -209,7 +213,8 @@ public class AseGeneDetection {
                 int minor = Integer.parseInt(minorAlleleRecord.split(":")[1]);
                 majorAlleleCount.add(major);
                 minorAlleleCount.add(minor);
-                majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), majorNC}));
+                type = this.geneMajorStrand.get(geneId).get(mutPosition);
+                majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), type, majorNC}));
 
                 int alleleCount = (major + minor) / 2;
                 majorBackgroundCount.add(alleleCount);
@@ -251,9 +256,13 @@ public class AseGeneDetection {
             }
 
             double majorAlleleFrequency = (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount);
-            // MAF threshold for reducing false positive ASE genes. Genes with MAF < 0.55 are seen as normal gene
+            // MAF threshold for reducing false positive ASE genes. Genes with MAF < 0.55 are seen as normal mutated gene
             // cause by alignment error
             if (majorAlleleFrequency - 0.55 < 0.00001)
+                continue;
+            // MAF threshold for reducing false positive ASE genes. Genes with MAF > 0.95 are seen as homo-zygote gene
+            // cause by alignment error
+            if (majorAlleleFrequency - 0.95 > 0.00001)
                 continue;
             this.geneMajorAlleleFrequency.put(label, majorAlleleFrequency);
             ArrayList<int[]> statistic = new ArrayList<>(4);
@@ -325,7 +334,8 @@ public class AseGeneDetection {
         double lorStd = Math.sqrt(variance / lorList.size());
         lorList.clear();
 
-        return lorStd;
+        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
+        return lorStd + 0.0001;
     }
 
     /**

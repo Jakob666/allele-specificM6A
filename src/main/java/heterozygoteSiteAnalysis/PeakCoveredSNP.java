@@ -14,8 +14,8 @@ public class PeakCoveredSNP {
      * Constructor
      * @param vcfRecordFile vcf record file
      * @param peakCallingRes m6a peak calling result bed file
-     * @param outputFile 输出文件路径
-     * @param readsInfimum SNP reads 对peak覆盖的SNP位点进行记录时reads数目下确界
+     * @param outputFile output file path
+     * @param readsInfimum minimum reads coverage for a SNV site under m6A signal
      * @param logger Logger instance
      */
     public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, int readsInfimum, Logger logger) {
@@ -35,7 +35,7 @@ public class PeakCoveredSNP {
     }
 
     /**
-     * 筛选覆盖SNP的peak并记录SNP信息，输出到文件
+     * filter m6A peaks which covered SNV site and output into file
      */
     public void filterSNPAndPeak() {
         HashMap<String, HashMap<String, IntervalTree>> m6aTreeMap = this.getM6aPeakTree();
@@ -54,13 +54,13 @@ public class PeakCoveredSNP {
             String chrNum, refNc, altNc, majorCount, minorCount, majorAlleleStrand, majorNc, minorNc;
             int[] refAndAltCount;
             int position;
-            bfw.write("#chr\tSNP strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleStrand\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
+            bfw.write("#chr\tpeak strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleType\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
                     if (line.startsWith("#"))
                         continue;
-                    // 获取一条记录中的SNP的相关信息
+
                     info = line.split("\t");
                     chrNum = info[0];
                     refNc = info[3];
@@ -68,15 +68,15 @@ public class PeakCoveredSNP {
                     HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
                     if (chrTree == null)
                         continue;
-                    // 只保留单核苷酸突变
+                    // only take single nucleotide mutation into consideration
                     if (refNc.length() > 1 | altNc.length() > 1)
                         continue;
                     position = Integer.parseInt(info[1]);
                     refAndAltCount = this.getReadsCountViaDp4(info[7]);
-                    // 设置阈值防止出现假阳性位点
-                    if (refAndAltCount[1] == 0) // refAndAltCount[0] == 0 |
+                    // filter homo SNV sites
+                    if (refAndAltCount[0] == 0 |refAndAltCount[1] == 0)
                         continue;
-                    // 通过设定的阈值对SNP进行筛选，减少误差
+                    // filter low coverage SNP sites
                     if (Math.max(refAndAltCount[0], refAndAltCount[1]) < this.readsInfimum)
                         continue;
                     if (refAndAltCount[0] >= refAndAltCount[1]) {
@@ -93,7 +93,6 @@ public class PeakCoveredSNP {
                         minorNc = refNc;
                     }
 
-                    // 获取对应的染色体的区间树并在正负链的peak上搜寻是否被覆盖。如果被覆盖则写入文件
                     IntervalTree posStrandTree = chrTree.get("+");
                     IntervalTree negStrandTree = chrTree.get("-");
                     IntervalTreeNode posStrandSearchResult = posStrandTree.search(posStrandTree.root, position);
@@ -136,8 +135,8 @@ public class PeakCoveredSNP {
     }
 
     /**
-     * 从peak calling的结果得到m6A信号的区间树
-     * @return 每条染色体正负链上的peak分别建立区间树构成的哈希表 [chrNum: [Strand: interval tree]]
+     * build m6A signal interval tree using peak calling result
+     * @return m6A interval tree for each strand on each chromosome [chrNum: [Strand: interval tree]]
      */
     private HashMap<String, HashMap<String, IntervalTree>> getM6aPeakTree() {
         PeakIntervalTree pit = new PeakIntervalTree(this.peakCallingRes.getAbsolutePath(), this.logger);
@@ -148,12 +147,12 @@ public class PeakCoveredSNP {
     }
 
     /**
-     * 从VCF文件的DP4内容中提取出ref和alt的reads count
-     * @param record VCF内容列
+     * extract reference and alternative reads using DP4 info
+     * @param record VCF INFO column
      * @return [refReadsCount, altReadsCount]
      */
     private int[] getReadsCountViaDp4(String record) {
-        // record的形式大致为 DP=5;SGB=-0.379885;RPB=1;MQB=1;MQSB=1;BQB=1;MQ0F=0;ICB=1;HOB=0.5;AC=0;AN=0;DP4=1,3,0,1;MQ=60
+        // record DP=5;SGB=-0.379885;RPB=1;MQB=1;MQSB=1;BQB=1;MQ0F=0;ICB=1;HOB=0.5;AC=0;AN=0;DP4=1,3,0,1;MQ=60
         String[] data = record.split(";");
         String key = null, value = null;
         String[] kAndv;

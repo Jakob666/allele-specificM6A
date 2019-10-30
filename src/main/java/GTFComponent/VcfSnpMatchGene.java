@@ -1,14 +1,15 @@
 package GTFComponent;
 
+import heterozygoteSiteAnalysis.DbsnpAnnotation;
 import heterozygoteSiteAnalysis.IntervalTree;
 import heterozygoteSiteAnalysis.IntervalTreeNode;
 
 import java.io.*;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedList;
 
 /**
- * 将VCF文件中的record对应到各个基因中
+ * match VCF file mutation record to corresponding gene
  */
 public class VcfSnpMatchGene {
     protected String vcfFile;
@@ -38,7 +39,7 @@ public class VcfSnpMatchGene {
     /**
      * 解析SNP calling输出的VCF文件，使用其中的信息更新 geneAlleleReads和geneMajorAlleleStrand
      */
-    public void parseVcfFile(HashMap<String, HashSet<String>> dbsnpRecord) {
+    public void parseVcfFile(HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord) {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.vcfFile))));
@@ -65,7 +66,7 @@ public class VcfSnpMatchGene {
                     if (it == null)
                         continue;
                     // the mutation not in dbsnp record
-                    if (dbsnpRecord != null && !dbsnpRecord.get(chrNum).contains(info[1]))
+                    if (dbsnpRecord != null && !DbsnpAnnotation.getSearchRes(dbsnpRecord, chrNum, info[1]))
                         continue;
                     position = Integer.parseInt(info[1]);
                     readsCount = this.parseDp4(info[7]);
@@ -90,6 +91,7 @@ public class VcfSnpMatchGene {
                         continue;
                     gitn = (GTFIntervalTreeNode) itn;
                     this.recursiveSearch(gitn, refNc, altNc, referenceCount, alternativeCount, refOrAlt, position);
+                    info = null;
                 }
             }
         } catch (IOException ie) {
@@ -162,7 +164,7 @@ public class VcfSnpMatchGene {
         String geneId = gitn.geneId;
         this.renewGeneAlleleReads(geneId, geneName, referenceAllele, alternativeAllele, position, referenceCount, alternativeCount);
         HashMap<Integer, String> majorAlleleRecord;
-        // 更新记录，major SNP属于reference还是alternative
+
         majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new HashMap<>());
         if (refOrAlt == 1)
             majorAlleleRecord.put(position, "alt");
