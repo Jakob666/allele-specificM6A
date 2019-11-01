@@ -302,7 +302,7 @@ public class AsmPeakDetection {
                 wesMinor = new ArrayList<>();
                 for (String position : rnaSeqMutPositionAlleleReads.keySet()) {
                     // filter SNV sites which
-                    if (this.dbsnpRecord != null && DbsnpAnnotation.getSearchRes(this.dbsnpRecord, chrNum, position))
+                    if (this.dbsnpRecord != null && !DbsnpAnnotation.getSearchRes(this.dbsnpRecord, chrNum, position))
                         continue;
 
                     rnaSeqReads = rnaSeqMutPositionAlleleReads.get(position);

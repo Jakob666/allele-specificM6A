@@ -1,28 +1,56 @@
 package HierarchicalBayesianAnalysis;
 
+import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
 import java.io.*;
 import java.text.DecimalFormat;
 import java.util.*;
 
-public class AseSpecificM6aSignal {
+public class AlleleSpecificM6aSignal {
     private File aseTestFile, asmTestFile, outputFile;
     private HashMap<String, String[]> aseSignificantGene = new HashMap<>(), aseNonsignificantGene = new HashMap<>(),
 
                                       significantResult = new HashMap<>(), nonSignificantResult = new HashMap<>();
     private HashMap<String, ArrayList<String[]>> asmSignificantPeak = new HashMap<>(), asmNonsignificantPeak = new HashMap<>();
     private Logger log;
-    private DecimalFormat df = new DecimalFormat("0.0000");
+
+    public static void main(String[] args) throws ParseException{
+        Options options = new Options();
+        CommandLine commandLine = setCommandLine(args, options);
+        String aseGeneFile = null, asmPeakFile = null, outputFile = null;
+        Logger logger;
+
+        if (commandLine.hasOption("ase"))
+            aseGeneFile = commandLine.getOptionValue("ase");
+        if (commandLine.hasOption("asm"))
+            asmPeakFile = commandLine.getOptionValue("asm");
+        if (aseGeneFile==null) {
+            System.out.println("ASE test result should be specified with -ase(--ase_gene_result)");
+            System.exit(2);
+        }
+        if (asmPeakFile==null) {
+            System.out.println("ASM test result should be specified with -asm(--asm_peak_result)");
+            System.exit(2);
+        }
+        if (commandLine.hasOption("o"))
+            outputFile = commandLine.getOptionValue("o");
+        else
+            outputFile = new File(new File(asmPeakFile).getParent(), "allele_specific_m6A_peak.txt").getAbsolutePath();
+
+        logger = initLog(new File(asmPeakFile).getParent());
+        AlleleSpecificM6aSignal asms = new AlleleSpecificM6aSignal(aseGeneFile, asmPeakFile, outputFile, logger);
+        asms.detect();
+    }
 
     /**
      * Constructor
-     * @param aseTestFile ASE检验结果文件
-     * @param asmTestFile ASM检验结果文件
-     * @param outputFile 输出文件
-     * @param log Log4j Logger对象
+     * @param aseTestFile ASE gene test result file
+     * @param asmTestFile ASM peak result file
+     * @param outputFile output file record allele-specific m6A peak
+     * @param log Log4j Logger instance
      */
-    public AseSpecificM6aSignal(String aseTestFile, String asmTestFile, String outputFile, Logger log) {
+    public AlleleSpecificM6aSignal(String aseTestFile, String asmTestFile, String outputFile, Logger log) {
         this.aseTestFile = new File(aseTestFile);
         this.asmTestFile = new File(asmTestFile);
         this.outputFile = new File(outputFile);
@@ -30,7 +58,7 @@ public class AseSpecificM6aSignal {
     }
 
     /**
-     * 检验ASE特异的m6A信号并将其写入文件
+     * test if m6A signal is allele specific, and record it into file
      */
     public void detect() {
         this.parseAseTestFile();
@@ -40,13 +68,13 @@ public class AseSpecificM6aSignal {
     }
 
     /**
-     * 获取ASE Gene检验结果
+     * parse ASE Gene test result
      */
     private void parseAseTestFile() {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(this.aseTestFile)));
-            String line = "", geneId, geneName, majorAlleleStrand;
+            String line = "", geneId, geneName, majorAlleleRecord;
             String[] info, record;
             double qVal;
             while (line != null) {
@@ -55,16 +83,15 @@ public class AseSpecificM6aSignal {
                     info = line.split("\t");
                     geneId = info[0];
                     geneName = info[1];
-                    qVal = Double.parseDouble(info[2]);
-                    majorAlleleStrand = info[5];
-                    record = new String[] {geneName, info[2], majorAlleleStrand};
+                    qVal = Double.parseDouble(info[3]);
+                    majorAlleleRecord = info[8];
+                    record = new String[] {geneName, info[3], majorAlleleRecord};
                     if (qVal - 0.05 < 0.000001)
                         this.aseSignificantGene.put(geneId, record);
                     else
                         this.aseNonsignificantGene.put(geneId, record);
                 }
             }
-            bfr.close();
         } catch (IOException ie) {
             ie.printStackTrace();
         } finally {
@@ -79,7 +106,7 @@ public class AseSpecificM6aSignal {
     }
 
     /**
-     * 获取ASM Peak检验结果
+     * parse ASM Peak test result
      */
     private void parseAsmTestFile() {
         BufferedReader bfr = null;
@@ -97,8 +124,8 @@ public class AseSpecificM6aSignal {
                     peakStart = info[1];
                     peakEnd = info[2];
                     geneId = info[3];
-                    qVal = Double.parseDouble(info[4]);
-                    majorAlleleStrand = info[7];
+                    qVal = Double.parseDouble(info[5]);
+                    majorAlleleStrand = info[10];
 
                     record = new String[] {chrNum, peakStart, peakEnd, info[4], majorAlleleStrand};
 
@@ -128,32 +155,31 @@ public class AseSpecificM6aSignal {
     }
 
     /**
-     * 合并ASE和ASM检验的结果得到 ASE specific m6A peak
+     * merge ASE and ASM test result get m6A peak with real allele specific
      */
     private void mergeAseAsmTestResult() {
         ArrayList<String[]> asmRecordList;
         String[] aseRecord, combineRecord;
-        String aseMajorAllele, asmMajorAllele;
         Set<String> aseGeneId = this.aseSignificantGene.keySet();
         Set<String> asmGeneId = this.asmSignificantPeak.keySet();
-        // ASE和ASM均显著的结果
+        boolean judge;
+        // both ASE and ASM significant
         aseGeneId.retainAll(asmGeneId);
         for (String geneId: aseGeneId) {
             aseRecord = this.aseSignificantGene.get(geneId);
             asmRecordList = this.asmSignificantPeak.get(geneId);
-            aseMajorAllele = aseRecord[2];
             for (String[] asmRecord: asmRecordList) {
-                asmMajorAllele = asmRecord[4];
+                judge = this.compareMajorAllele(aseRecord[aseRecord.length-1], asmRecord[asmRecord.length-1]);
                 // chrNum, geneName, peakStart, peakEnd, ASE q-value, ASM q-value
                 combineRecord = new String[] {asmRecord[0], aseRecord[0], asmRecord[1], asmRecord[2], aseRecord[1], asmRecord[3]};
-                if (aseMajorAllele.equals(asmMajorAllele))
-                    this.nonSignificantResult.put(geneId, combineRecord);
-                else
+                if (judge)
                     this.significantResult.put(geneId, combineRecord);
+                else
+                    this.nonSignificantResult.put(geneId, combineRecord);
             }
         }
 
-        // ASE显著而ASM不显著的结果
+        // ASE significant but ASM not
         aseGeneId = this.aseSignificantGene.keySet();
         Set<String> nonAsmGeneId = this.asmNonsignificantPeak.keySet();
         nonAsmGeneId.retainAll(aseGeneId);
@@ -166,7 +192,7 @@ public class AseSpecificM6aSignal {
             }
         }
 
-        // ASE不显著而ASM显著的结果
+        // ASM significant but ASE not
         Set<String> nonAseGeneId = this.aseNonsignificantGene.keySet();
         asmGeneId.retainAll(nonAseGeneId);
         for (String geneId: asmGeneId) {
@@ -178,7 +204,7 @@ public class AseSpecificM6aSignal {
             }
         }
 
-        // ASE和ASM均不显著的结果
+        // both insignificant
         nonAseGeneId = this.aseNonsignificantGene.keySet();
         nonAsmGeneId = this.asmNonsignificantPeak.keySet();
         nonAseGeneId.retainAll(nonAsmGeneId);
@@ -193,7 +219,41 @@ public class AseSpecificM6aSignal {
     }
 
     /**
-     * 将合并后的结果写入到文件
+     * when both significant in ASE and ASM test, judge whether the major allele is difference between gene and peak
+     * @param aseMajorAllele major allele on gene
+     * @param asmMajorAllele major allele on peak
+     * @return true, if difference exists; otherwise false
+     */
+    private boolean compareMajorAllele(String aseMajorAllele, String asmMajorAllele) {
+        String[] aseInfo = aseMajorAllele.split(";");
+        String[] asmInfo = asmMajorAllele.split(";");
+        HashMap<String, String> aseMajorNC = this.formMap(aseInfo);
+        HashMap<String, String> asmMajorNC = this.formMap(asmInfo);
+        Set<String> aseSNVSite = aseMajorNC.keySet();
+        Set<String> asmSNVSite = asmMajorNC.keySet();
+
+        // common sites
+        aseSNVSite.retainAll(asmSNVSite);
+        for (String site: aseSNVSite) {
+            if (!aseMajorNC.get(site).equals(asmMajorNC.get(site)))
+                return true;
+        }
+
+        return false;
+    }
+
+    private HashMap<String, String> formMap(String[] records) {
+        HashMap<String, String> result = new HashMap<>();
+        for (String rec: records) {
+            String[] info = rec.split(":");
+            result.put(info[0], info[1]);
+        }
+
+        return result;
+    }
+
+    /**
+     * output final result
      */
     private void outputResult() {
         BufferedWriter bfw = null;
@@ -202,7 +262,7 @@ public class AseSpecificM6aSignal {
                     new OutputStreamWriter(new FileOutputStream(this.outputFile))
             );
 
-            // 依据ASE的p值从小到大排序
+            // sort by ASE q value
             ArrayList<Map.Entry<String, String[]>> sigResult = new ArrayList<>(this.significantResult.entrySet());
             Collections.sort(sigResult, new Comparator<Map.Entry<String, String[]>>() {
                 public int compare(Map.Entry<String, String[]> o1,
@@ -237,7 +297,7 @@ public class AseSpecificM6aSignal {
                 aseQVal = record[4];
                 asmQVal = record[5];
                 line = String.join("\t", new String[] {chrNum, geneName, geneId, peakStart, peakEnd, aseQVal,
-                                                                  asmQVal, Boolean.toString(true)});
+                                                                  asmQVal, String.valueOf(true)});
                 bfw.write(line);
                 bfw.newLine();
             }
@@ -252,11 +312,10 @@ public class AseSpecificM6aSignal {
                 aseQVal = record[4];
                 asmQVal = record[5];
                 line = String.join("\t", new String[] {chrNum, geneName, geneId, peakStart, peakEnd, aseQVal,
-                        asmQVal, Boolean.toString(false)});
+                                                                 asmQVal, String.valueOf(false)});
                 bfw.write(line);
                 bfw.newLine();
             }
-            bfw.close();
         } catch (IOException ie) {
             this.log.error("can not write ASE m6a peak result file");
             this.log.error(ie.getMessage());
@@ -269,5 +328,28 @@ public class AseSpecificM6aSignal {
                 }
             }
         }
+    }
+
+    private static Logger initLog(String logHome) {
+        System.setProperty("log_home", logHome);
+        return Logger.getLogger(AlleleSpecificM6aSignal.class);
+    }
+
+    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
+        Option option = new Option("ase", "ase_gene_result", true, "ASE gene test result");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("asm", "asm_peak_result", true, "ASM m6A peak test result");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("o", "output_file", true, "output file path, default allele_specific_m6A_peak.txt");
+        option.setRequired(false);
+        options.addOption(option);
+
+        CommandLineParser parser = new DefaultParser();
+
+        return parser.parse(options, args);
     }
 }
