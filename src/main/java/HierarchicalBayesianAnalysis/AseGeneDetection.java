@@ -74,7 +74,7 @@ public class AseGeneDetection {
         this.logger = logger;
     }
 
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
@@ -527,7 +527,7 @@ public class AseGeneDetection {
         return Logger.getLogger(AseGeneDetection.class);
     }
 
-    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
+    private static CommandLine setCommandLine(String[] args, Options options) {
         Option option = new Option("vcf", "vcf_file", true, "INPUT sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
@@ -570,6 +570,15 @@ public class AseGeneDetection {
 
         CommandLineParser parser = new DefaultParser();
 
-        return parser.parse(options, args);
+        CommandLine commandLine = null;
+        try {
+            commandLine = parser.parse(options, args);
+        } catch (ParseException pe) {
+            HelpFormatter hf = new HelpFormatter();
+            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetection", options);
+            System.exit(2);
+        }
+
+        return commandLine;
     }
 }

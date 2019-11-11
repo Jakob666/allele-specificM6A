@@ -70,7 +70,7 @@ public class AsmPeakDetection {
         this.burnIn = burnIn;
     }
 
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
 
@@ -659,7 +659,7 @@ public class AsmPeakDetection {
         return Logger.getLogger(AsmPeakDetection.class);
     }
 
-    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
+    private static CommandLine setCommandLine(String[] args, Options options) {
         Option option = new Option("vcf", "vcf_file", true, "IP sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
@@ -710,6 +710,15 @@ public class AsmPeakDetection {
 
         CommandLineParser parser = new DefaultParser();
 
-        return parser.parse(options, args);
+        CommandLine commandLine = null;
+        try {
+            commandLine = parser.parse(options, args);
+        } catch (ParseException pe) {
+            HelpFormatter hf = new HelpFormatter();
+            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection", options);
+            System.exit(2);
+        }
+
+        return commandLine;
     }
 }
