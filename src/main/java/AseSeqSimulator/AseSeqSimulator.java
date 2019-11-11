@@ -6,8 +6,7 @@ import java.io.*;
 
 public class AseSeqSimulator {
 
-    public static void main(String[] args) throws Exception {
-
+    public static void main(String[] args) {
         CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
 
         int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
@@ -106,7 +105,7 @@ public class AseSeqSimulator {
                                           mutProportion, peakLength, maxPeakNum, pcrErrorProb, overlap, singleEnd, geneExpFile);
     }
 
-    private static CommandLine parseCommandLine(String[] args) throws ParseException {
+    private static CommandLine parseCommandLine(String[] args) {
         Options options = new Options();
 
         Option option = new Option("g", "gtf", true, "gtf file path");
@@ -202,7 +201,15 @@ public class AseSeqSimulator {
         options.addOption(option);
 
         CommandLineParser parser = new DefaultParser();
+        CommandLine commandLine = null;
+        try {
+            commandLine = parser.parse(options, args);
+        } catch (ParseException pe) {
+            HelpFormatter hf = new HelpFormatter();
+            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar AseSeqSimulator.AseSeqSimulator", options);
+            System.exit(2);
+        }
 
-        return parser.parse(options, args);
+        return commandLine;
     }
 }

@@ -109,7 +109,7 @@ suppose here exists files below:
 1. human genome GTF file `/path/to/Homo_sapiens.GRCh38.93.chr.gtf`
 2. human genome 2bit file `/path/to/hg38.2bit`
 
-simulated data parameters:\
+simulated data parameters:
 1. sequencing read length: `read_length`, integer
 2. simulated m6A signal length: `peak length`, integer
 3. library size: `library_size`, integer
@@ -167,9 +167,6 @@ If there is no `DP4` information, use `AD` information (Allelic depths for the r
 ### 2. Large-scale mutation data set
 Must contains chromosome number and mutation position, e.g.
 > MT	16463	rs878856034	A	G	.	.	RS=878856034;RSPOS=16463;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
->
 > MT	16468	rs879224782	T	C	.	.	RS=879224782;RSPOS=16468;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
->
 > MT	16474	rs878872875	G	C	.	.	RS=878872875;RSPOS=16474;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
->
 > MT	16482	rs878935154	A	G	.	.	RS=878935154;RSPOS=16482;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
