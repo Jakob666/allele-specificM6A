@@ -15,7 +15,8 @@ public class VcfSnpMatchGene {
     protected String vcfFile;
     private int readsCoverageThreshold;
     // GTF interval tree for each chromosome
-    public HashMap<String, IntervalTree> gtfIntervalTree;
+    private HashMap<String, IntervalTree> gtfIntervalTree;
+    private HashMap<String, HashMap<String, IntervalTree>> geneExonIntervalTree;
     // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads = new HashMap<>();
     private HashMap<String, HashMap<Integer, String>> geneMajorAlleleNucleotide = new HashMap<>();
@@ -24,7 +25,10 @@ public class VcfSnpMatchGene {
         this.vcfFile = vcfFile;
         GTFIntervalTree git = new GTFIntervalTree(gtfFile);
         git.parseGTFFile();
+        GeneExonIntervalTree geit = new GeneExonIntervalTree(gtfFile);
+        geit.generateExonTree();
         this.gtfIntervalTree = git.getGtfIntervalTrees();
+        this.geneExonIntervalTree = geit.getGeneExonIntervalTree();
         this.readsCoverageThreshold = readsCoverageThreshold;
     }
 
@@ -37,7 +41,7 @@ public class VcfSnpMatchGene {
     }
 
     /**
-     * 解析SNP calling输出的VCF文件，使用其中的信息更新 geneAlleleReads和geneMajorAlleleStrand
+     * parse SNP calling output VCF format file, match each SNV site to corresponding gene
      */
     public void parseVcfFile(HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord) {
         BufferedReader bfr = null;
@@ -48,6 +52,7 @@ public class VcfSnpMatchGene {
             int[] readsCount;
             IntervalTree it;
             IntervalTreeNode itn;
+            HashMap<String, IntervalTree> eit;
             String[] info;
             GTFIntervalTreeNode gitn;
             while (line != null) {
@@ -65,6 +70,7 @@ public class VcfSnpMatchGene {
                     it = this.gtfIntervalTree.getOrDefault(chrNum, null);
                     if (it == null)
                         continue;
+                    eit = this.geneExonIntervalTree.getOrDefault(chrNum, null);
                     // the mutation not in dbsnp record
                     if (dbsnpRecord != null && !DbsnpAnnotation.getSearchRes(dbsnpRecord, chrNum, info[1]))
                         continue;
@@ -90,7 +96,7 @@ public class VcfSnpMatchGene {
                     if (itn == null)
                         continue;
                     gitn = (GTFIntervalTreeNode) itn;
-                    this.recursiveSearch(gitn, refNc, altNc, referenceCount, alternativeCount, refOrAlt, position);
+                    this.recursiveSearch(gitn, eit, refNc, altNc, referenceCount, alternativeCount, refOrAlt, position);
                     info = null;
                 }
             }
@@ -104,12 +110,14 @@ public class VcfSnpMatchGene {
                     e.printStackTrace();
                 }
             }
+            this.gtfIntervalTree = null;
+            this.geneExonIntervalTree = null;
         }
     }
 
     /**
-     * 从VCF文件INFO列解析得到reference和alternative nucleotide的reads count数目
-     * @param dp4String INFO列信息
+     * get reference和alternative nucleotide from VCF format file
+     * @param dp4String INFO column in VCF format file
      * @return int[] {ref, ref_reverse, alt, alt_reverse}
      */
     protected int[] parseDp4(String dp4String) {
@@ -128,14 +136,14 @@ public class VcfSnpMatchGene {
     }
 
     /**
-     * 搜索到的结果更新 geneAlleleReads
+     * renew geneAlleleReads
      * @param geneId gene id
      * @param geneName gene name
-     * @param referenceAllele reference allele对应的nucleotide
-     * @param alternativeAllele alternative allele对应的nucleotide
-     * @param mutPosition 突变位点
-     * @param referenceCount reference allele覆盖的reads
-     * @param alternativeCount alternative allele覆盖的reads
+     * @param referenceAllele reference allele nucleotide
+     * @param alternativeAllele alternative allele nucleotide
+     * @param mutPosition mutation position
+     * @param referenceCount reference allele reads count
+     * @param alternativeCount alternative allele reads count
      */
     private void renewGeneAlleleReads(String geneId, String geneName, String referenceAllele, String alternativeAllele,
                                       int mutPosition, int referenceCount, int alternativeCount) {
@@ -149,38 +157,58 @@ public class VcfSnpMatchGene {
     }
 
     /**
-     * 递归搜索
-     * @param gitn GTFIntervalTree搜索返回的GTFIntervalTreeNode对象
-     * @param referenceAllele reference allele对应的nucleotide
-     * @param alternativeAllele alternative allele对应的nucleotide
-     * @param referenceCount reference allele覆盖的reads
-     * @param alternativeCount alternative allele覆盖的reads
-     * @param refOrAlt major allele是reference还是alternative，分别使用0和1表示
-     * @param position 突变位点
+     * recursive search
+     * @param gitn GTFIntervalTreeNode instance on GTFIntervalTree
+     * @param exonIntervalTree IntervalTree records genes' exon region
+     * @param referenceAllele reference allele nucleotide
+     * @param alternativeAllele alternative allele nucleotide
+     * @param referenceCount reference allele reads count
+     * @param alternativeCount alternative allele reads count
+     * @param refOrAlt 0 or 1, respectively represent major allele is reference or alternative
+     * @param position mutation position
      */
-    public void recursiveSearch(GTFIntervalTreeNode gitn, String referenceAllele, String alternativeAllele,
+    public void recursiveSearch(GTFIntervalTreeNode gitn, HashMap<String, IntervalTree> exonIntervalTree,
+                                String referenceAllele, String alternativeAllele,
                                 int referenceCount, int alternativeCount, int refOrAlt, int position) {
         String geneName = gitn.geneName;
         String geneId = gitn.geneId;
-        this.renewGeneAlleleReads(geneId, geneName, referenceAllele, alternativeAllele, position, referenceCount, alternativeCount);
-        HashMap<Integer, String> majorAlleleRecord;
+        IntervalTree intervalTree = exonIntervalTree.getOrDefault(geneId, null);
+        if (intervalTree != null) {
+            IntervalTreeNode itn = intervalTree.search(intervalTree.root, position);
+            if (itn != null) {
+                this.renewGeneAlleleReads(geneId, geneName, referenceAllele, alternativeAllele,
+                        position, referenceCount, alternativeCount);
+                HashMap<Integer, String> majorAlleleRecord;
 
-        majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new HashMap<>());
-        if (refOrAlt == 1)
-            majorAlleleRecord.put(position, "alt");
-        else
-            majorAlleleRecord.put(position, "ref");
-        this.geneMajorAlleleNucleotide.put(geneId, majorAlleleRecord);
+                majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new HashMap<>());
+                if (refOrAlt == 1)
+                    majorAlleleRecord.put(position, "alt");
+                else
+                    majorAlleleRecord.put(position, "ref");
+                this.geneMajorAlleleNucleotide.put(geneId, majorAlleleRecord);
+            }
+        } else {
+            HashMap<Integer, String> majorAlleleRecord;
+
+            majorAlleleRecord = this.geneMajorAlleleNucleotide.getOrDefault(geneId, new HashMap<>());
+            if (refOrAlt == 1)
+                majorAlleleRecord.put(position, "alt");
+            else
+                majorAlleleRecord.put(position, "ref");
+            this.geneMajorAlleleNucleotide.put(geneId, majorAlleleRecord);
+        }
 
         if (gitn.rightChild != null) {
             GTFIntervalTreeNode rc = (GTFIntervalTreeNode) gitn.rightChild;
             if (rc.intervalStart <= position && position <= rc.intervalEnd)
-                this.recursiveSearch(rc, referenceAllele, alternativeAllele, referenceCount, alternativeCount, refOrAlt, position);
+                this.recursiveSearch(rc, exonIntervalTree, referenceAllele, alternativeAllele, referenceCount,
+                                     alternativeCount, refOrAlt, position);
         }
         if (gitn.leftChild != null) {
             GTFIntervalTreeNode lc = (GTFIntervalTreeNode) gitn.leftChild;
             if (lc.intervalStart <= position && position <= lc.intervalEnd)
-                this.recursiveSearch(lc, referenceAllele, alternativeAllele, referenceCount, alternativeCount, refOrAlt, position);
+                this.recursiveSearch(lc, exonIntervalTree, referenceAllele, alternativeAllele, referenceCount,
+                                     alternativeCount, refOrAlt, position);
         }
     }
 
