@@ -195,7 +195,7 @@ public class GeneSNVRecord {
         option.setRequired(true);
         options.addOption(option);
 
-        option = new Option("ex", "exon", true, "If the mutation must be in exon. 0 or 1, represent must or not, respectively. Default 0");
+        option = new Option("ex", "exon", true, "If the mutation must be in exon. 1 or 0, represent must or not, respectively. Default 0");
         option.setRequired(false);
         options.addOption(option);
 
