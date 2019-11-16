@@ -60,22 +60,25 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetecti
 
 ### 2. Allele-specific modification (ASM) m6A signal detection 
 **data dependency**:
-1. VCF format file generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
-2. BED format peak calling result generate by `MeRIP-seq data` (required, the format of the file is described below)
-2. VCF format file generate by SNV calling process of `WES data`(optional)
-4. large-scale SNV annotation data set, like dbsnp, 1000Genome etc. (optional, the format of the file is described below). If `WES data` is supported, this parameter will be **ignore**.
+1. GTF format file
+2. VCF format file generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
+3. BED format peak calling result generate by `MeRIP-seq data` (required, the format of the file is described below)
+4. VCF format file generate by SNV calling process of `WES data`(optional)
+5. large-scale SNV annotation data set, like dbsnp, 1000Genome etc. (optional, the format of the file is described below). If `WES data` is supported, this parameter will be **ignore**.
 
 **examples**:\
 suppose here exists files below:
-1. VCF format file generate by RNA data `/path/to/rna_filtered.vcf`
-2. BED format file generate by peak calling process `/path/to/peak.bed`
-3. VCF format file generate by DNA data `/path/to/wes_filtered.vcf`
-4. large-scale SNV data set, dbSNP, in VCF format `/path/to/dbsnp.vcf`
+1. human genome GTF file `/path/to/Homo_sapiens.GRCh38.93.chr.gtf`
+2. VCF format file generate by RNA data `/path/to/rna_filtered.vcf`
+3. BED format file generate by peak calling process `/path/to/peak.bed`
+4. VCF format file generate by DNA data `/path/to/wes_filtered.vcf`
+5. large-scale SNV data set, dbSNP, in VCF format `/path/to/dbsnp.vcf`
 
 * detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
 java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf 
      -o /path/to/output_file 
@@ -84,6 +87,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetecti
 ```
 # command
 java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
      -wes /path/to/wes_filtered.vcf
@@ -93,6 +97,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetecti
 ```
 # command
 java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
      -db /path/to/dbsnp.vcf
@@ -170,3 +175,25 @@ Must contains chromosome number and mutation position, e.g.
 > MT	16468	rs879224782	T	C	.	.	RS=879224782;RSPOS=16468;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
 > MT	16474	rs878872875	G	C	.	.	RS=878872875;RSPOS=16474;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
 > MT	16482	rs878935154	A	G	.	.	RS=878935154;RSPOS=16482;dbSNPBuildID=147;SSR=0;SAO=0;VP=0x050000020005000002000100;GENEINFO=ND6:4541;WGT=1;VC=SNV;R5;ASP
+
+### 3. BED format file
+Contains fields below, more details see [BED format demonstration UCSC](http://genome.ucsc.edu/FAQ/FAQformat#format1)
+* \# chr: chromosome number, `1,2,3,...X,Y,MT`
+* chromStart: m6A signal start position on chromosome
+* chromEnd: m6A signal end position on chromosome
+* name: ESMBEL gene ID
+* score: significant score(adjusted p.value), generate by peak calling tools, less than `0.05`
+* strand: `+` or `-`
+* thickStart: The starting position at which the feature is drawn thickly
+* thickEnd: The ending position at which the feature is drawn thickly
+* itemRgb: An RGB value of the form R,G,B (e.g. 255,0,0). If the track line itemRgb attribute is set to "On", this RBG value will determine the display color of the data contained in this BED line. 
+* blockCount: sub-block number of the m6A signal peak, integer, `≥1`
+* blockSizes: block size of each sub-block, separate by `,`
+* blockStarts: block start position on chromosome, separate by `,`
+
+> \# chr	chromStart	chromEnd	name	score	strand	thickStart	thickEnd	itemRgb	blockCount	blockSizes	blockStarts\
+> 1	9747647	9747845	ENSMUSG00000097893	7.1e-05	+	9747647	9747845	0	1	198,	0\
+> 1	16105773	16105923	ENSMUSG00000025921	4.9e-05	+	16105773	16105923	0	1	150,	0\
+> 1	33739519	33739819	ENSMUSG00000004768	0.0032	+	33739519	33739819	0	1	300,	0\
+> 1	34180162	34180463	ENSMUSG00000026131	0.00022	+	34180162	34180463	0	1	301,	0\
+> 1	34306583	34307612	ENSMUSG00000026131	0.00038	+	34306583	34307612	0	2	68,283,	0,746
