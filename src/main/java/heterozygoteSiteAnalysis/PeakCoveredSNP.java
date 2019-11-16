@@ -1,25 +1,33 @@
 package heterozygoteSiteAnalysis;
 
+import GTFComponent.GeneExonIntervalTree;
 import org.apache.log4j.Logger;
 
 import java.io.*;
 import java.util.HashMap;
 
 public class PeakCoveredSNP {
-    private File vcfFile, peakCallingRes, outputFile;
-    int readsInfimum;
+    private File gtfFile, vcfFile, peakCallingRes, outputFile;
+    private int readsInfimum;
+    HashMap<String, HashMap<String, String>> peakGene, geneNames;
     private Logger logger;
 
     /**
      * Constructor
+     * @param gtfFile GTF format file
      * @param vcfRecordFile vcf record file
      * @param peakCallingRes m6a peak calling result bed file
      * @param outputFile output file path
      * @param readsInfimum minimum reads coverage for a SNV site under m6A signal
      * @param logger Logger instance
      */
-    public PeakCoveredSNP(String vcfRecordFile, String peakCallingRes, String outputFile, int readsInfimum, Logger logger) {
+    public PeakCoveredSNP(String gtfFile, String vcfRecordFile, String peakCallingRes, String outputFile, int readsInfimum, Logger logger) {
         this.logger = logger;
+        this.gtfFile = new File(gtfFile);
+        if (!this.gtfFile.exists() || !this.gtfFile.isFile()) {
+            this.logger.error("invalid GTF file");
+            System.exit(2);
+        }
         this.vcfFile = new File(vcfRecordFile);
         if (!vcfFile.exists() || !this.vcfFile.isFile()) {
             this.logger.error("vcf file not exists");
@@ -38,7 +46,15 @@ public class PeakCoveredSNP {
      * filter m6A peaks which covered SNV site and output into file
      */
     public void filterSNPAndPeak() {
+        // chr -> +/- -> m6AIntervalTree
         HashMap<String, HashMap<String, IntervalTree>> m6aTreeMap = this.getM6aPeakTree();
+        // chr -> geneId -> exonIntervalTree
+        HashMap<String, HashMap<String, IntervalTree>> geneExonTree = this.generateExonTree();
+        // chr -> peakRange -> geneId
+        this.peakMatchGeneId();
+        // chr -> geneId -> geneName
+        this.parseGTFFile();
+
         BufferedReader bfr = null;
         BufferedWriter bfw = null;
         try {
@@ -54,7 +70,7 @@ public class PeakCoveredSNP {
             String chrNum, refNc, altNc, majorCount, minorCount, majorAlleleStrand, majorNc, minorNc;
             int[] refAndAltCount;
             int position;
-            bfw.write("#chr\tpeak strand\tposition\tpeakStart\tpeakEnd\tmajorAlleleType\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
+            bfw.write("#chr\tgeneId\tgeneName\tpeakStrand\tposition\tpeakStart\tpeakEnd\tmajorAlleleType\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -66,7 +82,9 @@ public class PeakCoveredSNP {
                     refNc = info[3];
                     altNc = info[4];
                     HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
-                    if (chrTree == null)
+                    HashMap<String, IntervalTree> chrExon = geneExonTree.getOrDefault(chrNum, null);
+                    HashMap<String, String> chrPeaks = peakGene.getOrDefault(chrNum, null);
+                    if (chrTree == null || chrExon == null || chrPeaks == null)
                         continue;
                     // only take single nucleotide mutation into consideration
                     if (refNc.length() > 1 | altNc.length() > 1)
@@ -93,25 +111,48 @@ public class PeakCoveredSNP {
                         minorNc = refNc;
                     }
 
-                    IntervalTree posStrandTree = chrTree.get("+");
-                    IntervalTree negStrandTree = chrTree.get("-");
-                    IntervalTreeNode posStrandSearchResult = posStrandTree.search(posStrandTree.root, position);
-                    IntervalTreeNode negStrandSearchResult = negStrandTree.search(negStrandTree.root, position);
-                    if (posStrandSearchResult != null) {
-                        String[] newLine = new String[]{chrNum, "+", info[1], Integer.toString(posStrandSearchResult.peakStart),
-                                                        Integer.toString(posStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
+                    IntervalTree posStrandTree = chrTree.getOrDefault("+", null);
+                    IntervalTree negStrandTree = chrTree.getOrDefault("-", null);
+
+
+                    if (posStrandTree != null) {
+                        IntervalTreeNode posStrandSearchResult = posStrandTree.search(posStrandTree.root, position);
+                        if (posStrandSearchResult == null)
+                            continue;
+                        String peakStart = Integer.toString(posStrandSearchResult.peakStart);
+                        String peakEnd = Integer.toString(posStrandSearchResult.peakEnd);
+                        String geneId = chrPeaks.get(String.join("->", new String[] {peakStart, peakEnd}));
+                        if (!this.ifInExon(chrExon, geneId, position))
+                            continue;
+                        String geneName = this.geneNames.get(chrNum).getOrDefault(geneId, "unknown");
+                        String[] newLine = new String[]{chrNum, geneId, geneName, "+", info[1], peakStart,peakEnd,
+                                                        majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
-                    }else if (negStrandSearchResult != null) {
-                        String[] newLine = new String[]{chrNum, "-", info[1], Integer.toString(negStrandSearchResult.peakStart),
-                                                        Integer.toString(negStrandSearchResult.peakEnd), majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
+                    }
+                    if (negStrandTree != null) {
+                        IntervalTreeNode negStrandSearchResult = negStrandTree.search(negStrandTree.root, position);
+                        if (negStrandSearchResult == null)
+                            continue;
+                        String peakStart = Integer.toString(negStrandSearchResult.peakStart);
+                        String peakEnd = Integer.toString(negStrandSearchResult.peakEnd);
+                        String geneId = chrPeaks.get(String.join("->", new String[] {peakStart, peakEnd}));
+                        if (!this.ifInExon(chrExon, geneId, position))
+                            continue;
+                        String geneName = this.geneNames.get(chrNum).getOrDefault(geneId, "unknown");
+                        String[] newLine = new String[]{chrNum, geneId, geneName, "-", info[1], peakStart, peakEnd,
+                                                        majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
                     }
                 }
             }
+            m6aTreeMap = null;
+            geneExonTree = null;
+            this.geneNames = null;
+            this.peakGene = null;
             bfw.flush();
         } catch (IOException ie) {
             this.logger.error("load peak calling result information failed.");
@@ -132,6 +173,92 @@ public class PeakCoveredSNP {
                 }
             }
         }
+    }
+
+    private void peakMatchGeneId() {
+        BufferedReader bfr = null;
+        this.peakGene = new HashMap<>();
+        try {
+            bfr = new BufferedReader(new InputStreamReader(new FileInputStream(this.peakCallingRes)));
+            String line = "", chrNum, peakStart, peakEnd, geneId, label;
+            String[] info;
+            while (line != null) {
+                line = bfr.readLine();
+                if (line != null) {
+                    if (line.startsWith("#"))
+                        continue;
+                    info = line.split("\t");
+                    chrNum = info[0];
+                    peakStart = info[1];
+                    peakEnd = info[2];
+                    geneId = info[3];
+                    HashMap<String, String> chrPeaks = peakGene.getOrDefault(chrNum, new HashMap<>());
+                    label = String.join("->", new String[] {peakStart, peakEnd});
+                    chrPeaks.put(label, geneId);
+                    peakGene.put(chrNum, chrPeaks);
+                }
+                info = null;
+            }
+        } catch (IOException ie) {
+            ie.printStackTrace();
+            System.exit(2);
+        } finally {
+            if (bfr != null) {
+                try {
+                    bfr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void parseGTFFile() {
+        BufferedReader bfr = null;
+        this.geneNames = new HashMap<>();
+        try {
+            bfr = new BufferedReader(new InputStreamReader(new FileInputStream(this.gtfFile)));
+            String line = "", chrNum, geneId, geneName;
+            String[] info, geneInfo;
+            while (line != null) {
+                line = bfr.readLine();
+                if (line != null) {
+                    if (line.startsWith("#"))
+                        continue;
+                    info = line.split("\t");
+                    if (!info[2].equals("gene")) {
+                        info = null;
+                        continue;
+                    }
+                    chrNum = info[0];
+                    geneInfo = this.getGeneInfo(info[8]);
+                    geneId = geneInfo[0];
+                    geneName = geneInfo[1];
+                    HashMap<String, String> chrGenes = this.geneNames.getOrDefault(chrNum, new HashMap<>());
+                    chrGenes.put(geneId, geneName);
+                    this.geneNames.put(chrNum, chrGenes);
+                }
+                info = null;
+            }
+        } catch (IOException ie) {
+            ie.printStackTrace();
+            System.exit(2);
+        } finally {
+            if (bfr != null) {
+                try {
+                    bfr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private HashMap<String, HashMap<String, IntervalTree>> generateExonTree() {
+        GeneExonIntervalTree geit = new GeneExonIntervalTree(this.gtfFile.getAbsolutePath());
+        geit.generateExonTree();
+
+        return geit.getGeneExonIntervalTree();
     }
 
     /**
@@ -173,5 +300,37 @@ public class PeakCoveredSNP {
         int altReadsCount = Integer.parseInt(reads[2]) + Integer.parseInt(reads[3]);
 
         return new int[]{refReadsCount, altReadsCount};
+    }
+
+    private boolean ifInExon(HashMap<String, IntervalTree> chrExon, String geneId, int position) {
+        IntervalTree exons = chrExon.getOrDefault(geneId, null);
+        if (exons == null)
+            return false;
+
+        IntervalTreeNode itn = exons.search(exons.root, position);
+
+        return itn != null;
+    }
+
+    /**
+     * get gene name
+     * @param recordInfo GTF information
+     * @return gene name
+     */
+    private String[] getGeneInfo(String recordInfo) {
+        String[] info = recordInfo.split("; ");
+        String geneName = null, geneId = null;
+        for (String s: info) {
+            if (s.startsWith("gene_id")) {
+                String[] name = s.split(" ");
+                geneId = name[1].substring(1, name[1].length() -1);
+            }
+            if (s.startsWith("gene_name")) {
+                String[] name = s.split(" ");
+                geneName = name[1].substring(1, name[1].length() -1);
+            }
+        }
+
+        return new String[] {geneId, geneName};
     }
 }

@@ -6,11 +6,12 @@ import org.apache.log4j.Logger;
 import java.io.File;
 
 public class PeakCoveredSNPRecord {
-    private String snpCallingFile, peakCallingFile, outputFile;
+    private String gtfFile, snpCallingFile, peakCallingFile, outputFile;
     private int readsInfimum;
     private Logger logger;
 
-    public PeakCoveredSNPRecord(String snpCallingFile, String peakCallingFile, String outputFile, int readsInfimum) {
+    public PeakCoveredSNPRecord(String gtfFile, String snpCallingFile, String peakCallingFile, String outputFile, int readsInfimum) {
+        this.gtfFile = gtfFile;
         this.snpCallingFile = snpCallingFile;
         this.peakCallingFile = peakCallingFile;
         this.outputFile = outputFile;
@@ -22,8 +23,8 @@ public class PeakCoveredSNPRecord {
      * get m6A signal covered SNV sites
      */
     public void getPeakCoveredSNP() {
-        PeakCoveredSNP pcs = new PeakCoveredSNP(this.snpCallingFile, this.peakCallingFile, this.outputFile,
-                                                this.readsInfimum, this.logger);
+        PeakCoveredSNP pcs = new PeakCoveredSNP(this.gtfFile, this.snpCallingFile, this.peakCallingFile,
+                                                this.outputFile, this.readsInfimum, this.logger);
         pcs.filterSNPAndPeak();
     }
 

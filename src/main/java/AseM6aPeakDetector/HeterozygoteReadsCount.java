@@ -43,15 +43,15 @@ public class HeterozygoteReadsCount {
                         continue;
                     info = line.split("\t");
                     chr = info[0];
-                    position = info[2];
-                    peakStart = info[3];
-                    peakEnd = info[4];
+                    position = info[4];
+                    peakStart = info[5];
+                    peakEnd = info[6];
                     peakRange = peakStart +":"+peakEnd;
-                    type = info[5];
-                    majorNc = info[6];
-                    minorNc = info[7];
-                    majorCount = Integer.parseInt(info[8]);
-                    minorCount = Integer.parseInt(info[9]);
+                    type = info[7];
+                    majorNc = info[8];
+                    minorNc = info[9];
+                    majorCount = Integer.parseInt(info[10]);
+                    minorCount = Integer.parseInt(info[11]);
 
                     String label = chr+":"+peakRange;
                     LinkedList<String> majorAlleleNcRecords = this.peakMajorAlleleNc.getOrDefault(label, new LinkedList<>());

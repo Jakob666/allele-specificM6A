@@ -14,7 +14,7 @@ import java.util.*;
  * Test ASM peaks with VCF format file and BED format file
  */
 public class AsmPeakDetection {
-    private String peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
+    private String gtfFile, peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0;
     private double degreeOfFreedom;
     private Logger log;
@@ -27,6 +27,7 @@ public class AsmPeakDetection {
     private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
     private HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord;
+    HashMap<String, HashMap<String, String>> geneNames;
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
 
@@ -45,9 +46,10 @@ public class AsmPeakDetection {
      * @param samplingTime sampling time, default 5000
      * @param burnIn burn in time, default 200
      */
-    public AsmPeakDetection(String peakBedFile, String vcfFile, String wesFile, String dbsnpFile, String peakCoveredSnpFile,
-                            String peakCoveredWesSnpFile, String asmPeakFile, double degreeOfFreedom,
-                            int ipSNPReadInfimum, int wesSNPReadInfimum, int samplingTime, int burnIn) {
+    public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
+                            String peakCoveredSnpFile, String peakCoveredWesSnpFile, String asmPeakFile,
+                            double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum, int samplingTime, int burnIn) {
+        this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
         this.wesFile = wesFile;
@@ -74,7 +76,7 @@ public class AsmPeakDetection {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
 
-        String bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
+        String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
         int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 5000, burn_in = 200;
         double degreeOfFreedom = 10;
@@ -109,6 +111,18 @@ public class AsmPeakDetection {
                 System.exit(2);
             }
             aseVcfFile = vcf.getAbsolutePath();
+        }
+
+        if (!commandLine.hasOption("g")) {
+            logger.error("GTF format file can not be empty");
+            System.exit(2);
+        } else {
+            File gtf = new File(commandLine.getOptionValue("g"));
+            if (!gtf.exists() || !gtf.isFile()) {
+                logger.error("invalid file path: " + gtf.getAbsolutePath());
+                System.exit(2);
+            }
+            gtfFile = gtf.getAbsolutePath();
         }
 
         if (commandLine.hasOption("wes")) {
@@ -158,7 +172,7 @@ public class AsmPeakDetection {
         if (commandLine.hasOption("wc"))
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
 
-        AsmPeakDetection apd = new AsmPeakDetection(bedFile, aseVcfFile, wesVcfFile, dbsnpFile, peakCoveredSnpFile,
+        AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, peakCoveredSnpFile,
                                                     peakCoveredSnpBackgroundFile, outputFile, degreeOfFreedom, ipSNPCoverageInfimum,
                                                     wesSNPCoverageInfimum, samplingTime, burn_in);
         apd.getTestResult();
@@ -166,6 +180,7 @@ public class AsmPeakDetection {
 
     public void getTestResult() {
         this.getPeakCoveredGene();
+        this.parseGTFFile();
         this.getPeakCoveredSnpResult();
         if (this.wesFile != null)
             this.getPeakCoveredSnpBackground();
@@ -216,7 +231,7 @@ public class AsmPeakDetection {
      * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
      */
     private void getPeakCoveredSnpResult() {
-        PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.vcfFile, this.peakBedFile,
+        PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.vcfFile, this.peakBedFile,
                                                              this.peakCoveredSnpFile, this.ipSNPReadInfimum);
         pcsr.getPeakCoveredSNP();
     }
@@ -227,7 +242,7 @@ public class AsmPeakDetection {
      */
     private void getPeakCoveredSnpBackground() {
         if (this.wesFile != null) {
-            PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.wesFile, this.peakBedFile,
+            PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.wesFile, this.peakBedFile,
                                                                  this.peakCoveredWesSnpFile, this.wesSNPReadInfimum);
             pcsr.getPeakCoveredSNP();
         }
@@ -554,13 +569,13 @@ public class AsmPeakDetection {
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.asmPeakFile))));
-            String line, label, geneId, chrNum, peakStart, peakEnd, majorAlleleReads, minorAlleleReads,
+            String line, label, geneId, geneName, chrNum, peakStart, peakEnd, majorAlleleReads, minorAlleleReads,
                    majorAlleleBackground, minorAlleleBackground, pValue, qValue;
             LinkedList<String> majorAlleleNucleotides;
             String[] info, rec, finalInfo;
             String majorAlleleFrequency;
             int snvNum;
-            bfw.write("#chr\tpeakStart\tpeakEnd\tgeneId\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleNC\n");
+            bfw.write("#chr\tpeakStart\tpeakEnd\tgeneId\tgeneName\tp-value\tq-value\tsnvNum\tmajor/minorAlleleReads\tmajor/minorBackground\tMajorAlleleFrequency\tmajorAlleleNC\n");
             for (String record: this.asmQValue) {
                 rec = record.split("->");
                 label = rec[0];
@@ -572,6 +587,7 @@ public class AsmPeakDetection {
                 pValue = rec[1];
                 qValue = rec[2];
                 geneId = this.peakCoveredGene.get(label);
+                geneName = this.geneNames.get(chrNum).getOrDefault(geneId, "unknown");
                 majorAlleleFrequency = this.df.format(this.peakMajorAlleleFrequency.get(label));
                 majorAlleleNucleotides = this.peakMajorAlleleNucleotide.get(label);
                 String majorAlleleRecords = this.getString(majorAlleleNucleotides);
@@ -580,7 +596,7 @@ public class AsmPeakDetection {
                 minorAlleleReads = String.valueOf(this.peakMajorMinorAlleleCount.get(label).get("minor"));
                 majorAlleleBackground = String.valueOf(this.peakMajorMinorBackground.get(label).get("major"));
                 minorAlleleBackground = String.valueOf(this.peakMajorMinorBackground.get(label).get("minor"));
-                finalInfo = new String[]{chrNum, peakStart, peakEnd, geneId, pValue, qValue,
+                finalInfo = new String[]{chrNum, peakStart, peakEnd, geneId, geneName, pValue, qValue,
                                          Integer.toString(snvNum), majorAlleleReads + "," + minorAlleleReads,
                                          majorAlleleBackground+","+minorAlleleBackground, majorAlleleFrequency,
                                          majorAlleleRecords};
@@ -590,11 +606,11 @@ public class AsmPeakDetection {
             Collections.sort(outputRecord, new Comparator<String[]>() {
                 @Override
                 public int compare(String[] o1, String[] o2) {
-                    Double q1 = Double.parseDouble(o1[5]), q2 = Double.parseDouble(o2[5]);
+                    Double q1 = Double.parseDouble(o1[6]), q2 = Double.parseDouble(o2[6]);
                     if (!q1.equals(q2))
                         return q1.compareTo(q2);
                     // sort records with same q-value after BH recalibration by SNV number
-                    Integer snvCount1 = Integer.parseInt(o1[6]), snvCount2 = Integer.parseInt(o2[6]);
+                    Integer snvCount1 = Integer.parseInt(o1[7]), snvCount2 = Integer.parseInt(o2[7]);
 //                    if (snvCount1 - snvCount2 != 0)
                     return snvCount2.compareTo(snvCount1);
                     // sort records with same q-value and SNV number with MAF
@@ -649,6 +665,64 @@ public class AsmPeakDetection {
         return res;
     }
 
+    private void parseGTFFile() {
+        BufferedReader bfr = null;
+        this.geneNames = new HashMap<>();
+        try {
+            bfr = new BufferedReader(new InputStreamReader(new FileInputStream(this.gtfFile)));
+            String line = "", chrNum, geneId, geneName;
+            String[] info, geneInfo;
+            while (line != null) {
+                line = bfr.readLine();
+                if (line != null) {
+                    if (line.startsWith("#"))
+                        continue;
+                    info = line.split("\t");
+                    if (!info[2].equals("gene")) {
+                        info = null;
+                        continue;
+                    }
+                    chrNum = info[0];
+                    geneInfo = this.getGeneInfo(info[8]);
+                    geneId = geneInfo[0];
+                    geneName = geneInfo[1];
+                    HashMap<String, String> chrGenes = this.geneNames.getOrDefault(chrNum, new HashMap<>());
+                    chrGenes.put(geneId, geneName);
+                    this.geneNames.put(chrNum, chrGenes);
+                }
+                info = null;
+            }
+        } catch (IOException ie) {
+            ie.printStackTrace();
+            System.exit(2);
+        } finally {
+            if (bfr != null) {
+                try {
+                    bfr.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private String[] getGeneInfo(String recordInfo) {
+        String[] info = recordInfo.split("; ");
+        String geneName = null, geneId = null;
+        for (String s: info) {
+            if (s.startsWith("gene_id")) {
+                String[] name = s.split(" ");
+                geneId = name[1].substring(1, name[1].length() -1);
+            }
+            if (s.startsWith("gene_name")) {
+                String[] name = s.split(" ");
+                geneName = name[1].substring(1, name[1].length() -1);
+            }
+        }
+
+        return new String[] {geneId, geneName};
+    }
+
     /**
      * initial log4j Logger instance
      * @param logHome output directory of log file
@@ -661,6 +735,10 @@ public class AsmPeakDetection {
 
     private static CommandLine setCommandLine(String[] args, Options options) {
         Option option = new Option("vcf", "vcf_file", true, "IP sample SNP calling result VCF file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("g", "gtf", true, "GTF format file");
         option.setRequired(false);
         options.addOption(option);
 
@@ -692,7 +770,7 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "IP sample SNP site coverage infimum, default 10");
+        option = new Option("rc", "reads_coverage", true, "INPUT sample SNP site coverage infimum, default 10");
         option.setRequired(false);
         options.addOption(option);
 
