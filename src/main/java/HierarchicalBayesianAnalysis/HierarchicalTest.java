@@ -142,20 +142,19 @@ public class HierarchicalTest {
     }
 
     /**
-     * 检验m6A信号的ASM显著性
+     * test ASM significant m6A signal
      */
     private void asmPeakDetected() {
         this.logger.debug("detect ASM m6A signal, m6A coveredSNP sites are shown in " + this.peakCoveredSnpFile);
-        AsmPeakDetection apd = new AsmPeakDetection(this.gtfFile, this.bedFile, this.asmVcfFile,this.wesFile, null, peakCoveredSnpFile,
-                                                    this.peakCoveredSnpBackground, this.asmPeakFile,
-                                                    this.degreeOfFreedom, this.ipSNPReadInfimum, this.wesSNPReadInfimum,
-                                                    this.samplingTime, this.burnInTime);
+        AsmPeakDetection apd = new AsmPeakDetection(this.gtfFile, this.bedFile, this.asmVcfFile,this.wesFile, null,
+                                                    this.asmPeakFile, this.degreeOfFreedom, this.ipSNPReadInfimum,
+                                                    this.wesSNPReadInfimum, this.samplingTime, this.burnInTime);
         apd.getTestResult();
         this.logger.debug("Hierarchical test result output in " + this.asmPeakFile + ", ASM specific m6A signals with q-value less than 0.05");
     }
 
     /**
-     * 检验等位基因的ASE显著性
+     * test ASE significant gene
      */
     private void aseGeneDetected() {
         this.logger.debug("detect ASE Gene");
@@ -167,7 +166,7 @@ public class HierarchicalTest {
     }
 
     /**
-     * 依据ASE和ASM的检验结果，将IP样本的m6A信号分为4类
+     * merge ASE and ASM test result
      */
     private void finalOutput() {
         AlleleSpecificM6aSignal asms = new AlleleSpecificM6aSignal(this.aseGeneFile, this.asmPeakFile, this.finalOutput, this.logger);

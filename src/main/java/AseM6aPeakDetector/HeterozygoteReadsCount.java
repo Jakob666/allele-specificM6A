@@ -34,7 +34,7 @@ public class HeterozygoteReadsCount {
             );
             String line = "";
             String[] info;
-            String chr, position, peakStart, peakEnd, peakRange, type, majorNc, minorNc;
+            String chr, position, peakStart, peakEnd, peakRange, majorNc, minorNc;
             int majorCount, minorCount;
             while (line != null) {
                 line = bfr.readLine();
@@ -47,15 +47,14 @@ public class HeterozygoteReadsCount {
                     peakStart = info[5];
                     peakEnd = info[6];
                     peakRange = peakStart +":"+peakEnd;
-                    type = info[7];
-                    majorNc = info[8];
-                    minorNc = info[9];
-                    majorCount = Integer.parseInt(info[10]);
-                    minorCount = Integer.parseInt(info[11]);
+                    majorNc = info[7];
+                    minorNc = info[8];
+                    majorCount = Integer.parseInt(info[9]);
+                    minorCount = Integer.parseInt(info[10]);
 
                     String label = chr+":"+peakRange;
                     LinkedList<String> majorAlleleNcRecords = this.peakMajorAlleleNc.getOrDefault(label, new LinkedList<>());
-                    majorAlleleNcRecords.add(String.join(":", new String[]{position, type, majorNc}));
+                    majorAlleleNcRecords.add(String.join(":", new String[]{position, majorNc}));
                     this.peakMajorAlleleNc.put(label, majorAlleleNcRecords);
                     HashMap<String, HashMap<String, HashMap<String, Integer>>> chrMap = majorMinorHaplotype.getOrDefault(chr, new HashMap<>());
                     HashMap<String, HashMap<String, Integer>> peakSnp = chrMap.getOrDefault(peakRange, new HashMap<>());
@@ -80,6 +79,9 @@ public class HeterozygoteReadsCount {
                     e.printStackTrace();
                 }
             }
+            boolean del = this.peakCoveredSNPFile.delete();
+            if (!del)
+                this.log.error("Fail to remove temp file " + this.peakCoveredSNPFile.getAbsolutePath());
         }
 
         return majorMinorHaplotype;

@@ -3,8 +3,10 @@ package GTFComponent;
 import heterozygoteSiteAnalysis.IntervalTree;
 import heterozygoteSiteAnalysis.IntervalTreeNode;
 import org.apache.commons.cli.*;
+import org.apache.commons.math3.exception.OutOfRangeException;
 
 import java.io.*;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 
@@ -45,6 +47,11 @@ public class GeneSNVRecord {
         this.exonMutation = inExon;
     }
 
+    public void locateSnv() {
+        this.parseGTFFile();
+        this.parseVCFFile();
+    }
+
     private void parseGTFFile() {
         GTFIntervalTree git = new GTFIntervalTree(this.gtfFile);
         git.parseGTFFile();
@@ -64,10 +71,12 @@ public class GeneSNVRecord {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.vcfFile))));
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.outputFile))));
             bfw.write(String.join("\t", new String[] {"#chr", "geneId", "geneName", "position",
-                                                                "ref", "alt", "refCount", "altCount"}));
+                                                                "majorAllele", "minorAllele",
+                                                                "majorAlleleCount", "minorAlleleCount"}));
             bfw.newLine();
-            String readIn = "", writeOut, chrNum, geneId, geneName, refNc, altNc;
-            int position, referenceCount, alternativeCount;
+            String readIn = "", writeOut, chrNum, geneId, geneName, refNc, altNc, majorNc, minorNc;
+            int position, allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
+            boolean specialMutation;
             String[] info;
             int[] readsCount;
             LinkedList<IntervalTreeNode> potentialLocateGene;
@@ -94,16 +103,71 @@ public class GeneSNVRecord {
 
                     refNc = info[3];
                     altNc = info[4];
-                    readsCount = this.parseDp4(info[7]);
-                    referenceCount = readsCount[0] + readsCount[1];
-                    alternativeCount = readsCount[2] + readsCount[3];
+                    // whether SNV site contains multiple possible mutations
+                    specialMutation = altNc.length() > 1 && altNc.contains(",");
+
+                    if (info.length >= 10) {    // may contains FORMAT and sample
+                        readsCount = this.parseAd(info[8], info[9]);   // parse AD(allele depth) from VCF record
+                        if (readsCount != null) {
+                            if (!specialMutation) {
+                                allele1Count = readsCount[0];
+                                allele2Count = readsCount[1];
+                                if (allele1Count >= allele2Count) {
+                                    majorAlleleCount = allele1Count;
+                                    minorAlleleCount = allele2Count;
+                                    majorNc = refNc;
+                                    minorNc = altNc;
+                                } else {
+                                    majorAlleleCount = allele2Count;
+                                    minorAlleleCount = allele1Count;
+                                    majorNc = altNc;
+                                    minorNc = refNc;
+                                }
+                            } else {
+                                String[] possibleMutations = altNc.split(",");
+                                int[] originReads = Arrays.copyOf(readsCount, readsCount.length);
+                                Arrays.sort(readsCount);
+                                majorAlleleCount = readsCount[readsCount.length - 1];
+                                minorAlleleCount = readsCount[readsCount.length - 2];
+                                int[] indexRes = findIndex(originReads, majorAlleleCount, minorAlleleCount);
+                                int majorAlleleIdx = indexRes[0];
+                                int minorAlleleIdx = indexRes[1];
+                                majorNc = (majorAlleleIdx == 0)? refNc : possibleMutations[majorAlleleIdx - 1];
+                                minorNc = (minorAlleleIdx == 0)? refNc : possibleMutations[minorAlleleIdx - 1];
+                            }
+                        } else {    // if FORMAT contains no AD information, try to parse DP4 of INFO column
+                            readsCount = this.parseDp4(info[7]);
+                            if (readsCount == null) {
+                                System.out.println("invalid VCF record: " + readIn);
+                                System.exit(2);
+                            }
+                            allele1Count = readsCount[0] + readsCount[1];
+                            allele2Count = readsCount[2] + readsCount[3];
+                            majorAlleleCount = (allele1Count >= allele2Count)? allele1Count: allele2Count;
+                            minorAlleleCount = (allele1Count < allele2Count)? allele1Count: allele2Count;
+                            majorNc = (allele1Count >= allele2Count)? refNc : altNc.split(",")[0];
+                            minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
+                        }
+                    } else {  // contains INFO but no INFO and Sample
+                        readsCount = this.parseDp4(info[7]);
+                        if (readsCount == null) {
+                            System.out.println("invalid VCF record: " + readIn);
+                            System.exit(2);
+                        }
+                        allele1Count = readsCount[0] + readsCount[1];
+                        allele2Count = readsCount[2] + readsCount[3];
+                        majorAlleleCount = (allele1Count >= allele2Count)? allele1Count: allele2Count;
+                        minorAlleleCount = (allele1Count < allele2Count)? allele1Count: allele2Count;
+                        majorNc = (allele1Count >= allele2Count)? refNc : altNc.split(",")[0];
+                        minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
+                    }
 
                     for (IntervalTreeNode itn: potentialLocateGene) {
                         GTFIntervalTreeNode node = (GTFIntervalTreeNode) itn;
                         geneId = node.geneId;
                         geneName = node.geneName;
-                        writeOut = String.join("\t", new String[]{chrNum, geneId, geneName, info[1], refNc, altNc,
-                                               String.valueOf(referenceCount), String.valueOf(alternativeCount)});
+                        writeOut = String.join("\t", new String[]{chrNum, geneId, geneName, info[1], majorNc, minorNc,
+                                String.valueOf(majorAlleleCount), String.valueOf(minorAlleleCount)});
                         bfw.write(writeOut);
                         bfw.newLine();
                     }
@@ -131,6 +195,46 @@ public class GeneSNVRecord {
                 }
             }
         }
+    }
+
+    /**
+     * get reference and alternative nucleotide from VCF format file
+     * @param format FORMAT information in VCF file
+     * @param sampleInfo sample information in VCF file
+     * @return int[] {ref, ref_reverse, alt, alt_reverse}
+     */
+    private int[] parseAd(String format, String sampleInfo) {
+        String[] formatContent = format.split(":");
+        String[] sampleData = sampleInfo.split(":");
+        int idx = -1;
+        for (int i=0; i<formatContent.length; i++) {
+            if (formatContent[i].equals("AD")) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0)
+            return null;
+        String[] readsRecord = sampleData[idx].split(",");
+        int[] readsCount = new int[readsRecord.length];
+        for (int i=0; i<readsRecord.length; i++) {
+            readsCount[i] = Integer.valueOf(readsRecord[i]);
+        }
+        formatContent = null;
+        sampleData = null;
+        readsRecord = null;
+        return readsCount;
+    }
+
+    private int[] findIndex(int[] readsCount, int majorCount, int minorCount) {
+        int majorIdx = -1, minorIdx = -1;
+        for (int i=0; i<readsCount.length; i++) {
+            if (readsCount[i] == majorCount && majorIdx < 0)
+                majorIdx = i;
+            if (readsCount[i] == minorCount && minorIdx < 0 && majorIdx != i)
+                minorIdx = i;
+        }
+        return new int[] {majorIdx, minorIdx};
     }
 
     private int[] parseDp4(String dp4String) {

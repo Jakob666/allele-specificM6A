@@ -3,6 +3,7 @@ package HierarchicalBayesianAnalysis;
 
 import AseM6aPeakDetector.HeterozygoteReadsCount;
 import heterozygoteSiteAnalysis.DbsnpAnnotation;
+import heterozygoteSiteAnalysis.PeakWithSNV;
 import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
@@ -43,18 +44,19 @@ public class AsmPeakDetection {
      * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
-     * @param samplingTime sampling time, default 5000
-     * @param burnIn burn in time, default 200
+     * @param samplingTime sampling time, default 10000
+     * @param burnIn burn in time, default 2000
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
-                            String peakCoveredSnpFile, String peakCoveredWesSnpFile, String asmPeakFile,
-                            double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum, int samplingTime, int burnIn) {
+                            String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            int samplingTime, int burnIn) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
         this.wesFile = wesFile;
-        this.peakCoveredSnpFile = peakCoveredSnpFile;
-        this.peakCoveredWesSnpFile = peakCoveredWesSnpFile;
+        String outputDir = new File(asmPeakFile).getParent();
+        this.peakCoveredSnpFile = new File(outputDir, "PeakCoveredSNP.txt").getAbsolutePath();
+        this.peakCoveredWesSnpFile = new File(outputDir, "PeakCoveredSNPBackground.txt").getAbsolutePath();
         this.log = initLog(new File(asmPeakFile).getParent());
         if (this.wesFile != null)
             assert this.peakCoveredWesSnpFile != null;
@@ -70,6 +72,12 @@ public class AsmPeakDetection {
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
+        this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
+        String peakWithSnvFile = new File(new File(asmPeakFile).getParent(), "peak_with_snv.txt").getAbsolutePath();
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, peakWithSnvFile, true);
+        pws.locateSnvInPeak();
+        pws = null;
+        this.log.debug("SNP locations in " + peakWithSnvFile);
     }
 
     public static void main(String[] args) {
@@ -78,7 +86,7 @@ public class AsmPeakDetection {
 
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 5000, burn_in = 200;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -143,16 +151,6 @@ public class AsmPeakDetection {
             dbsnpFile = dbsnp.getAbsolutePath();
         }
 
-        if (commandLine.hasOption("peak_cover_snp"))
-            peakCoveredSnpFile = commandLine.getOptionValue("peak_cover_snp");
-        else
-            peakCoveredSnpFile = new File(outputDir, "PeakCoveredSNP.txt").getAbsolutePath();
-
-        if (commandLine.hasOption("peak_cover_snp_bkg"))
-            peakCoveredSnpBackgroundFile = commandLine.getOptionValue("peak_cover_snp_bkg");
-        else
-            peakCoveredSnpBackgroundFile = new File(outputDir, "PeakCoveredSNPBackground.txt").getAbsolutePath();
-
         if (commandLine.hasOption("s"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
         if (commandLine.hasOption("b"))
@@ -172,9 +170,9 @@ public class AsmPeakDetection {
         if (commandLine.hasOption("wc"))
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
 
-        AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, peakCoveredSnpFile,
-                                                    peakCoveredSnpBackgroundFile, outputFile, degreeOfFreedom, ipSNPCoverageInfimum,
-                                                    wesSNPCoverageInfimum, samplingTime, burn_in);
+        AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
+                                                    degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
+                                                    samplingTime, burn_in);
         apd.getTestResult();
     }
 
@@ -293,6 +291,7 @@ public class AsmPeakDetection {
         String majorAllele, minorAllele, label;
         ArrayList<Integer> rnaSeqMajor, rnaSeqMinor, wesMajor, wesMinor;
 
+        this.log.debug("calculate LOR for peaks to be tested");
         for (String chrNum: this.peakSnpReadsCount.keySet()) {
             // m6A signal on a particular chromosome
             rnaSeqPeakSnvAlleleReads = this.peakSnpReadsCount.get(chrNum);
@@ -383,12 +382,9 @@ public class AsmPeakDetection {
                 maf = this.calcMajorAlleleFrequency(majorCount, minorCount);
                 // MAF threshold for reducing false positive ASM peaks. Peaks with MAF < 0.55 are seen as normal peak
                 // caused by alignment error
-                if (maf - 0.55 < 0.00001)
-                    continue;
-                // MAF threshold for reducing false positive ASE genes. Genes with MAF > 0.95 are seen as homo-zygote gene
-                // cause by alignment error
-                if (maf - 0.95 > 0.00001)
-                    continue;
+//                if (maf - 0.55 < 0.00001)
+//                    continue;
+
                 this.peakMajorAlleleFrequency.put(label, maf);
                 this.peakSNVNum.put(label, majorCount.length);
 
@@ -426,7 +422,10 @@ public class AsmPeakDetection {
         }
         this.dbsnpRecord = null;
 
+        this.log.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
         double lorStd = this.calcLorStd();
+
+        this.log.debug("hierarchical Bayesian model test start");
         for (String str: this.statisticForTest.keySet()) {
             this.totalPeakCount++;
             ArrayList<int[]> statistic = this.statisticForTest.get(str);
@@ -443,6 +442,7 @@ public class AsmPeakDetection {
             this.asmPValue.put(pVal, samePValPeaks);
             hb = null;
         }
+        this.log.debug("model test complete");
     }
 
     /**
@@ -509,8 +509,10 @@ public class AsmPeakDetection {
      * recalibrate the p value with BH method, get significant q value
      */
     private void bhRecalibrationOfEachPeak() {
+        this.log.debug("start recalibrating p values of hierarchical model");
+        this.log.debug("sorting test result in order");
         ArrayList<Map.Entry<Double, ArrayList<String>>> sortedPVals = new ArrayList<>(this.asmPValue.entrySet());
-        // sort p value from small to large
+        // sort p value from large to small
         Collections.sort(sortedPVals, new Comparator<Map.Entry<Double, ArrayList<String>>>() {
             @Override
             public int compare(Map.Entry<Double, ArrayList<String>> o1, Map.Entry<Double, ArrayList<String>> o2) {
@@ -519,12 +521,11 @@ public class AsmPeakDetection {
         });
 
         int totalPeak = this.totalPeakCount, rankage = totalPeak;
-        double qValue;
+        double prevQValue = 1.0, qValue;
         String pValString, qValString;
         for (Map.Entry<Double, ArrayList<String>> entry: sortedPVals) {
             Double pVal = entry.getKey();
             ArrayList<String> samePValPeaks = entry.getValue();
-
             // sort items with its SNV number when p value is same
             HashMap<String, Integer> samePValPeaksSNVs = new HashMap<>();
             for (String peak: samePValPeaks)
@@ -540,18 +541,20 @@ public class AsmPeakDetection {
                 public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
 
                     String peak1 = o1.getKey(), peak2 = o2.getKey();
+                    Integer peak1SNVs = o1.getValue(), peak2SNVs = o2.getValue();
                     Double peak1MAF = samePValPeakMajorAlleleFrequency.get(peak1), peak2MAF = samePValPeakMajorAlleleFrequency.get(peak2);
-                    if (Math.abs(peak1MAF - peak2MAF) < 0.00001) {
-                        Integer peak1SNVs = o1.getValue(), peak2SNVs = o2.getValue();
-                        return peak2SNVs.compareTo(peak1SNVs);
-                    } else
+                    if (peak1SNVs.equals(peak2SNVs)) {
                         return peak2MAF.compareTo(peak1MAF);
+                    } else
+                        return peak2SNVs.compareTo(peak1SNVs);
                 }
             });
 
             for (Map.Entry<String, Integer> geneEntry: samePValPeakEntry) {
                 String peak = geneEntry.getKey();
-                qValue = Math.min(1.0, pVal * totalPeak / rankage);
+                qValue = Math.min(prevQValue, pVal * totalPeak / rankage);
+                if (qValue - prevQValue < 0.00001)
+                    prevQValue = qValue;
                 rankage--;
 
                 pValString = Double.toString(pVal);
@@ -559,6 +562,7 @@ public class AsmPeakDetection {
                 this.asmQValue.add(String.join("->", new String[]{peak, pValString, qValString}));
             }
         }
+        this.log.debug("recalibration complete.");
     }
 
     /**
@@ -611,11 +615,7 @@ public class AsmPeakDetection {
                         return q1.compareTo(q2);
                     // sort records with same q-value after BH recalibration by SNV number
                     Integer snvCount1 = Integer.parseInt(o1[7]), snvCount2 = Integer.parseInt(o2[7]);
-//                    if (snvCount1 - snvCount2 != 0)
                     return snvCount2.compareTo(snvCount1);
-                    // sort records with same q-value and SNV number with MAF
-//                    Double maf1 = Double.parseDouble(o1[9]), maf2 = Double.parseDouble(o2[9]);
-//                    return maf2.compareTo(maf1);
                 }
             });
             for (String[] record: outputRecord) {
@@ -623,8 +623,9 @@ public class AsmPeakDetection {
                 bfw.write(line);
                 bfw.newLine();
             }
+            this.log.debug("result file " + this.asmPeakFile);
         } catch (IOException ie) {
-            ie.printStackTrace();
+            this.log.error(ie.getMessage());
         } finally {
             if (bfw != null) {
                 try {
@@ -758,14 +759,6 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("peak_cover_snp", "peak_cover_snp_record_file", true, "Peak covered INPUT sample SNP record");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("peak_cover_snp_bkg", "peak_cover_snp_background_record_file", true, "Peak covered WES sample SNP record");
-        option.setRequired(false);
-        options.addOption(option);
-
         option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
         option.setRequired(false);
         options.addOption(option);
@@ -778,11 +771,11 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 5000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 200");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
         option.setRequired(false);
         options.addOption(option);
 

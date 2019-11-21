@@ -4,6 +4,7 @@ import GTFComponent.GeneExonIntervalTree;
 import org.apache.log4j.Logger;
 
 import java.io.*;
+import java.util.Arrays;
 import java.util.HashMap;
 
 public class PeakCoveredSNP {
@@ -21,7 +22,8 @@ public class PeakCoveredSNP {
      * @param readsInfimum minimum reads coverage for a SNV site under m6A signal
      * @param logger Logger instance
      */
-    public PeakCoveredSNP(String gtfFile, String vcfRecordFile, String peakCallingRes, String outputFile, int readsInfimum, Logger logger) {
+    public PeakCoveredSNP(String gtfFile, String vcfRecordFile, String peakCallingRes,
+                          String outputFile, int readsInfimum, Logger logger) {
         this.logger = logger;
         this.gtfFile = new File(gtfFile);
         if (!this.gtfFile.exists() || !this.gtfFile.isFile()) {
@@ -67,10 +69,12 @@ public class PeakCoveredSNP {
 
             String line = "", writeOut;
             String[] info;
-            String chrNum, refNc, altNc, majorCount, minorCount, majorAlleleStrand, majorNc, minorNc;
-            int[] refAndAltCount;
+            String chrNum, refNc, altNc, majorNc, minorNc;
+            int allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
+            boolean specialMutation;
+            int[] readsCount;
             int position;
-            bfw.write("#chr\tgeneId\tgeneName\tpeakStrand\tposition\tpeakStart\tpeakEnd\tmajorAlleleType\tmajorNc\tminorNc\tmajorCount\tminorCount\n");
+            bfw.write("#chr\tgeneId\tgeneName\tpeakStrand\tposition\tpeakStart\tpeakEnd\tmajorAllele\tminorAllele\tmajorAlleleCount\tminorAlleleCount\n");
             while (line != null) {
                 line = bfr.readLine();
                 if (line != null) {
@@ -81,35 +85,75 @@ public class PeakCoveredSNP {
                     chrNum = info[0];
                     refNc = info[3];
                     altNc = info[4];
+
                     HashMap<String, IntervalTree> chrTree = m6aTreeMap.getOrDefault(chrNum, null);
                     HashMap<String, IntervalTree> chrExon = geneExonTree.getOrDefault(chrNum, null);
                     HashMap<String, String> chrPeaks = peakGene.getOrDefault(chrNum, null);
                     if (chrTree == null || chrExon == null || chrPeaks == null)
                         continue;
-                    // only take single nucleotide mutation into consideration
-                    if (refNc.length() > 1 | altNc.length() > 1)
-                        continue;
                     position = Integer.parseInt(info[1]);
-                    refAndAltCount = this.getReadsCountViaDp4(info[7]);
-                    // filter homo SNV sites
-                    if (refAndAltCount[0] == 0 |refAndAltCount[1] == 0)
-                        continue;
-                    // filter low coverage SNP sites
-                    if (Math.max(refAndAltCount[0], refAndAltCount[1]) < this.readsInfimum)
-                        continue;
-                    if (refAndAltCount[0] >= refAndAltCount[1]) {
-                        majorCount = Integer.toString(refAndAltCount[0]);
-                        minorCount = Integer.toString(refAndAltCount[1]);
-                        majorAlleleStrand = "ref";
-                        majorNc = refNc;
-                        minorNc = altNc;
-                    } else {
-                        majorCount = Integer.toString(refAndAltCount[1]);
-                        minorCount = Integer.toString(refAndAltCount[0]);
-                        majorAlleleStrand = "alt";
-                        majorNc = altNc;
-                        minorNc = refNc;
+                    // whether SNV site contains multiple possible mutations
+                    specialMutation = altNc.length() > 1 && altNc.contains(",");
+
+                    if (info.length >= 10) {    // may contains FORMAT and sample
+                        readsCount = this.parseAd(info[8], info[9]);   // parse AD(allele depth) from VCF record
+                        if (readsCount != null) {
+                            if (!specialMutation) {
+                                allele1Count = readsCount[0];
+                                allele2Count = readsCount[1];
+                                if (allele1Count >= allele2Count) {
+                                    majorAlleleCount = allele1Count;
+                                    minorAlleleCount = allele2Count;
+                                    majorNc = refNc;
+                                    minorNc = altNc;
+                                } else {
+                                    majorAlleleCount = allele2Count;
+                                    minorAlleleCount = allele1Count;
+                                    majorNc = altNc;
+                                    minorNc = refNc;
+                                }
+                            } else {
+                                String[] possibleMutations = altNc.split(",");
+                                int[] originReads = Arrays.copyOf(readsCount, readsCount.length);
+                                Arrays.sort(readsCount);
+                                majorAlleleCount = readsCount[readsCount.length - 1];
+                                minorAlleleCount = readsCount[readsCount.length - 2];
+                                int[] indexRes = findIndex(originReads, majorAlleleCount, minorAlleleCount);
+                                int majorAlleleIdx = indexRes[0];
+                                int minorAlleleIdx = indexRes[1];
+                                majorNc = (majorAlleleIdx == 0)? refNc : possibleMutations[majorAlleleIdx - 1];
+                                minorNc = (minorAlleleIdx == 0)? refNc : possibleMutations[minorAlleleIdx - 1];
+                            }
+                        } else {    // if FORMAT contains no AD information, try to parse DP4 of INFO column
+                            readsCount = this.parseDp4(info[7]);
+                            if (readsCount == null) {
+                                System.out.println("invalid VCF record: " + line );
+                                System.exit(2);
+                            }
+                            allele1Count = readsCount[0] + readsCount[1];
+                            allele2Count = readsCount[2] + readsCount[3];
+                            majorAlleleCount = (allele1Count >= allele2Count)? allele1Count: allele2Count;
+                            minorAlleleCount = (allele1Count < allele2Count)? allele1Count: allele2Count;
+                            majorNc = (allele1Count >= allele2Count)? refNc : altNc.split(",")[0];
+                            minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
+                        }
+                    } else {  // contains INFO but no INFO and Sample
+                        readsCount = this.parseDp4(info[7]);
+                        if (readsCount == null) {
+                            System.out.println("invalid VCF record: " + line );
+                            System.exit(2);
+                        }
+                        allele1Count = readsCount[0] + readsCount[1];
+                        allele2Count = readsCount[2] + readsCount[3];
+                        majorAlleleCount = (allele1Count >= allele2Count)? allele1Count: allele2Count;
+                        minorAlleleCount = (allele1Count < allele2Count)? allele1Count: allele2Count;
+                        majorNc = (allele1Count >= allele2Count)? refNc : altNc.split(",")[0];
+                        minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
                     }
+
+                    // filter low coverage SNP sites
+                    if (majorAlleleCount < this.readsInfimum)
+                        continue;
 
                     IntervalTree posStrandTree = chrTree.getOrDefault("+", null);
                     IntervalTree negStrandTree = chrTree.getOrDefault("-", null);
@@ -126,7 +170,8 @@ public class PeakCoveredSNP {
                             continue;
                         String geneName = this.geneNames.get(chrNum).getOrDefault(geneId, "unknown");
                         String[] newLine = new String[]{chrNum, geneId, geneName, "+", info[1], peakStart,peakEnd,
-                                                        majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
+                                                        majorNc, minorNc, String.valueOf(majorAlleleCount),
+                                                        String.valueOf(minorAlleleCount)};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
@@ -142,7 +187,8 @@ public class PeakCoveredSNP {
                             continue;
                         String geneName = this.geneNames.get(chrNum).getOrDefault(geneId, "unknown");
                         String[] newLine = new String[]{chrNum, geneId, geneName, "-", info[1], peakStart, peakEnd,
-                                                        majorAlleleStrand, majorNc, minorNc, majorCount, minorCount};
+                                                        majorNc, minorNc, String.valueOf(majorAlleleCount),
+                                                        String.valueOf(minorAlleleCount)};
                         writeOut = String.join("\t", newLine);
                         bfw.write(writeOut);
                         bfw.newLine();
@@ -274,32 +320,63 @@ public class PeakCoveredSNP {
     }
 
     /**
-     * extract reference and alternative reads using DP4 info
-     * @param record VCF INFO column
-     * @return [refReadsCount, altReadsCount]
+     * get reference and alternative nucleotide from VCF format file
+     * @param format FORMAT information in VCF file
+     * @param sampleInfo sample information in VCF file
+     * @return int[] {ref, ref_reverse, alt, alt_reverse}
      */
-    private int[] getReadsCountViaDp4(String record) {
-        // record DP=5;SGB=-0.379885;RPB=1;MQB=1;MQSB=1;BQB=1;MQ0F=0;ICB=1;HOB=0.5;AC=0;AN=0;DP4=1,3,0,1;MQ=60
-        String[] data = record.split(";");
-        String key = null, value = null;
-        String[] kAndv;
-        for (String kv: data) {
-            kAndv = kv.split("=");
-            key = kAndv[0];
-            if (key.equals("DP4")) {
-                value = kAndv[1];
+    private int[] parseAd(String format, String sampleInfo) {
+        String[] formatContent = format.split(":");
+        String[] sampleData = sampleInfo.split(":");
+        int idx = -1;
+        for (int i=0; i<formatContent.length; i++) {
+            if (formatContent[i].equals("AD")) {
+                idx = i;
                 break;
             }
         }
-        if (value == null) {
-            this.logger.error("can not find DP4 field in VCF file");
-            System.exit(2);
+        if (idx < 0)
+            return null;
+        String[] readsRecord = sampleData[idx].split(",");
+        int[] readsCount = new int[readsRecord.length];
+        for (int i=0; i<readsRecord.length; i++) {
+            readsCount[i] = Integer.valueOf(readsRecord[i]);
         }
-        String[] reads = value.split(",");
-        int refReadsCount = Integer.parseInt(reads[0]) + Integer.parseInt(reads[1]);
-        int altReadsCount = Integer.parseInt(reads[2]) + Integer.parseInt(reads[3]);
+        formatContent = null;
+        sampleData = null;
+        readsRecord = null;
+        return readsCount;
+    }
 
-        return new int[]{refReadsCount, altReadsCount};
+    private int[] findIndex(int[] readsCount, int majorCount, int minorCount) {
+        int majorIdx = -1, minorIdx = -1;
+        for (int i=0; i<readsCount.length; i++) {
+            if (readsCount[i] == majorCount && majorIdx < 0)
+                majorIdx = i;
+            if (readsCount[i] == minorCount && minorIdx < 0 && majorIdx != i)
+                minorIdx = i;
+        }
+        return new int[] {majorIdx, minorIdx};
+    }
+
+    /**
+     * get reference and alternative nucleotide from VCF format file
+     * @param dp4String INFO column in VCF format file
+     * @return int[] {ref, ref_reverse, alt, alt_reverse}
+     */
+    private int[] parseDp4(String dp4String) {
+        String[] info = dp4String.split(";"), readsCount = new String[4];
+        for (String s: info) {
+            if (s.startsWith("DP4")) {
+                readsCount = s.split("=")[1].split(",");
+            }
+        }
+        int[] reads = new int[4];
+        for (int i=0; i<readsCount.length; i++) {
+            reads[i] = Integer.parseInt(readsCount[i]);
+        }
+
+        return reads;
     }
 
     private boolean ifInExon(HashMap<String, IntervalTree> chrExon, String geneId, int position) {

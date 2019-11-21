@@ -1,5 +1,6 @@
 package HierarchicalBayesianAnalysis;
 
+import GTFComponent.GeneSNVRecord;
 import GTFComponent.VcfSnpMatchGene;
 import heterozygoteSiteAnalysis.DbsnpAnnotation;
 import org.apache.commons.cli.*;
@@ -14,9 +15,8 @@ import java.util.*;
  */
 public class AseGeneDetection {
     private String aseGeneFile;
-    // geneAlleleReads = {"geneId->geneName": {pos1: [refAllele:count, altAllele: count1]}, ...}
+    // geneAlleleReads = {"geneId->geneName": {pos1: [majorAllele:count, minorAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads, geneBackgroundReads;
-    private HashMap<String, HashMap<Integer, String>> geneMajorStrand;
     private HashMap<String, HashMap<String, Integer>> geneReadsCount = new HashMap<>(), geneBackgroundCount = new HashMap<>();
     private int samplingTime, burnIn;
     private HashMap<Double, ArrayList<String>> geneAsePValue = new HashMap<>();
@@ -39,8 +39,8 @@ public class AseGeneDetection {
      * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
-     * @param samplingTime sampling time, default 5000
-     * @param burnIn burn in time, default 200
+     * @param samplingTime sampling time, default 10000
+     * @param burnIn burn in time, default 2000
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
                             double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
@@ -51,12 +51,9 @@ public class AseGeneDetection {
             da.parseDbsnpFile();
             dbsnpRecord = da.getDbsnpRecord();
         }
-
         VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
         vsmg.parseVcfFile(dbsnpRecord);
         this.geneAlleleReads = vsmg.getGeneAlleleReads();
-        // {geneId: {pos: ref/alt, pos:ref/alt...}, ...}
-        this.geneMajorStrand = vsmg.getGeneMajorAlleleNucleotide();
         if (wesFile != null) {
             vsmg = new VcfSnpMatchGene(wesFile, gtfFile, wesCoverageThreshold);
             vsmg.parseVcfFile(dbsnpRecord);
@@ -72,13 +69,19 @@ public class AseGeneDetection {
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
         this.logger = logger;
+        this.logger.debug("locate SNP record in " + vcfFile + " to corresponding genes");
+        String snvLocationFile = new File(new File(aseGeneFile).getParent(), "snv_location.txt").getAbsolutePath();
+        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, true);
+        gsr.locateSnv();
+        gsr = null;
+        this.logger.debug("SNP locations in " + snvLocationFile);
     }
 
     public static void main(String[] args) {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(args, options);
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 5000, burn_in = 200, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
+        int samplingTime = 10000, burn_in = 2000, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
         double degreeOfFreedom = 10;
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
@@ -165,10 +168,11 @@ public class AseGeneDetection {
         HashMap<Integer, String[]> geneSNVs, wesSNVs;
         ArrayList<Integer> majorAlleleCount, minorAlleleCount, majorBackgroundCount, minorBackgroundCount;
         int[] majorCount, minorCount, majorBackground, minorBackground;
-        HashMap<Integer, String> refOrAlt;
         HierarchicalBayesianModel hb;
         double p;
-        String geneId, type;
+        String geneId;
+        // geneAlleleReads = {"geneId->geneName": {pos1: [majorAllele:count, minorAllele: count]}, ...}
+        this.logger.debug("calculate LOR for genes to be tested");
         for (String label: this.geneAlleleReads.keySet()) {
             // WES data exists, but there is no WES SNV sites locate in the gene
             if (this.geneBackgroundReads != null) {
@@ -180,14 +184,13 @@ public class AseGeneDetection {
                 wesSNVs = null;
 
             geneId = label.split("->")[0];
-            refOrAlt = this.geneMajorStrand.get(geneId);
             int majorReadsCount = 0, minorReadsCount = 0;
             majorAlleleCount = new ArrayList<>();
             minorAlleleCount = new ArrayList<>();
             majorBackgroundCount = new ArrayList<>();
             minorBackgroundCount = new ArrayList<>();
 
-            // get reference allele and alternative allele nucleotide and reads count
+            // {pos1: [majorAllele:count, minorAllele: count], pos2: [majorAllele: count, minorAllele: count]...}
             geneSNVs = this.geneAlleleReads.get(label);
 
             // record the genome positions of major alleles and the corresponding nucleotides
@@ -196,25 +199,18 @@ public class AseGeneDetection {
 
                 if (wesSNVs != null && !wesSNVs.keySet().contains(mutPosition))
                     continue;
-
+                // [majorAllele:count, minorAllele: count1]
                 String[] nucleotideReadsCount = geneSNVs.get(mutPosition);
                 String majorAlleleRecord, minorAlleleRecord, majorNC, minorNC;
-                // get major allele and minor allele with their reads
-                if ((refOrAlt.get(mutPosition)).equals("ref")) {
-                    majorAlleleRecord = nucleotideReadsCount[0];
-                    minorAlleleRecord = nucleotideReadsCount[1];
-                } else {
-                    minorAlleleRecord = nucleotideReadsCount[0];
-                    majorAlleleRecord = nucleotideReadsCount[1];
-                }
+                majorAlleleRecord = nucleotideReadsCount[0];
+                minorAlleleRecord = nucleotideReadsCount[1];
                 majorNC = majorAlleleRecord.split(":")[0];
                 minorNC = minorAlleleRecord.split(":")[0];
-                int major = Integer.parseInt(majorAlleleRecord.split(":")[1]);
-                int minor = Integer.parseInt(minorAlleleRecord.split(":")[1]);
+                int major = Integer.valueOf(majorAlleleRecord.split(":")[1]);
+                int minor = Integer.valueOf(minorAlleleRecord.split(":")[1]);
                 majorAlleleCount.add(major);
                 minorAlleleCount.add(minor);
-                type = this.geneMajorStrand.get(geneId).get(mutPosition);
-                majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), type, majorNC}));
+                majorNcRecords.add(String.join(":", new String[]{Integer.toString(mutPosition), majorNC}));
 
                 int alleleCount = (major + minor) / 2;
                 majorBackgroundCount.add(alleleCount);
@@ -258,12 +254,12 @@ public class AseGeneDetection {
             double majorAlleleFrequency = (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount);
             // MAF threshold for reducing false positive ASE genes. Genes with MAF < 0.55 are seen as normal mutated gene
             // cause by alignment error
-            if (majorAlleleFrequency - 0.55 < 0.00001)
-                continue;
+//            if (majorAlleleFrequency - 0.55 < 0.00001)
+//                continue;
             // MAF threshold for reducing false positive ASE genes. Genes with MAF > 0.95 are seen as homo-zygote gene
             // cause by alignment error
-            if (majorAlleleFrequency - 0.95 > 0.00001)
-                continue;
+//            if (majorAlleleFrequency - 0.95 > 0.00001)
+//                continue;
             this.geneMajorAlleleFrequency.put(label, majorAlleleFrequency);
             ArrayList<int[]> statistic = new ArrayList<>(4);
             statistic.add(majorCount);
@@ -273,9 +269,11 @@ public class AseGeneDetection {
             this.statisticForTest.put(label, statistic);
         }
 
+        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
         double lorStd = this.calcLorStd();
 
         // test ASE gene with Hierarchical model
+        this.logger.debug("hierarchical Bayesian model test start");
         for (String label: this.statisticForTest.keySet()) {
             ArrayList<int[]> statistic = this.statisticForTest.get(label);
             majorCount = statistic.get(0);
@@ -292,6 +290,7 @@ public class AseGeneDetection {
             this.geneSNVs.put(label, majorCount.length);
         }
         this.statisticForTest.clear();
+        this.logger.debug("model test complete");
     }
 
     /**
@@ -362,8 +361,10 @@ public class AseGeneDetection {
      * recalibrate p value with BH method, and get corresponding q value
      */
     private void bhRecalibrationOfEachPeak() {
+        this.logger.debug("start recalibrating p values of hierarchical model");
+        this.logger.debug("sorting test result in order");
         ArrayList<Map.Entry<Double, ArrayList<String>>> sortedPVals = new ArrayList<>(this.geneAsePValue.entrySet());
-        // sort p value from small to large
+        // sort p value from large to small
         Collections.sort(sortedPVals, new Comparator<Map.Entry<Double, ArrayList<String>>>() {
             @Override
             public int compare(Map.Entry<Double, ArrayList<String>> o1, Map.Entry<Double, ArrayList<String>> o2) {
@@ -372,15 +373,13 @@ public class AseGeneDetection {
         });
 
         int totalGenes = this.geneSNVs.size(), rankage = totalGenes;
-        double qValue;
+        double prevQValue = 1.0, qValue;
         String pValString, qValString;
         this.geneAseQValue = new ArrayList<>(totalGenes);
 
-        // sort genes with same p value
         for (Map.Entry<Double, ArrayList<String>> entry: sortedPVals) {
             Double pVal = entry.getKey();
             ArrayList<String> samePValGenes = entry.getValue();
-
             // sort by SNV numbers
             HashMap<String, Integer> samePValGeneSNVs = new HashMap<>();
             for (String gene: samePValGenes)
@@ -395,20 +394,23 @@ public class AseGeneDetection {
                 @Override
                 public int compare(Map.Entry<String, Integer> o1, Map.Entry<String, Integer> o2) {
 
-                    // first sort genes with same p value with their MAF, then sort by SNV numbers if get same MAF
+                    // first sort genes with same p value with their SNV number, then sort by MAF if get same SNV number
+                    // both SNV number and MAF are sorted from large to small
                     String gene1 = o1.getKey(), gene2 = o2.getKey();
                     Double gene1MAF = samePValGeneMajorAlleleFrequency.get(gene1), gene2MAF = samePValGeneMajorAlleleFrequency.get(gene2);
-                    if (Math.abs(gene1MAF - gene2MAF) < 0.00001) {
-                        Integer gene1SNVs = o1.getValue(), gene2SNVs = o2.getValue();
-                        return gene2SNVs.compareTo(gene1SNVs);
-                    } else
+                    Integer gene1SNVs = o1.getValue(), gene2SNVs = o2.getValue();
+                    if (gene1SNVs.equals(gene2SNVs)) {
                         return gene2MAF.compareTo(gene1MAF);
+                    } else
+                        return gene2SNVs.compareTo(gene1SNVs);
                 }
             });
 
             for (Map.Entry<String, Integer> geneEntry: samePValGeneEntry) {
                 String geneName = geneEntry.getKey();
-                qValue = Math.min(1.0, pVal * totalGenes / rankage);
+                qValue = Math.min(prevQValue, pVal * totalGenes / rankage);
+                if (qValue - prevQValue < 0.00001)
+                    prevQValue = qValue;
                 rankage--;
 
                 pValString = Double.toString(pVal);
@@ -416,6 +418,7 @@ public class AseGeneDetection {
                 this.geneAseQValue.add(String.join("->", new String[]{geneName, pValString, qValString}));
             }
         }
+        this.logger.debug("recalibration complete.");
     }
 
     /**
@@ -426,7 +429,7 @@ public class AseGeneDetection {
         BufferedWriter bfw = null;
         try {
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.aseGeneFile))));
-            String line, label, geneId, geneName, majorAlleleStrand, pVal, qVal;
+            String line, label, geneId, geneName, majorAlleleRecord, pVal, qVal;
             String[] info;
             int snvNum, majorCount, minorCount, majorBackground, minorBackground;
             double majorAlleleFrequency;
@@ -441,7 +444,7 @@ public class AseGeneDetection {
                 majorCount = this.geneReadsCount.get(label).get("major");
                 minorCount = this.geneReadsCount.get(label).get("minor");
                 majorAlleleFrequency = (double) majorCount / (double) (majorCount + minorCount);
-                majorAlleleStrand = this.geneMajorNucleotide.get(geneId);
+                majorAlleleRecord = this.geneMajorNucleotide.get(geneId);
 
                 snvNum = this.geneSNVs.get(label);
                 majorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("major");
@@ -449,7 +452,7 @@ public class AseGeneDetection {
 
                 finalRecords.put(geneName, new String[]{geneId, geneName, pVal, qVal, Integer.toString(snvNum),
                         Integer.toString(majorCount), Integer.toString(minorCount), Integer.toString(majorBackground),
-                        Integer.toString(minorBackground), this.df.format(majorAlleleFrequency), majorAlleleStrand});
+                        Integer.toString(minorBackground), this.df.format(majorAlleleFrequency), majorAlleleRecord});
             }
 
             List<Map.Entry<String, String[]>> records = new ArrayList<>(finalRecords.entrySet());
@@ -481,8 +484,9 @@ public class AseGeneDetection {
                 bfw.write(line);
                 bfw.newLine();
             }
+            this.logger.debug("result file " + this.aseGeneFile);
         } catch (IOException ie) {
-            ie.printStackTrace();
+            this.logger.error(ie.getMessage());
         } finally {
             if (bfw != null) {
                 try {
@@ -560,11 +564,11 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 5000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 200");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
         option.setRequired(false);
         options.addOption(option);
 
