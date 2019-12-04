@@ -88,12 +88,12 @@ public class AseGeneDetection {
             commandLine = setCommandLine(args, options);
         } catch (ParseException pe) {
             System.err.println(pe.getMessage());
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseGeneDetection", header, options, footer, true);
             System.exit(2);
         }
 
         if (commandLine.hasOption("h")) {
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseGeneDetection", header, options, footer, true);
             System.exit(0);
         }
 
@@ -111,7 +111,7 @@ public class AseGeneDetection {
 
         if (!commandLine.hasOption("g")) {
             logger.error("GTF annotation file can not be empty");
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseGeneDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File gtf = new File(commandLine.getOptionValue("g"));
@@ -124,7 +124,7 @@ public class AseGeneDetection {
 
         if (!commandLine.hasOption("vcf")) {
             logger.error("ASE SNP calling VCF file can not be empty");
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseGeneDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File vcf = new File(commandLine.getOptionValue("vcf"));

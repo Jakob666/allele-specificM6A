@@ -17,12 +17,12 @@ public class AseSeqSimulator {
             commandLine = AseSeqSimulator.parseCommandLine(options, args);
         } catch (ParseException pe) {
             System.err.println(pe.getMessage());
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseSeqSimulator", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseSeqSimulator", header, options, footer, true);
             System.exit(2);
         }
 
         if (commandLine.hasOption("h")) {
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseSeqSimulator", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AseSeqSimulator", header, options, footer, true);
             System.exit(2);
         }
 

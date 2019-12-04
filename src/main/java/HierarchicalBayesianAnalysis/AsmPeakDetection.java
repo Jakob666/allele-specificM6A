@@ -91,12 +91,12 @@ public class AsmPeakDetection {
             commandLine = setCommandLine(args, options);
         } catch (ParseException pe) {
             System.err.println(pe.getMessage());
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         }
 
         if (commandLine.hasOption("h")) {
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AsmPeakDetection", header, options, footer, true);
             System.exit(0);
         }
 
@@ -116,7 +116,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("bed")) {
             logger.error("Peak calling BED format file can not be empty");
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File bed = new File(commandLine.getOptionValue("bed"));
@@ -129,7 +129,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("vcf")) {
             logger.error("ASE SNP calling VCF file can not be empty");
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File vcf = new File(commandLine.getOptionValue("vcf"));
@@ -142,7 +142,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("g")) {
             logger.error("GTF format file can not be empty");
-            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            help.printHelp("java -jar renlabm6a_allele.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File gtf = new File(commandLine.getOptionValue("g"));

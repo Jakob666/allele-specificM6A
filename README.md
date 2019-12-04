@@ -13,7 +13,7 @@ git clone https://github.com/Jakob666/allele-specificM6A.git
 ```
 cd ./allele-specificM6A
 ```
-make sure the directory contains `renlab.m6a_allele-1.0.jar`.
+make sure the directory contains `renlabm6a_allele.jar`.
 
 ## USAGE
 ### 1. Allele-specific expression (ASE) gene detection
@@ -33,7 +33,7 @@ suppose here exists files below:
 * detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetection 
+java -jar ./renlabm6a_allele.jar -AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf 
      -o /path/to/output_file 
@@ -41,7 +41,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetecti
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetection 
+java -jar ./renlabm6a_allele.jar -AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf
      -wes /path/to/wes_filtered.vcf
@@ -50,7 +50,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetecti
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetection 
+java -jar ./renlabm6a_allele.jar -AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf
      -db /path/to/dbsnp.vcf
@@ -77,7 +77,7 @@ suppose here exists files below:
 * detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf 
@@ -86,7 +86,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetecti
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
@@ -96,7 +96,7 @@ java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetecti
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
@@ -125,7 +125,7 @@ simulated data parameters:
 * generate MeRIP-seq simulated data
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar AseSeqSimulator.AseSeqSimulator
+java -jar ./renlabm6a_allele.jar -AseSeqSimulator
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf
      -t /path/to/hg38.2bit
      -o /path/to/output_dir
@@ -141,7 +141,7 @@ java -cp ./renlab.m6a_allele-1.0.jar AseSeqSimulator.AseSeqSimulator
 * generate MeRIP-seq and WES simulated data
 ```
 # command
-java -cp ./renlab.m6a_allele-1.0.jar AseSeqSimulator.AseSeqSimulator
+java -jar ./renlabm6a_allele.jar -AseSeqSimulator
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf
      -t /path/to/hg38.2bit
      -o /path/to/output_dir
