@@ -79,10 +79,29 @@ public class AseGeneDetection {
 
     public static void main(String[] args) {
         Options options = new Options();
-        CommandLine commandLine = setCommandLine(args, options);
+        CommandLine commandLine = null;
+        HelpFormatter help = new HelpFormatter();
+        String header = "AseGeneDetection contains following parameters: ";
+        String footer = "";
+
+        try {
+            commandLine = setCommandLine(args, options);
+        } catch (ParseException pe) {
+            System.err.println(pe.getMessage());
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            System.exit(2);
+        }
+
+        if (commandLine.hasOption("h")) {
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
+            System.exit(0);
+        }
+
+        // default parameters
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
         int samplingTime = 10000, burn_in = 2000, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
         double degreeOfFreedom = 10;
+
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
         else
@@ -92,6 +111,7 @@ public class AseGeneDetection {
 
         if (!commandLine.hasOption("g")) {
             logger.error("GTF annotation file can not be empty");
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File gtf = new File(commandLine.getOptionValue("g"));
@@ -104,6 +124,7 @@ public class AseGeneDetection {
 
         if (!commandLine.hasOption("vcf")) {
             logger.error("ASE SNP calling VCF file can not be empty");
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseGeneDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File vcf = new File(commandLine.getOptionValue("vcf"));
@@ -531,7 +552,7 @@ public class AseGeneDetection {
         return Logger.getLogger(AseGeneDetection.class);
     }
 
-    private static CommandLine setCommandLine(String[] args, Options options) {
+    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
         Option option = new Option("vcf", "vcf_file", true, "INPUT sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
@@ -572,17 +593,12 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("h", "help", false, "help message of AseGeneDetection");
+        option.setRequired(false);
+        options.addOption(option);
+
         CommandLineParser parser = new DefaultParser();
 
-        CommandLine commandLine = null;
-        try {
-            commandLine = parser.parse(options, args);
-        } catch (ParseException pe) {
-            HelpFormatter hf = new HelpFormatter();
-            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AseGeneDetection", options);
-            System.exit(2);
-        }
-
-        return commandLine;
+        return parser.parse(options, args);
     }
 }

@@ -7,7 +7,24 @@ import java.io.*;
 public class AseSeqSimulator {
 
     public static void main(String[] args) {
-        CommandLine commandLine = AseSeqSimulator.parseCommandLine(args);
+        Options options = new Options();
+        CommandLine commandLine = null;
+        HelpFormatter help = new HelpFormatter();
+        String header = "AseSeqSimulator contains following parameters: ";
+        String footer = "";
+
+        try {
+            commandLine = AseSeqSimulator.parseCommandLine(options, args);
+        } catch (ParseException pe) {
+            System.err.println(pe.getMessage());
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseSeqSimulator", header, options, footer, true);
+            System.exit(2);
+        }
+
+        if (commandLine.hasOption("h")) {
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AseSeqSimulator", header, options, footer, true);
+            System.exit(2);
+        }
 
         int librarySize = 10000000, readLength = 75, fragmentMean = 250, fragmentStd = 25, peakLength = 250,
             minimumMut = 0, maximumMut = 3, depth = 100, minReadsCoverage = 10, maxReadsCoverage = 70, maxPeakNum = -1;
@@ -105,9 +122,7 @@ public class AseSeqSimulator {
                                           mutProportion, peakLength, maxPeakNum, pcrErrorProb, overlap, singleEnd, geneExpFile);
     }
 
-    private static CommandLine parseCommandLine(String[] args) {
-        Options options = new Options();
-
+    private static CommandLine parseCommandLine(Options options, String[] args) throws ParseException{
         Option option = new Option("g", "gtf", true, "gtf file path");
         option.setRequired(true);
         options.addOption(option);
@@ -200,16 +215,12 @@ public class AseSeqSimulator {
         option.setRequired(false);
         options.addOption(option);
 
-        CommandLineParser parser = new DefaultParser();
-        CommandLine commandLine = null;
-        try {
-            commandLine = parser.parse(options, args);
-        } catch (ParseException pe) {
-            HelpFormatter hf = new HelpFormatter();
-            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar AseSeqSimulator.AseSeqSimulator", options);
-            System.exit(2);
-        }
+        option = new Option("h", "help", false, "help message of AseSeqSimulator");
+        option.setRequired(false);
+        options.addOption(option);
 
-        return commandLine;
+        CommandLineParser parser = new DefaultParser();
+
+        return parser.parse(options, args);
     }
 }

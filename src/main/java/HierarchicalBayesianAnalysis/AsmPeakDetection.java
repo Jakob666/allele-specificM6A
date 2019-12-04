@@ -82,8 +82,25 @@ public class AsmPeakDetection {
 
     public static void main(String[] args) {
         Options options = new Options();
-        CommandLine commandLine = setCommandLine(args, options);
+        CommandLine commandLine = null;
+        HelpFormatter help = new HelpFormatter();
+        String header = "AsmPeakDetection contains following parameters: ";
+        String footer = "";
 
+        try {
+            commandLine = setCommandLine(args, options);
+        } catch (ParseException pe) {
+            System.err.println(pe.getMessage());
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            System.exit(2);
+        }
+
+        if (commandLine.hasOption("h")) {
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
+            System.exit(0);
+        }
+
+        // default parameters
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
         int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000;
@@ -99,6 +116,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("bed")) {
             logger.error("Peak calling BED format file can not be empty");
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File bed = new File(commandLine.getOptionValue("bed"));
@@ -111,6 +129,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("vcf")) {
             logger.error("ASE SNP calling VCF file can not be empty");
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File vcf = new File(commandLine.getOptionValue("vcf"));
@@ -123,6 +142,7 @@ public class AsmPeakDetection {
 
         if (!commandLine.hasOption("g")) {
             logger.error("GTF format file can not be empty");
+            help.printHelp("java -jar renlab.m6a_allele-1.0.jar AsmPeakDetection", header, options, footer, true);
             System.exit(2);
         } else {
             File gtf = new File(commandLine.getOptionValue("g"));
@@ -734,7 +754,7 @@ public class AsmPeakDetection {
         return Logger.getLogger(AsmPeakDetection.class);
     }
 
-    private static CommandLine setCommandLine(String[] args, Options options) {
+    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
         Option option = new Option("vcf", "vcf_file", true, "IP sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
@@ -779,17 +799,12 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
+        option = new Option("h", "help", false, "help message of AsmPeakDetection");
+        option.setRequired(false);
+        options.addOption(option);
+
         CommandLineParser parser = new DefaultParser();
 
-        CommandLine commandLine = null;
-        try {
-            commandLine = parser.parse(options, args);
-        } catch (ParseException pe) {
-            HelpFormatter hf = new HelpFormatter();
-            hf.printHelp("java -cp ./renlab.m6a_allele-1.0.jar HierarchicalBayesianAnalysis.AsmPeakDetection", options);
-            System.exit(2);
-        }
-
-        return commandLine;
+        return parser.parse(options, args);
     }
 }
