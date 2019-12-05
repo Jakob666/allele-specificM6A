@@ -33,7 +33,7 @@ suppose here exists files below:
 * detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AseGeneDetection 
+java -jar ./renlabm6a_allele.jar AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf 
      -o /path/to/output_file 
@@ -41,7 +41,7 @@ java -jar ./renlabm6a_allele.jar -AseGeneDetection
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AseGeneDetection 
+java -jar ./renlabm6a_allele.jar AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf
      -wes /path/to/wes_filtered.vcf
@@ -50,7 +50,7 @@ java -jar ./renlabm6a_allele.jar -AseGeneDetection
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AseGeneDetection 
+java -jar ./renlabm6a_allele.jar AseGeneDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf
      -db /path/to/dbsnp.vcf
@@ -77,7 +77,7 @@ suppose here exists files below:
 * detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf 
@@ -86,7 +86,7 @@ java -jar ./renlabm6a_allele.jar -AsmPeakDetection
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
@@ -96,7 +96,7 @@ java -jar ./renlabm6a_allele.jar -AsmPeakDetection
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AsmPeakDetection 
+java -jar ./renlabm6a_allele.jar AsmPeakDetection 
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf
@@ -125,7 +125,7 @@ simulated data parameters:
 * generate MeRIP-seq simulated data
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AseSeqSimulator
+java -jar ./renlabm6a_allele.jar AseSeqSimulator
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf
      -t /path/to/hg38.2bit
      -o /path/to/output_dir
@@ -141,7 +141,7 @@ java -jar ./renlabm6a_allele.jar -AseSeqSimulator
 * generate MeRIP-seq and WES simulated data
 ```
 # command
-java -jar ./renlabm6a_allele.jar -AseSeqSimulator
+java -jar ./renlabm6a_allele.jar AseSeqSimulator
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf
      -t /path/to/hg38.2bit
      -o /path/to/output_dir
