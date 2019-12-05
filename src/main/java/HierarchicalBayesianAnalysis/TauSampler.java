@@ -1,17 +1,21 @@
 package HierarchicalBayesianAnalysis;
 
 
-public class TauSampling extends MHSampling {
+import org.apache.commons.math3.distribution.NormalDistribution;
+
+public class TauSampler extends MHSampling {
     private InvChiSquareParams priorTau;
+    private NormalDistribution nd;
 
     /**
      * Constructor
      * @param lorStd the standard deviation of LOR
      * @param df Inv-Chi-square degree of freedom
      */
-    public TauSampling(double lorStd, double df) {
+    public TauSampler(double lorStd, double df) {
         super();
         this.priorTau = new InvChiSquareParams(lorStd, df);
+        this.nd = new NormalDistribution(0, 0.1);
     }
 
     /**
@@ -26,7 +30,7 @@ public class TauSampling extends MHSampling {
      */
     public double[] sampling(double prevTau, double prevTauDensity, double[] logOddRatios, double[] variances,
                              double miu, double sigma) {
-        double curTau = this.randomTau();
+        double curTau = this.randomTau(prevTau);
         double curTauPosteriorDensity = this.posteriorTau(curTau, logOddRatios, variances, miu, sigma);
 
         return this.getSamplingRes(curTau, curTauPosteriorDensity, prevTau, prevTauDensity);
@@ -36,8 +40,16 @@ public class TauSampling extends MHSampling {
      * sampling a new tau from its priority distribution
      * @return randomly sample tau
      */
-    public double randomTau() {
+    public double randomInit() {
         return this.priorTau.sample();
+    }
+
+    /**
+     * sampling a new tau from proposal distribution
+     * @return randomly sample tau
+     */
+    public double randomTau(double prevTau) {
+        return Math.abs(prevTau + this.nd.sample());
     }
 
     /**

@@ -5,10 +5,10 @@ import org.apache.commons.math3.distribution.UniformRealDistribution;
 
 import java.util.HashMap;
 
-public class LogOddRatioSampling {
+public class LogOddRatioSampler {
     private UniformRealDistribution urd;
 
-    public LogOddRatioSampling() {
+    public LogOddRatioSampler() {
         this.urd = new UniformRealDistribution(0, 1.0);
     }
 

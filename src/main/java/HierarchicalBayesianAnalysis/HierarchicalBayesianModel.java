@@ -10,7 +10,7 @@ public class HierarchicalBayesianModel {
     private double curTau, curGlobalLOR, curTauPosteriorDensity, curGlobalLORPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
     private double[] observeLogOddRatio, variances, singleASELORMean, singleASELORMeanPosteriorDensity, singleASELOR,
-                     singleASELORPosteriorDensity, samplingGlobalLORs;
+                     samplingGlobalLORs;
     private int[] majorAlleleReads, minorAlleleReads, majorAlleleBackground, minorAlleleBackground;
 
     /**
@@ -29,7 +29,6 @@ public class HierarchicalBayesianModel {
         this.singleASELORMean = new double[minorAlleleReads.length];
         this.singleASELORMeanPosteriorDensity = new double[minorAlleleReads.length];
         this.singleASELOR = new double[minorAlleleReads.length];
-        this.singleASELORPosteriorDensity = new double[minorAlleleReads.length];
         this.majorAlleleBackground = majorAlleleBackground;
         this.minorAlleleBackground = minorAlleleBackground;
     }
@@ -60,15 +59,13 @@ public class HierarchicalBayesianModel {
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.observeLogOddRatio = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
-//        System.out.println("observeLOR: [" + this.getString(this.observeLogOddRatio) + "]");
-//        System.out.println("observeVAR: [" + this.getString(this.variances) + "]");
 
         // randomly sample a value tau from priority distribution as initial value
-        this.curTau = this.ts.randomTau();
+        this.curTau = this.ts.randomInit();
 
-        // when tau、y and var are known, the average LOR(globalLOR) posterior distribution of gene or m6A signal
+        // when tau、y and var are known, the global LOR(average LOR) posterior distribution of gene or m6A signal
         //          P(globalLOR|tau,y)~N(Theta, V) can be calculate via y, var and tau
-        // initial the average LOR
+        // initial the global LOR from prior distribution
         double miu_denominator = 0, miu_numernator = 0;
         for (int i = 0; i < this.observeLogOddRatio.length; i++) {
             miu_denominator += 1.0 / (this.variances[i] + Math.pow(this.curTau, 2));
@@ -84,7 +81,6 @@ public class HierarchicalBayesianModel {
                                                            this.globalLORMean, this.globalLORSigma);
         // the approximate posterior distribution of average LOR
         this.curGlobalLORPosteriorDensity = nd.density(this.curGlobalLOR);
-//        System.out.println("initial tau: " + this.curTau+"\t initial density: " + this.curTauPosteriorDensity);
 
         // when y, var, tau and globalLOR are known, the expectation LOR of each SNV sites(LORMean_i) satisfy normal distribution
         //               P(LORMean_i|y,Tau,globalLOR)~N(Theta_i, Vi)
@@ -97,7 +93,6 @@ public class HierarchicalBayesianModel {
             this.singleASELORMean[i] = lor;
             this.singleASELORMeanPosteriorDensity[i] = nd.density(lor);
         }
-//        System.out.println("initial single ASE site LOR mean: [" + this.getString(this.singleASELORMean) + "]");
 
         // when var, LORMean_i are known，LOR for each SNV sites satisfy normal distribution
         //          P(LOR_i|LORMean_i, var_i)~N(LORMean_i, var_i)
@@ -108,9 +103,7 @@ public class HierarchicalBayesianModel {
             double lor = nd.sample();
             // initial LOR
             this.singleASELOR[i] = lor;
-            this.singleASELORPosteriorDensity[i] = nd.density(lor);
         }
-//        System.out.println("initial single ASE site LOR: [" + this.getString(this.singleASELOR) + "]");
     }
 
     /**
@@ -130,7 +123,6 @@ public class HierarchicalBayesianModel {
         int totalTimes = this.samplingTime + this.burnIn;
 
         for (int i=0; i<totalTimes; i++) {
-//            System.out.println("iteration " + i);
             // sampling for tau
             double prevTau = this.curTau;
             double prevTauPosteriorDensity = this.curTauPosteriorDensity;
@@ -138,7 +130,6 @@ public class HierarchicalBayesianModel {
                     this.variances, this.globalLORMean, this.globalLORSigma);
             this.curTau = samplingRes[0];
             this.curTauPosteriorDensity = samplingRes[1];
-//            System.out.println("new Tau value: " + this.curTau);
 
             // sampling for average LOR
             double prevGlobalLOR = this.curGlobalLOR;
@@ -151,7 +142,6 @@ public class HierarchicalBayesianModel {
             this.curGlobalLORPosteriorDensity = globalLORSummary[3];
             if (i > this.burnIn)
                 this.samplingGlobalLORs[i-this.burnIn] = this.curGlobalLOR;
-//            System.out.println("new global LOR value: " + this.curGlobalLOR);
 
             // sampling for the expected LOR for each SNV site
             double[] prevSingleAseLORMean = this.singleASELORMean;
@@ -160,31 +150,6 @@ public class HierarchicalBayesianModel {
                                                                                       this.variances, prevSingleAseLORMean, prevSingleAseLORMeanPosteriorDensity);
             this.singleASELORMean = singleAseMeanSampleRes.get("LOR");
             this.singleASELORMeanPosteriorDensity = singleAseMeanSampleRes.get("density");
-//            System.out.println("new single site LOR mean value: [" + this.getString(this.singleASELORMean) + "]");
-
-            // sampling for LOR for each SNV site
-            double[] prevSingleAseLOR = this.singleASELOR;
-            double[] prevSingleAseLORPosteriorDensity = this.singleASELORPosteriorDensity;
-            HashMap<String, double[]> singleAseSampleRes = this.lors.singleAseOddRatioSampling(this.singleASELORMean, this.variances,
-                                                                                               prevSingleAseLOR, prevSingleAseLORPosteriorDensity);
-            this.singleASELOR = singleAseSampleRes.get("LOR");
-            this.singleASELORPosteriorDensity = singleAseSampleRes.get("density");
-//            System.out.println("new single site LOR value: [" + this.getString(this.singleASELOR) + "]");
-//            System.out.println("==========================");
         }
-    }
-
-    /**
-     * Deprecated!
-     * @param reads Deprecated!
-     * @return Deprecated!
-     */
-    private int getSum(int[] reads) {
-        int total = 0;
-        for (int r: reads) {
-            total += r;
-        }
-
-        return total;
     }
 }
