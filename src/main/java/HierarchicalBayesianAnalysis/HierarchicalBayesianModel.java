@@ -5,8 +5,8 @@ import org.apache.commons.math3.distribution.NormalDistribution;
 import java.util.HashMap;
 
 public class HierarchicalBayesianModel {
-    private TauSampling ts;
-    private LogOddRatioSampling lors;
+    private TauSampler ts;
+    private LogOddRatioSampler lors;
     private double curTau, curGlobalLOR, curTauPosteriorDensity, curGlobalLORPosteriorDensity, globalLORMean, globalLORSigma;
     private int samplingTime, burnIn;
     private double[] observeLogOddRatio, variances, singleASELORMean, singleASELORMeanPosteriorDensity, singleASELOR,
@@ -19,8 +19,8 @@ public class HierarchicalBayesianModel {
     public HierarchicalBayesianModel(double lorStd, double df, int samplingTime, int burnIn,
                                      int[] majorAlleleReads, int[] minorAlleleReads,
                                      int[] majorAlleleBackground, int[] minorAlleleBackground) {
-        this.ts = new TauSampling(lorStd, df);
-        this.lors = new LogOddRatioSampling();
+        this.ts = new TauSampler(lorStd, df);
+        this.lors = new LogOddRatioSampler();
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.majorAlleleReads = majorAlleleReads;
