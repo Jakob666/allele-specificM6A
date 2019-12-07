@@ -9,6 +9,10 @@ import org.apache.log4j.Logger;
 import java.io.*;
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Test ASE genes with VCF format file
@@ -18,15 +22,16 @@ public class AseGeneDetection {
     // geneAlleleReads = {"geneId->geneName": {pos1: [majorAllele:count, minorAllele: count1]}, ...}
     private HashMap<String, HashMap<Integer, String[]>> geneAlleleReads, geneBackgroundReads;
     private HashMap<String, HashMap<String, Integer>> geneReadsCount = new HashMap<>(), geneBackgroundCount = new HashMap<>();
-    private int samplingTime, burnIn;
+    private int samplingTime, burnIn, threadNumber;
     private HashMap<Double, ArrayList<String>> geneAsePValue = new HashMap<>();
-    private HashMap<String, Integer> geneSNVs = new HashMap<>();
+    private HashMap<String, Integer> genesSNVs = new HashMap<>();
     private HashMap<String, Double> geneMajorAlleleFrequency = new HashMap<>();
     private HashMap<String, String> geneMajorNucleotide = new HashMap<>();
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
     private double degreeOfFreedom;
+    private ReentrantLock lock;
     private Logger logger;
 
     /**
@@ -44,7 +49,7 @@ public class AseGeneDetection {
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
                             double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
-                            int samplingTime, int burnIn, Logger logger) {
+                            int samplingTime, int burnIn, int threadNumber, Logger logger) {
         HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
             DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, logger);
@@ -74,6 +79,7 @@ public class AseGeneDetection {
         GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, true);
         gsr.locateSnv();
         gsr = null;
+        this.threadNumber = threadNumber;
         this.logger.debug("SNP locations in " + snvLocationFile);
     }
 
@@ -99,7 +105,7 @@ public class AseGeneDetection {
 
         // default parameters
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 10000, burn_in = 2000, readsCoverageThreshold = 10, wesCoverageThreshold = 30;
+        int samplingTime = 10000, burn_in = 2000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -170,9 +176,16 @@ public class AseGeneDetection {
             System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
             System.exit(2);
         }
+        if (commandLine.hasOption("t")) {
+            if (Integer.valueOf(commandLine.getOptionValue("t")) <= 0) {
+                System.err.println("invalid thread number, should be a positive integer");
+                System.exit(2);
+            }
+            threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
+        }
 
         AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
-                degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, logger);
+                degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, threadNumber, logger);
         agd.getTestResult();
     }
 
@@ -273,14 +286,7 @@ public class AseGeneDetection {
             }
 
             double majorAlleleFrequency = (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount);
-            // MAF threshold for reducing false positive ASE genes. Genes with MAF < 0.55 are seen as normal mutated gene
-            // cause by alignment error
-//            if (majorAlleleFrequency - 0.55 < 0.00001)
-//                continue;
-            // MAF threshold for reducing false positive ASE genes. Genes with MAF > 0.95 are seen as homo-zygote gene
-            // cause by alignment error
-//            if (majorAlleleFrequency - 0.95 > 0.00001)
-//                continue;
+
             this.geneMajorAlleleFrequency.put(label, majorAlleleFrequency);
             ArrayList<int[]> statistic = new ArrayList<>(4);
             statistic.add(majorCount);
@@ -295,22 +301,57 @@ public class AseGeneDetection {
 
         // test ASE gene with Hierarchical model
         this.logger.debug("hierarchical Bayesian model test start");
-        for (String label: this.statisticForTest.keySet()) {
-            ArrayList<int[]> statistic = this.statisticForTest.get(label);
-            majorCount = statistic.get(0);
-            minorCount = statistic.get(1);
-            majorBackground = statistic.get(2);
-            minorBackground = statistic.get(3);
-            hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime, this.burnIn,
-                                                majorCount, minorCount, majorBackground, minorBackground);
-            p = hb.testSignificant();
+        // init thread pool and lock
+        ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
+        this.lock = new ReentrantLock();
+        CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
 
-            ArrayList<String> samePValGenes = this.geneAsePValue.getOrDefault(p, new ArrayList<>());
-            samePValGenes.add(label);
-            this.geneAsePValue.put(p, samePValGenes);
-            this.geneSNVs.put(label, majorCount.length);
+        RunTest task = (String name) -> {
+            return new Runnable() {
+                @Override
+                public void run() {
+                    ArrayList<int[]> statistic = statisticForTest.get(name);
+                    int[] majorCount = statistic.get(0);
+                    int[] minorCount = statistic.get(1);
+                    int[] majorBackground = statistic.get(2);
+                    int[] minorBackground = statistic.get(3);
+                    HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime, burnIn,
+                                                                                majorCount, minorCount,
+                                                                                majorBackground, minorBackground);
+                    double p = hb.testSignificant();
+
+                    lock.lock();
+                    try {
+                        ArrayList<String> samePValGenes = geneAsePValue.getOrDefault(p, new ArrayList<>());
+                        samePValGenes.add(name);
+                        geneAsePValue.put(p, samePValGenes);
+                        genesSNVs.put(name, majorCount.length);
+                        countDown.countDown();
+                    } finally {
+                        lock.unlock();
+                        hb = null;
+                        majorCount = null;
+                        minorCount = null;
+                        majorBackground = null;
+                        minorBackground = null;
+                    }
+                }
+            };
+        };
+
+        for (String label: this.statisticForTest.keySet()) {
+            Runnable runnable = task.runTask(label);
+            threadPoolExecutor.submit(runnable);
         }
-        this.statisticForTest.clear();
+        try {
+            countDown.await();
+        } catch (InterruptedException ie) {
+            this.logger.error("analysis interrupted");
+        } finally {
+            this.statisticForTest = null;
+            threadPoolExecutor = null;
+            this.lock = null;
+        }
         this.logger.debug("model test complete");
     }
 
@@ -393,7 +434,7 @@ public class AseGeneDetection {
             }
         });
 
-        int totalGenes = this.geneSNVs.size(), rankage = totalGenes;
+        int totalGenes = this.genesSNVs.size(), rankage = totalGenes;
         double prevQValue = 1.0, qValue;
         String pValString, qValString;
         this.geneAseQValue = new ArrayList<>(totalGenes);
@@ -404,7 +445,7 @@ public class AseGeneDetection {
             // sort by SNV numbers
             HashMap<String, Integer> samePValGeneSNVs = new HashMap<>();
             for (String gene: samePValGenes)
-                samePValGeneSNVs.put(gene, this.geneSNVs.get(gene));
+                samePValGeneSNVs.put(gene, this.genesSNVs.get(gene));
             // sort by major allele frequency(MAF)
             HashMap<String, Double> samePValGeneMajorAlleleFrequency = new HashMap<>();
             for (String gene: samePValGenes)
@@ -467,7 +508,7 @@ public class AseGeneDetection {
                 majorAlleleFrequency = (double) majorCount / (double) (majorCount + minorCount);
                 majorAlleleRecord = this.geneMajorNucleotide.get(geneId);
 
-                snvNum = this.geneSNVs.get(label);
+                snvNum = this.genesSNVs.get(label);
                 majorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("major");
                 minorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("minor");
 
@@ -590,6 +631,10 @@ public class AseGeneDetection {
         options.addOption(option);
 
         option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("t", "thread", true, "Thread number. Default 2");
         option.setRequired(false);
         options.addOption(option);
 

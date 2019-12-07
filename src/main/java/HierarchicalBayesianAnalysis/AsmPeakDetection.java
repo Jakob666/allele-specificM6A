@@ -10,13 +10,17 @@ import org.apache.log4j.Logger;
 import java.io.*;
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Test ASM peaks with VCF format file and BED format file
  */
 public class AsmPeakDetection {
     private String gtfFile, peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
-    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0;
+    private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0, threadNumber;
     private double degreeOfFreedom;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
@@ -28,9 +32,10 @@ public class AsmPeakDetection {
     private HashMap<String, LinkedList<String>> peakMajorAlleleNucleotide;
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
     private HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord;
-    HashMap<String, HashMap<String, String>> geneNames;
+    private HashMap<String, HashMap<String, String>> geneNames;
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
+    private ReentrantLock lock;
 
     /**
      * Constructor
@@ -49,7 +54,7 @@ public class AsmPeakDetection {
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
                             String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                            int samplingTime, int burnIn) {
+                            int samplingTime, int burnIn, int threadNumber) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
@@ -72,6 +77,7 @@ public class AsmPeakDetection {
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
+        this.threadNumber = threadNumber;
         this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
         String peakWithSnvFile = new File(new File(asmPeakFile).getParent(), "peak_with_snv.txt").getAbsolutePath();
         PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, peakWithSnvFile, true);
@@ -103,7 +109,7 @@ public class AsmPeakDetection {
         // default parameters
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
                peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000, threadNumber = 2;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -189,10 +195,17 @@ public class AsmPeakDetection {
             ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("wc"))
             wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
+        if (commandLine.hasOption("t")) {
+            if (Integer.valueOf(commandLine.getOptionValue("t")) < 0) {
+                System.err.println("invalid thread number, should be a positive integer");
+                System.exit(2);
+            }
+            threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
+        }
 
         AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
                                                     degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
-                                                    samplingTime, burn_in);
+                                                    samplingTime, burn_in, threadNumber);
         apd.getTestResult();
     }
 
@@ -446,21 +459,69 @@ public class AsmPeakDetection {
         double lorStd = this.calcLorStd();
 
         this.log.debug("hierarchical Bayesian model test start");
+
+        ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
+        this.lock = new ReentrantLock();
+        CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
+
+        RunTest task = (String name) -> {
+          return new Runnable() {
+              @Override
+              public void run() {
+                  ArrayList<int[]> statistic = statisticForTest.get(name);
+                  int[] majorCount = statistic.get(0);
+                  int[] minorCount = statistic.get(1);
+                  int[] majorBackground = statistic.get(2);
+                  int[] minorBackground = statistic.get(3);
+                  // get p value via hierarchical model
+                  HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime,
+                          burnIn, majorCount, minorCount, majorBackground, minorBackground);
+                  double pVal = hb.testSignificant();
+
+                  lock.lock();
+                  try {
+                      ArrayList<String> samePValPeaks = asmPValue.getOrDefault(pVal, new ArrayList<>());
+                      samePValPeaks.add(name);
+                      asmPValue.put(pVal, samePValPeaks);
+                      countDown.countDown();
+                  } finally {
+                      lock.unlock();
+                      majorCount = null;
+                      minorCount = null;
+                      majorBackground = null;
+                      minorBackground = null;
+                      hb = null;
+                  }
+              }
+          };
+        };
+
         for (String str: this.statisticForTest.keySet()) {
             this.totalPeakCount++;
-            ArrayList<int[]> statistic = this.statisticForTest.get(str);
-            majorCount = statistic.get(0);
-            minorCount = statistic.get(1);
-            majorBackground = statistic.get(2);
-            minorBackground = statistic.get(3);
-            // get p value via hierarchical model
-            HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
-                    this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
-            pVal = hb.testSignificant();
-            ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
-            samePValPeaks.add(str);
-            this.asmPValue.put(pVal, samePValPeaks);
-            hb = null;
+            Runnable runnable = task.runTask(str);
+            threadPoolExecutor.submit(runnable);
+//            ArrayList<int[]> statistic = this.statisticForTest.get(str);
+//            majorCount = statistic.get(0);
+//            minorCount = statistic.get(1);
+//            majorBackground = statistic.get(2);
+//            minorBackground = statistic.get(3);
+//            // get p value via hierarchical model
+//            HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
+//                    this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
+//            pVal = hb.testSignificant();
+//            ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
+//            samePValPeaks.add(str);
+//            this.asmPValue.put(pVal, samePValPeaks);
+//            hb = null;
+        }
+        try {
+            countDown.await();
+        } catch (InterruptedException ie) {
+            this.log.error("analysis interrupted");
+        } finally {
+            this.statisticForTest = null;
+            threadPoolExecutor = null;
+            this.lock = null;
         }
         this.log.debug("model test complete");
     }
@@ -796,6 +857,10 @@ public class AsmPeakDetection {
         options.addOption(option);
 
         option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("t", "thread", true, "Thread number. Default 2");
         option.setRequired(false);
         options.addOption(option);
 
