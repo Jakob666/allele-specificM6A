@@ -500,19 +500,6 @@ public class AsmPeakDetection {
             this.totalPeakCount++;
             Runnable runnable = task.runTask(str);
             threadPoolExecutor.submit(runnable);
-//            ArrayList<int[]> statistic = this.statisticForTest.get(str);
-//            majorCount = statistic.get(0);
-//            minorCount = statistic.get(1);
-//            majorBackground = statistic.get(2);
-//            minorBackground = statistic.get(3);
-//            // get p value via hierarchical model
-//            HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, this.degreeOfFreedom, this.samplingTime,
-//                    this.burnIn, majorCount, minorCount, majorBackground, minorBackground);
-//            pVal = hb.testSignificant();
-//            ArrayList<String> samePValPeaks = this.asmPValue.getOrDefault(pVal, new ArrayList<>());
-//            samePValPeaks.add(str);
-//            this.asmPValue.put(pVal, samePValPeaks);
-//            hb = null;
         }
         try {
             countDown.await();
