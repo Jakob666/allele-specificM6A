@@ -37,6 +37,7 @@ java -jar ./renlabm6a_allele.jar AseGeneDetection
      -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
      -vcf /path/to/rna_filtered.vcf 
      -o /path/to/output_file 
+     -t 6
 ```
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
@@ -46,6 +47,7 @@ java -jar ./renlabm6a_allele.jar AseGeneDetection
      -vcf /path/to/rna_filtered.vcf
      -wes /path/to/wes_filtered.vcf
      -o /path/to/output_file 
+     -t 6
 ```
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
@@ -55,6 +57,7 @@ java -jar ./renlabm6a_allele.jar AseGeneDetection
      -vcf /path/to/rna_filtered.vcf
      -db /path/to/dbsnp.vcf
      -o /path/to/output_file 
+     -t 6
 ```
 
 
@@ -82,6 +85,7 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -bed /path/to/peak.bed 
      -vcf /path/to/rna_filtered.vcf 
      -o /path/to/output_file 
+     -t 6
 ```
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
@@ -92,6 +96,7 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -vcf /path/to/rna_filtered.vcf
      -wes /path/to/wes_filtered.vcf
      -o /path/to/output_file
+     -t 6
 ```
 * detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
@@ -102,6 +107,7 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -vcf /path/to/rna_filtered.vcf
      -db /path/to/dbsnp.vcf
      -o /path/to/output_file
+     -t 6
 ```
 ### 3. Simulated data generation
 generate simulated data for test,
