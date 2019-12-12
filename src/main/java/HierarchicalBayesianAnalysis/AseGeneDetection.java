@@ -218,7 +218,6 @@ public class AseGeneDetection {
                 wesSNVs = null;
 
             geneId = label.split("->")[0];
-            int majorReadsCount = 0, minorReadsCount = 0;
             majorAlleleCount = new ArrayList<>();
             minorAlleleCount = new ArrayList<>();
             majorBackgroundCount = new ArrayList<>();
@@ -277,17 +276,12 @@ public class AseGeneDetection {
             minorBackground = new int[minorBackgroundCount.size()];
             for (int i = 0; i < majorAlleleCount.size(); i++) {
                 majorCount[i] = majorAlleleCount.get(i);
-                majorReadsCount += majorAlleleCount.get(i);
                 minorCount[i] = minorAlleleCount.get(i);
-                minorReadsCount += minorAlleleCount.get(i);
 
                 majorBackground[i] = majorBackgroundCount.get(i);
                 minorBackground[i] = minorBackgroundCount.get(i);
             }
 
-            double majorAlleleFrequency = (double) majorReadsCount / (double) (majorReadsCount + minorReadsCount);
-
-            this.geneMajorAlleleFrequency.put(label, majorAlleleFrequency);
             ArrayList<int[]> statistic = new ArrayList<>(4);
             statistic.add(majorCount);
             statistic.add(minorCount);
@@ -319,13 +313,15 @@ public class AseGeneDetection {
                                                                                 majorCount, minorCount,
                                                                                 majorBackground, minorBackground);
                     double p = hb.testSignificant();
-
+                    double geneOddRatio = Math.exp(hb.quantifyGeneLOR());
+                    double geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio+1));
                     lock.lock();
                     try {
                         ArrayList<String> samePValGenes = geneAsePValue.getOrDefault(p, new ArrayList<>());
                         samePValGenes.add(name);
                         geneAsePValue.put(p, samePValGenes);
                         genesSNVs.put(name, majorCount.length);
+                        geneMajorAlleleFrequency.put(name, geneMAF);
                         countDown.countDown();
                     } finally {
                         lock.unlock();
@@ -349,7 +345,7 @@ public class AseGeneDetection {
             this.logger.error("analysis interrupted");
         } finally {
             this.statisticForTest = null;
-            threadPoolExecutor = null;
+            threadPoolExecutor.shutdown();
             this.lock = null;
         }
         this.logger.debug("model test complete");

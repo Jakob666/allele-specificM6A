@@ -2,6 +2,7 @@ package HierarchicalBayesianAnalysis;
 
 import org.apache.commons.math3.distribution.NormalDistribution;
 
+import java.util.Arrays;
 import java.util.HashMap;
 
 public class HierarchicalBayesianModel {
@@ -151,5 +152,18 @@ public class HierarchicalBayesianModel {
             this.singleASELORMean = singleAseMeanSampleRes.get("LOR");
             this.singleASELORMeanPosteriorDensity = singleAseMeanSampleRes.get("density");
         }
+    }
+
+    /**
+     * quantify the global log odd ratio with sampling median
+     * @return gene logarithm odd ratio
+     */
+    public double quantifyGeneLOR() {
+        double[] sortedSamplingValue = Arrays.stream(this.samplingGlobalLORs).sorted().toArray();
+        int medianIdx = sortedSamplingValue.length / 2;
+        if (sortedSamplingValue.length%2==0)
+            return (sortedSamplingValue[medianIdx] + sortedSamplingValue[medianIdx+1]) / 2;
+        else
+            return sortedSamplingValue[medianIdx];
     }
 }

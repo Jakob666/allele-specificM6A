@@ -412,13 +412,7 @@ public class AsmPeakDetection {
                 }
 
                 label = String.join(":", new String[]{chrNum, peakRange});
-                maf = this.calcMajorAlleleFrequency(majorCount, minorCount);
-                // MAF threshold for reducing false positive ASM peaks. Peaks with MAF < 0.55 are seen as normal peak
-                // caused by alignment error
-//                if (maf - 0.55 < 0.00001)
-//                    continue;
 
-                this.peakMajorAlleleFrequency.put(label, maf);
                 this.peakSNVNum.put(label, majorCount.length);
 
                 ArrayList<int[]> statistic = new ArrayList<>(4);
@@ -477,12 +471,15 @@ public class AsmPeakDetection {
                   HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime,
                           burnIn, majorCount, minorCount, majorBackground, minorBackground);
                   double pVal = hb.testSignificant();
+                  double peakOddRatio = Math.exp(hb.quantifyGeneLOR());
+                  double peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio+1));
 
                   lock.lock();
                   try {
                       ArrayList<String> samePValPeaks = asmPValue.getOrDefault(pVal, new ArrayList<>());
                       samePValPeaks.add(name);
                       asmPValue.put(pVal, samePValPeaks);
+                      peakMajorAlleleFrequency.put(name, peakMAF);
                       countDown.countDown();
                   } finally {
                       lock.unlock();
@@ -555,22 +552,6 @@ public class AsmPeakDetection {
 
         // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
         return lorStd + 0.0001;
-    }
-
-    /**
-     * calculate major allele frequency of SNV site
-     * @param majorCounts major allele reads count
-     * @param minorCounts minor allele reads count
-     * @return major allele frequency
-     */
-    private double calcMajorAlleleFrequency(int[] majorCounts, int[] minorCounts) {
-        int major = 0, minor = 0;
-        for (int i=0; i<majorCounts.length; i++) {
-            major += majorCounts[i];
-            minor += minorCounts[i];
-        }
-
-        return (double) major / (double) (major + minor);
     }
 
     /**
