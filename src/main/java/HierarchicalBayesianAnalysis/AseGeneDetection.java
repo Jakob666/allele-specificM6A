@@ -30,7 +30,7 @@ public class AseGeneDetection {
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
-    private double degreeOfFreedom;
+    private double degreeOfFreedom, lorStd;
     private ReentrantLock lock;
     private Logger logger;
 
@@ -46,6 +46,8 @@ public class AseGeneDetection {
      * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
+     * @param threadNumber thread number, default 2
+     * @param logger log4j instance
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
                             double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
@@ -74,8 +76,67 @@ public class AseGeneDetection {
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
         this.logger = logger;
+        if (this.aseGeneFile == null) {
+            this.logger.error("output file path can not be null");
+            System.exit(2);
+        }
         this.logger.debug("locate SNP record in " + vcfFile + " to corresponding genes");
         String snvLocationFile = new File(new File(aseGeneFile).getParent(), "snv_location.txt").getAbsolutePath();
+        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, true);
+        gsr.locateSnv();
+        gsr = null;
+        this.threadNumber = threadNumber;
+        this.logger.debug("SNP locations in " + snvLocationFile);
+    }
+
+    /**
+     * Constructor
+     * @param gtfFile GTF annotation file
+     * @param vcfFile VCF format file via MeRIP-seq INPUT data
+     * @param wesFile VCF format file via WES data, optional
+     * @param dbsnpFile dbsnp annotation file for SNP filtering
+     * @param snvLocationFile SNVs location file
+     * @param aseGeneFile test result output file
+     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
+     * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
+     * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
+     * @param samplingTime sampling time, default 10000
+     * @param burnIn burn in time, default 2000
+     * @param threadNumber thread number, default 2
+     * @param logger log4j instance
+     */
+    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String snvLocationFile, String aseGeneFile,
+                            double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
+                            int samplingTime, int burnIn, int threadNumber, Logger logger) {
+        HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
+        if (dbsnpFile != null) {
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, logger);
+            da.parseDbsnpFile();
+            dbsnpRecord = da.getDbsnpRecord();
+        }
+        VcfSnpMatchGene vsmg = new VcfSnpMatchGene(vcfFile, gtfFile, readsCoverageThreshold);
+        vsmg.parseVcfFile(dbsnpRecord);
+        this.geneAlleleReads = vsmg.getGeneAlleleReads();
+        if (wesFile != null) {
+            vsmg = new VcfSnpMatchGene(wesFile, gtfFile, wesCoverageThreshold);
+            vsmg.parseVcfFile(dbsnpRecord);
+            this.geneBackgroundReads = vsmg.getGeneAlleleReads();
+        } else {
+            this.geneBackgroundReads = null;
+        }
+        if (dbsnpRecord != null)
+            dbsnpRecord = null;
+
+        this.degreeOfFreedom = degreeOfFreedom;
+        this.samplingTime = samplingTime;
+        this.burnIn = burnIn;
+        this.aseGeneFile = aseGeneFile;
+        this.logger = logger;
+        if (this.aseGeneFile == null) {
+            this.logger.error("output file path can not be null");
+            System.exit(2);
+        }
+        this.logger.debug("locate SNP record in " + vcfFile + " to corresponding genes");
         GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, true);
         gsr.locateSnv();
         gsr = null;
@@ -189,25 +250,33 @@ public class AseGeneDetection {
         agd.getTestResult();
     }
 
+    public HashMap<String, String> getGeneMajorNucleotide() {
+        return geneMajorNucleotide;
+    }
+
+    public HashMap<String, HashMap<Integer, String[]>> getGeneAlleleReads() {
+        return this.geneAlleleReads;
+    }
+
     public void getTestResult() {
+        this.dataPreparation();
+        this.calcLorStd();
         this.aseGeneTest();
-        this.bhRecalibrationOfEachPeak();
+        this.bhRecalibrationOfEachGene();
         this.outputResult();
     }
 
     /**
-     * get ASE significant p value with hierarchical model
+     * data preparation for hierarchical test
      */
-    private void aseGeneTest() {
+    public void dataPreparation() {
         HashMap<Integer, String[]> geneSNVs, wesSNVs;
         ArrayList<Integer> majorAlleleCount, minorAlleleCount, majorBackgroundCount, minorBackgroundCount;
         int[] majorCount, minorCount, majorBackground, minorBackground;
-        HierarchicalBayesianModel hb;
-        double p;
         String geneId;
         // geneAlleleReads = {"geneId->geneName": {pos1: [majorAllele:count, minorAllele: count]}, ...}
         this.logger.debug("calculate LOR for genes to be tested");
-        for (String label: this.geneAlleleReads.keySet()) {
+        for (String label : this.geneAlleleReads.keySet()) {
             // WES data exists, but there is no WES SNV sites locate in the gene
             if (this.geneBackgroundReads != null) {
                 if (this.geneBackgroundReads.keySet().contains(label))
@@ -289,10 +358,16 @@ public class AseGeneDetection {
             statistic.add(minorBackground);
             this.statisticForTest.put(label, statistic);
         }
+        if (this.statisticForTest.isEmpty()) {
+            this.logger.error("contains no genes with SNV sites for hierarchical test, please check the input data");
+            System.exit(2);
+        }
+    }
 
-        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        double lorStd = this.calcLorStd();
-
+    /**
+     * get ASE significant p value with hierarchical model
+     */
+    private void aseGeneTest() {
         // test ASE gene with Hierarchical model
         this.logger.debug("hierarchical Bayesian model test start");
         // init thread pool and lock
@@ -353,9 +428,9 @@ public class AseGeneDetection {
 
     /**
      * calculate the standard deviation of LOR of all SNV sites on genome
-     * @return LOR Std
      */
-    private double calcLorStd() {
+    private void calcLorStd() {
+        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
         ArrayList<Double> lorList = new ArrayList<>();
         int[] majorCount, minorCount, majorBackground, minorBackground;
         double lor, cum = 0;
@@ -388,11 +463,11 @@ public class AseGeneDetection {
             variance += Math.pow((val - lorMean), 2);
         }
 
-        double lorStd = Math.sqrt(variance / lorList.size());
+        this.lorStd = Math.sqrt(variance / lorList.size());
         lorList.clear();
 
         // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        return lorStd + 0.0001;
+        this.lorStd = (Math.abs(this.lorStd-0) < 0.00001)? 0.0001: this.lorStd;
     }
 
     /**
@@ -418,7 +493,7 @@ public class AseGeneDetection {
     /**
      * recalibrate p value with BH method, and get corresponding q value
      */
-    private void bhRecalibrationOfEachPeak() {
+    private void bhRecalibrationOfEachGene() {
         this.logger.debug("start recalibrating p values of hierarchical model");
         this.logger.debug("sorting test result in order");
         ArrayList<Map.Entry<Double, ArrayList<String>>> sortedPVals = new ArrayList<>(this.geneAsePValue.entrySet());
@@ -501,7 +576,7 @@ public class AseGeneDetection {
                 label = String.join("->", new String[]{geneId, geneName});
                 majorCount = this.geneReadsCount.get(label).get("major");
                 minorCount = this.geneReadsCount.get(label).get("minor");
-                majorAlleleFrequency = (double) majorCount / (double) (majorCount + minorCount);
+                majorAlleleFrequency = this.geneMajorAlleleFrequency.get(label);
                 majorAlleleRecord = this.geneMajorNucleotide.get(geneId);
 
                 snvNum = this.genesSNVs.get(label);
@@ -590,11 +665,11 @@ public class AseGeneDetection {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("vcf", "vcf_file", true, "INPUT sample SNP calling result VCF file");
+        Option option = new Option("vcf", "vcf_file", true, "sample SNP calling result VCF file");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wes", "wes_vcf_file", true, "WES SNP calling VCF format file");
+        option = new Option("wes", "wes_vcf_file", true, "WES data SNP calling VCF format file");
         option.setRequired(false);
         options.addOption(option);
 

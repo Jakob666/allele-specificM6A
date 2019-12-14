@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class AsmPeakDetection {
     private String gtfFile, peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0, threadNumber;
-    private double degreeOfFreedom;
+    private double degreeOfFreedom, lorStd;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
     private HashMap<Double, ArrayList<String>> asmPValue = new HashMap<>();
@@ -33,28 +33,30 @@ public class AsmPeakDetection {
     private HashMap<String, Integer> peakSNVNum = new HashMap<>();
     private HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord;
     private HashMap<String, HashMap<String, String>> geneNames;
+    private HashMap<String, HashSet<Integer>> snvForTest;
     private ArrayList<String> asmQValue = new ArrayList<>();
     private DecimalFormat df = new DecimalFormat("0.0000");
     private ReentrantLock lock;
 
     /**
      * Constructor
+     * @param gtfFile GTF annotation file
      * @param peakBedFile BED format file via MeRIP-seq IP data
      * @param vcfFile VCF format file via MeRIP-seq INPUT data
      * @param wesFile VCF format file via WES data, optional
      * @param dbsnpFile dbsnp file for SNP filtering
-     * @param peakCoveredSnpFile output file which record MeRIP-seq INPUT data SNV sites covered by m6A signal
-     * @param peakCoveredWesSnpFile output file which record WES data SNV sites covered by m6A signal
      * @param asmPeakFile test result output file
      * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
+     * @param threadNumber hread number, default 2
+     * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
                             String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                            int samplingTime, int burnIn, int threadNumber) {
+                            int samplingTime, int burnIn, int threadNumber, Logger log) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
         this.vcfFile = vcfFile;
@@ -62,9 +64,7 @@ public class AsmPeakDetection {
         String outputDir = new File(asmPeakFile).getParent();
         this.peakCoveredSnpFile = new File(outputDir, "PeakCoveredSNP.txt").getAbsolutePath();
         this.peakCoveredWesSnpFile = new File(outputDir, "PeakCoveredSNPBackground.txt").getAbsolutePath();
-        this.log = initLog(new File(asmPeakFile).getParent());
-        if (this.wesFile != null)
-            assert this.peakCoveredWesSnpFile != null;
+        this.log = log;
         if (dbsnpFile != null) {
             DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, this.log);
             da.parseDbsnpFile();
@@ -84,6 +84,7 @@ public class AsmPeakDetection {
         pws.locateSnvInPeak();
         pws = null;
         this.log.debug("SNP locations in " + peakWithSnvFile);
+        this.snvForTest = new HashMap<>();
     }
 
     public static void main(String[] args) {
@@ -205,16 +206,39 @@ public class AsmPeakDetection {
 
         AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
                                                     degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
-                                                    samplingTime, burn_in, threadNumber);
+                                                    samplingTime, burn_in, threadNumber, logger);
         apd.getTestResult();
+    }
+
+    public HashMap<String, HashMap<String, Integer>> getPeakMajorMinorAlleleCount() {
+        return this.peakMajorMinorAlleleCount;
+    }
+
+    public HashMap<String, String> getPeakCoveredGenes() {
+        return this.peakCoveredGene;
+    }
+
+    public HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getPeakSnpReadsCount() {
+        return this.peakSnpReadsCount;
+    }
+
+    public HashMap<String, LinkedList<String>> getPeakMajorAlleleNucleotide() {
+        return this.peakMajorAlleleNucleotide;
+    }
+
+    public HashMap<String, ArrayList<int[]>> getStatisticForTest() {
+        return this.statisticForTest;
+    }
+
+    public HashMap<String, HashSet<Integer>> getSnvForTest() {
+        return this.snvForTest;
     }
 
     public void getTestResult() {
         this.getPeakCoveredGene();
         this.parseGTFFile();
         this.getPeakCoveredSnpResult();
-        if (this.wesFile != null)
-            this.getPeakCoveredSnpBackground();
+        this.getPeakCoveredSnpBackground();
         this.asmPeakTest();
         this.bhRecalibrationOfEachPeak();
         this.outputResult();
@@ -223,7 +247,7 @@ public class AsmPeakDetection {
     /**
      * locate m6A signal in BED format file to corresponding gene, peakCoveredGene = {chr:peakStart:peakEnd -> geneId, ...}
      */
-    private void getPeakCoveredGene() {
+    public void getPeakCoveredGene() {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.peakBedFile))));
@@ -261,7 +285,7 @@ public class AsmPeakDetection {
      * get m6A signal covered MeRIP-seq INPUT sample SNV sites
      * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
      */
-    private void getPeakCoveredSnpResult() {
+    public void getPeakCoveredSnpResult() {
         PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.vcfFile, this.peakBedFile,
                                                              this.peakCoveredSnpFile, this.ipSNPReadInfimum);
         pcsr.getPeakCoveredSNP();
@@ -271,7 +295,7 @@ public class AsmPeakDetection {
      * get m6A signal covered WES SNV sites
      * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
      */
-    private void getPeakCoveredSnpBackground() {
+    public void getPeakCoveredSnpBackground() {
         if (this.wesFile != null) {
             PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.wesFile, this.peakBedFile,
                                                                  this.peakCoveredWesSnpFile, this.wesSNPReadInfimum);
@@ -281,7 +305,7 @@ public class AsmPeakDetection {
 
     /**
      * get major allele and minor allele nucleotide and reads counts of each MeRIP-seq INPUT sample SNV sites covered by m6A peak
-     * [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
+     * [chr1:peakStart:peakEnd -> [position1:majorNC, position2:majorNC],....]
      */
     private void getPeakSNPReadsCount() {
         HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.log);
@@ -301,21 +325,22 @@ public class AsmPeakDetection {
     /**
      * test the ASM significant p value of a m6A peak
      */
-    private void asmPeakTest() {
+    public void asmPeakTest() {
         // [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
         this.getPeakSNPReadsCount();
         if (this.wesFile != null)
             this.peakSnpBackground = this.getPeakSNPBackground();
         else
             this.peakSnpBackground = null;
+        this.dataPreparation();
+        this.calcLorStd();
         this.hierarchicalModelTest();
     }
 
     /**
-     * calculate m6A signal p value via hierarchical model
+     * prepare data for hierarchical test
      */
-    private void hierarchicalModelTest() {
-        double pVal, maf;
+    public void dataPreparation() {
         HashMap<String, HashMap<String, HashMap<String, Integer>>> rnaSeqPeakSnvAlleleReads, wesPeakSnvAlleleReads;
         HashMap<String, HashMap<String, Integer>> rnaSeqMutPositionAlleleReads, wesMutPositionAlleleReads;
         HashMap<String, Integer> rnaSeqReads, wesReads;
@@ -325,7 +350,7 @@ public class AsmPeakDetection {
         ArrayList<Integer> rnaSeqMajor, rnaSeqMinor, wesMajor, wesMinor;
 
         this.log.debug("calculate LOR for peaks to be tested");
-        for (String chrNum: this.peakSnpReadsCount.keySet()) {
+        for (String chrNum : this.peakSnpReadsCount.keySet()) {
             // m6A signal on a particular chromosome
             rnaSeqPeakSnvAlleleReads = this.peakSnpReadsCount.get(chrNum);
 
@@ -334,7 +359,7 @@ public class AsmPeakDetection {
             else
                 wesPeakSnvAlleleReads = null;
 
-            for (String peakRange: rnaSeqPeakSnvAlleleReads.keySet()) {
+            for (String peakRange : rnaSeqPeakSnvAlleleReads.keySet()) {
                 // SNV sites covered by the m6A signal
                 rnaSeqMutPositionAlleleReads = rnaSeqPeakSnvAlleleReads.get(peakRange);
 
@@ -391,6 +416,9 @@ public class AsmPeakDetection {
                     }
                     wesMajor.add(backgroundMajor);
                     wesMinor.add(backgroundMinor);
+                    HashSet<Integer> snvs = this.snvForTest.getOrDefault(chrNum, new HashSet<>());
+                    snvs.add(Integer.valueOf(position));
+                    this.snvForTest.put(chrNum, snvs);
                     ncs = null;
                     counts = null;
                 }
@@ -448,12 +476,61 @@ public class AsmPeakDetection {
             }
         }
         this.dbsnpRecord = null;
+        if (this.statisticForTest.isEmpty()) {
+            this.log.error("contains no peaks with SNV sites for hierarchical test, please check the input data");
+            System.exit(2);
+        }
+    }
 
+    /**
+     * calculate the standard deviation of LOR of all SNV sites covered by m6A signals on genome
+     */
+    private void calcLorStd() {
         this.log.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        double lorStd = this.calcLorStd();
+        ArrayList<Double> lorList = new ArrayList<>();
+        int[] majorCount, minorCount, majorBackground, minorBackground;
+        double lor, cum = 0;
+        for (String label: this.statisticForTest.keySet()) {
+            ArrayList<int[]> statistic = this.statisticForTest.get(label);
+            majorCount = statistic.get(0);
+            minorCount = statistic.get(1);
+            majorBackground = statistic.get(2);
+            minorBackground = statistic.get(3);
 
+            for (int i=0; i<majorCount.length; i++) {
+                double major = majorCount[i], minor = minorCount[i],
+                        majorBack = majorBackground[i], minorBack = minorBackground[i];
+                if ((minor - 0) < 0.00001)
+                    minor = 0.1;
+                if ((minorBack - 0) < 0.00001) {
+                    majorBack = (major + minor) / 2;
+                    minorBack = (major + minor) / 2;
+                }
+
+                lor = (major / minor) / (majorBack / minorBack);
+                lor = Math.log(lor);
+                lorList.add(lor);
+                cum += lor;
+            }
+        }
+        double lorMean = cum / lorList.size();
+        double variance = 0.0;
+        for (Double val: lorList) {
+            variance += Math.pow((val - lorMean), 2);
+        }
+
+        this.lorStd = Math.sqrt(variance / lorList.size());
+        lorList.clear();
+
+        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
+        this.lorStd = (Math.abs(this.lorStd-0)<0.00001)? 0.0001: this.lorStd;
+    }
+
+    /**
+     * calculate m6A signal p value via hierarchical model
+     */
+    private void hierarchicalModelTest() {
         this.log.debug("hierarchical Bayesian model test start");
-
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         this.lock = new ReentrantLock();
         CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
@@ -504,54 +581,10 @@ public class AsmPeakDetection {
             this.log.error("analysis interrupted");
         } finally {
             this.statisticForTest = null;
-            threadPoolExecutor = null;
+            threadPoolExecutor.shutdown();
             this.lock = null;
         }
         this.log.debug("model test complete");
-    }
-
-    /**
-     * calculate the standard deviation of LOR of all SNV sites covered by m6A signals on genome
-     * @return LOR Std
-     */
-    private double calcLorStd() {
-        ArrayList<Double> lorList = new ArrayList<>();
-        int[] majorCount, minorCount, majorBackground, minorBackground;
-        double lor, cum = 0;
-        for (String label: this.statisticForTest.keySet()) {
-            ArrayList<int[]> statistic = this.statisticForTest.get(label);
-            majorCount = statistic.get(0);
-            minorCount = statistic.get(1);
-            majorBackground = statistic.get(2);
-            minorBackground = statistic.get(3);
-
-            for (int i=0; i<majorCount.length; i++) {
-                double major = majorCount[i], minor = minorCount[i],
-                        majorBack = majorBackground[i], minorBack = minorBackground[i];
-                if ((minor - 0) < 0.00001)
-                    minor = 0.1;
-                if ((minorBack - 0) < 0.00001) {
-                    majorBack = (major + minor) / 2;
-                    minorBack = (major + minor) / 2;
-                }
-
-                lor = (major / minor) / (majorBack / minorBack);
-                lor = Math.log(lor);
-                lorList.add(lor);
-                cum += lor;
-            }
-        }
-        double lorMean = cum / lorList.size();
-        double variance = 0.0;
-        for (Double val: lorList) {
-            variance += Math.pow((val - lorMean), 2);
-        }
-
-        double lorStd = Math.sqrt(variance / lorList.size());
-        lorList.clear();
-
-        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        return lorStd + 0.0001;
     }
 
     /**
@@ -715,7 +748,7 @@ public class AsmPeakDetection {
         return res;
     }
 
-    private void parseGTFFile() {
+    public void parseGTFFile() {
         BufferedReader bfr = null;
         this.geneNames = new HashMap<>();
         try {
