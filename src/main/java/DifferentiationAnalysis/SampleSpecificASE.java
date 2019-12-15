@@ -23,6 +23,7 @@ public class SampleSpecificASE {
     private HashMap<String, HashMap<Integer, String[]>> sample1GeneAlleleReads, sample2GeneAlleleReads;
     private AseGeneDetection sample1GeneDetector, sample2GeneDetector;
     private HashMap<String, int[][]> statisticForTest;
+    private HashMap<String, int[]> geneTotalReads;
     private HashMap<String, Integer> genesSNVs;
     private HashMap<String, Double> geneMajorAlleleFrequency;
     private HashMap<Double, ArrayList<String>> geneSampleSpecificPValue;
@@ -316,6 +317,7 @@ public class SampleSpecificASE {
         this.geneSampleSpecificPValue = new HashMap<>();
         this.genesSNVs = new HashMap<>();
         this.geneMajorAlleleFrequency = new HashMap<>();
+        this.geneTotalReads = new HashMap<>();
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
 
@@ -324,8 +326,21 @@ public class SampleSpecificASE {
                 int[][] geneReads = this.statisticForTest.get(label);
                 int[] sample1MajorReads = geneReads[0], sample1MinorReads = geneReads[1],
                         sample2MajorReads = geneReads[2], sample2MinorReads = geneReads[3];
-                HierarchicalBayesianModel hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
-                        this.samplingTime, this.burnIn, sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
+                int sample1Major = Arrays.stream(sample1MajorReads).reduce((x, y) -> x+y).getAsInt();
+                int sample1Minor = Arrays.stream(sample1MinorReads).reduce((x, y) -> x+y).getAsInt();
+                int sample2Major = Arrays.stream(sample2MajorReads).reduce((x, y) -> x+y).getAsInt();
+                int sample2Minor = Arrays.stream(sample2MinorReads).reduce((x, y) -> x+y).getAsInt();
+                this.geneTotalReads.put(label, new int[] {sample1Major, sample1Minor, sample2Major, sample2Minor});
+
+                HierarchicalBayesianModel hb;
+
+                if (sample1Minor==0 && sample2Minor==0) // gene shows ASE in two samples simultaneously
+                    hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
+                        this.samplingTime, this.burnIn, sample1MajorReads, sample1MajorReads, sample2MajorReads, sample2MajorReads);
+                else
+                    hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
+                            this.samplingTime, this.burnIn, sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
+
                 double p = hb.testSignificant();
                 double oddRatio = Math.exp(hb.quantifyGeneLOR());
                 double geneMAF = Math.min(1.0, oddRatio / (oddRatio+1));
@@ -432,6 +447,7 @@ public class SampleSpecificASE {
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.outputFile))));
             String line, label, geneId, geneName, majorAlleleRecord, pVal, qVal;
             String[] info;
+            int[] readsCount;
             int snvNum, sample1MajorCount, sample1MinorCount, sample2MajorCount, sample2MinorCount;
             bfw.write("#geneId\tgeneName\tp-value\tq-value\tsnvNum\tsample1Major/minorAlleleReads\tsample2Major/minorAlleleReads\tmajorAlleleNC\n");
 
@@ -443,10 +459,11 @@ public class SampleSpecificASE {
                 qVal = info[3];
                 label = String.join("->", new String[]{geneId, geneName});
 
-                sample1MajorCount = Arrays.stream(this.statisticForTest.get(label)[0]).reduce((x, y) -> x+y).getAsInt();
-                sample1MinorCount = Arrays.stream(this.statisticForTest.get(label)[1]).reduce((x, y) -> x+y).getAsInt();
-                sample2MajorCount = Arrays.stream(this.statisticForTest.get(label)[2]).reduce((x, y) -> x+y).getAsInt();
-                sample2MinorCount = Arrays.stream(this.statisticForTest.get(label)[3]).reduce((x, y) -> x+y).getAsInt();
+                readsCount = this.geneTotalReads.get(label);
+                sample1MajorCount = readsCount[0];
+                sample1MinorCount = readsCount[1];
+                sample2MajorCount = readsCount[2];
+                sample2MinorCount = readsCount[3];
                 majorAlleleRecord = this.geneMajorNucleotide.get(label);
                 snvNum = this.genesSNVs.get(label);
 
@@ -525,7 +542,6 @@ public class SampleSpecificASE {
     }
 
     private void formMajorAlleleRecord(String gene, HashSet<Integer> positions) {
-        ArrayList<String> records = new ArrayList<>();
         List<Integer> sortedPositions = positions.stream().sorted().collect(Collectors.toList());
         ArrayList<String> rec = new ArrayList<>();
         for (Integer pos: sortedPositions) {

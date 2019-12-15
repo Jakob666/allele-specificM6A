@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 
 public class HeterozygoteReadsCount {
+    private int readsCountThreshold;
     private File peakCoveredSNPFile;
     private HashMap<String, LinkedList<String>> peakMajorAlleleNc = new HashMap<>();
     private Logger log;
@@ -14,9 +15,11 @@ public class HeterozygoteReadsCount {
     /**
      * Constructor
      * @param peakCoveredSnpFile file which record peak covered SNV information
+     * @param readsCountThreshold reads count threshold
      * @param log log4j instance
      */
-    public HeterozygoteReadsCount(String peakCoveredSnpFile, Logger log) {
+    public HeterozygoteReadsCount(String peakCoveredSnpFile, int readsCountThreshold, Logger log) {
+        this.readsCountThreshold = readsCountThreshold;
         this.peakCoveredSNPFile = new File(peakCoveredSnpFile);
         this.log = log;
     }
@@ -43,14 +46,16 @@ public class HeterozygoteReadsCount {
                         continue;
                     info = line.split("\t");
                     chr = info[0];
-                    position = info[4];
-                    peakStart = info[5];
-                    peakEnd = info[6];
+                    peakStart = info[1];
+                    peakEnd = info[2];
+                    position = info[3];
                     peakRange = peakStart +":"+peakEnd;
-                    majorNc = info[7];
-                    minorNc = info[8];
-                    majorCount = Integer.parseInt(info[9]);
-                    minorCount = Integer.parseInt(info[10]);
+                    majorNc = info[6];
+                    minorNc = info[7];
+                    majorCount = Integer.parseInt(info[8]);
+                    minorCount = Integer.parseInt(info[9]);
+                    if (majorCount < this.readsCountThreshold)
+                        continue;
 
                     String label = chr+":"+peakRange;
                     LinkedList<String> majorAlleleNcRecords = this.peakMajorAlleleNc.getOrDefault(label, new LinkedList<>());
@@ -79,9 +84,6 @@ public class HeterozygoteReadsCount {
                     e.printStackTrace();
                 }
             }
-            boolean del = this.peakCoveredSNPFile.delete();
-            if (!del)
-                this.log.error("Fail to remove temp file " + this.peakCoveredSNPFile.getAbsolutePath());
         }
 
         return majorMinorHaplotype;

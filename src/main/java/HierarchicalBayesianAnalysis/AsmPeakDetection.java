@@ -19,7 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Test ASM peaks with VCF format file and BED format file
  */
 public class AsmPeakDetection {
-    private String gtfFile, peakBedFile, vcfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
+    private String gtfFile, peakBedFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0, threadNumber;
     private double degreeOfFreedom, lorStd;
     private Logger log;
@@ -59,11 +59,8 @@ public class AsmPeakDetection {
                             int samplingTime, int burnIn, int threadNumber, Logger log) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
-        this.vcfFile = vcfFile;
         this.wesFile = wesFile;
         String outputDir = new File(asmPeakFile).getParent();
-        this.peakCoveredSnpFile = new File(outputDir, "PeakCoveredSNP.txt").getAbsolutePath();
-        this.peakCoveredWesSnpFile = new File(outputDir, "PeakCoveredSNPBackground.txt").getAbsolutePath();
         this.log = log;
         if (dbsnpFile != null) {
             DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, this.log);
@@ -78,12 +75,74 @@ public class AsmPeakDetection {
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.threadNumber = threadNumber;
+
         this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
-        String peakWithSnvFile = new File(new File(asmPeakFile).getParent(), "peak_with_snv.txt").getAbsolutePath();
-        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, peakWithSnvFile, true);
+        this.peakCoveredSnpFile = new File(outputDir, "peak_with_snv.txt").getAbsolutePath();
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile, true);
         pws.locateSnvInPeak();
+        this.log.debug("SNP locations in " + this.peakCoveredSnpFile);
+        this.peakCoveredWesSnpFile = new File(outputDir, "peak_with_snv_bkg.txt").getAbsolutePath();
+        if (wesFile != null) {
+            this.log.debug("locate WES data SNP record in " + vcfFile + " to corresponding m6A signal peaks");
+            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile, true);
+            pws.locateSnvInPeak();
+            this.log.debug("SNP locations in " + this.peakCoveredWesSnpFile);
+        }
         pws = null;
-        this.log.debug("SNP locations in " + peakWithSnvFile);
+        this.snvForTest = new HashMap<>();
+    }
+
+    /**
+     * Constructor
+     * @param gtfFile GTF annotation file
+     * @param peakBedFile BED format file via MeRIP-seq IP data
+     * @param vcfFile VCF format file via MeRIP-seq INPUT data
+     * @param wesFile VCF format file via WES data, optional
+     * @param dbsnpFile dbsnp file for SNP filtering
+     * @param peakWithSnvFile peak contains SNVs
+     * @param asmPeakFile test result output file
+     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
+     * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
+     * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
+     * @param samplingTime sampling time, default 10000
+     * @param burnIn burn in time, default 2000
+     * @param threadNumber hread number, default 2
+     * @param log log4j instance
+     */
+    public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
+                            String peakWithSnvFile, String peakWithSnvBkgFile, String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            int samplingTime, int burnIn, int threadNumber, Logger log) {
+        this.gtfFile = gtfFile;
+        this.peakBedFile = peakBedFile;
+        this.wesFile = wesFile;
+        this.log = log;
+        if (dbsnpFile != null) {
+            DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, this.log);
+            da.parseDbsnpFile();
+            this.dbsnpRecord = da.getDbsnpRecord();
+        } else
+            this.dbsnpRecord = null;
+        this.asmPeakFile = asmPeakFile;
+        this.degreeOfFreedom = degreeOfFreedom;
+        this.ipSNPReadInfimum = ipSNPReadInfimum;
+        this.wesSNPReadInfimum = wesSNPReadInfimum;
+        this.samplingTime = samplingTime;
+        this.burnIn = burnIn;
+        this.threadNumber = threadNumber;
+
+        this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
+        this.peakCoveredSnpFile = peakWithSnvFile;
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile, true);
+        pws.locateSnvInPeak();
+        this.log.debug("SNP locations in " + this.peakCoveredSnpFile);
+        this.peakCoveredWesSnpFile = peakWithSnvBkgFile;
+        if (wesFile != null) {
+            this.log.debug("locate WES data SNP record in " + vcfFile + " to corresponding m6A signal peaks");
+            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile, true);
+            pws.locateSnvInPeak();
+            this.log.debug("SNP locations in " + this.peakCoveredWesSnpFile);
+        }
+        pws = null;
         this.snvForTest = new HashMap<>();
     }
 
@@ -237,8 +296,6 @@ public class AsmPeakDetection {
     public void getTestResult() {
         this.getPeakCoveredGene();
         this.parseGTFFile();
-        this.getPeakCoveredSnpResult();
-        this.getPeakCoveredSnpBackground();
         this.asmPeakTest();
         this.bhRecalibrationOfEachPeak();
         this.outputResult();
@@ -282,44 +339,25 @@ public class AsmPeakDetection {
     }
 
     /**
-     * get m6A signal covered MeRIP-seq INPUT sample SNV sites
-     * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
-     */
-    public void getPeakCoveredSnpResult() {
-        PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.vcfFile, this.peakBedFile,
-                                                             this.peakCoveredSnpFile, this.ipSNPReadInfimum);
-        pcsr.getPeakCoveredSNP();
-    }
-
-    /**
-     * get m6A signal covered WES SNV sites
-     * #chr	SNP strand	position	peakStart	peakEnd	majorAlleleStrand	majorCount	minorCount
-     */
-    public void getPeakCoveredSnpBackground() {
-        if (this.wesFile != null) {
-            PeakCoveredSNPRecord pcsr = new PeakCoveredSNPRecord(this.gtfFile, this.wesFile, this.peakBedFile,
-                                                                 this.peakCoveredWesSnpFile, this.wesSNPReadInfimum);
-            pcsr.getPeakCoveredSNP();
-        }
-    }
-
-    /**
      * get major allele and minor allele nucleotide and reads counts of each MeRIP-seq INPUT sample SNV sites covered by m6A peak
      * [chr1:peakStart:peakEnd -> [position1:majorNC, position2:majorNC],....]
      */
-    private void getPeakSNPReadsCount() {
-        HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.log);
+    public void getPeakSNPReadsCount() {
+        HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.ipSNPReadInfimum, this.log);
         this.peakSnpReadsCount = hrc.getMajorMinorHaplotype();
         this.peakMajorAlleleNucleotide = hrc.getPeakMajorAlleleNucleotides();
     }
 
     /**
      * get major allele and minor allele nucleotide and reads counts of each WES SNV sites covered by m6A peak
-     * @return [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
+     *  [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
      */
-    private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getPeakSNPBackground() {
-        HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredWesSnpFile, this.log);
-        return hrc.getMajorMinorHaplotype();
+    private void getPeakSNPBackground() {
+        if (this.wesFile != null) {
+            HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredWesSnpFile, this.wesSNPReadInfimum, this.log);
+            this.peakSnpBackground = hrc.getMajorMinorHaplotype();
+        } else
+            this.peakSnpBackground = null;
     }
 
     /**
@@ -328,10 +366,7 @@ public class AsmPeakDetection {
     public void asmPeakTest() {
         // [chr1: [peak1: position1: [major: count, minor: count], position2:[major: count, minor:count]], chr2:....]
         this.getPeakSNPReadsCount();
-        if (this.wesFile != null)
-            this.peakSnpBackground = this.getPeakSNPBackground();
-        else
-            this.peakSnpBackground = null;
+        this.getPeakSNPBackground();
         this.dataPreparation();
         this.calcLorStd();
         this.hierarchicalModelTest();
@@ -349,7 +384,7 @@ public class AsmPeakDetection {
         String majorAllele, minorAllele, label;
         ArrayList<Integer> rnaSeqMajor, rnaSeqMinor, wesMajor, wesMinor;
 
-        this.log.debug("calculate LOR for peaks to be tested");
+
         for (String chrNum : this.peakSnpReadsCount.keySet()) {
             // m6A signal on a particular chromosome
             rnaSeqPeakSnvAlleleReads = this.peakSnpReadsCount.get(chrNum);
