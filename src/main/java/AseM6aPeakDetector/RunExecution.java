@@ -1,6 +1,8 @@
 package AseM6aPeakDetector;
 
 import AseSeqSimulator.AseSeqSimulator;
+import DifferentiationAnalysis.SampleSpecificASE;
+import DifferentiationAnalysis.SampleSpecificASM;
 import HierarchicalBayesianAnalysis.AseGeneDetection;
 import HierarchicalBayesianAnalysis.AsmPeakDetection;
 
@@ -13,9 +15,11 @@ public class RunExecution {
         String packageUsage = "renlabm6a_allele.jar provides the following tools: \n" +
                 "usage: java -jar renlabm6a_allele.jar [AseGeneDetection] [AseSeqSimulator] [AsmPeakDetection] [-h]\n" +
                 "renlabm6a_allele.jar provides the following tools:\n" +
-                " AseGeneDetection   detect allele-specific expression genes in test data\n" +
+                " AseGeneDetection   detect allele-specific expression (ASE) genes (one sample test)\n" +
+                " AsmPeakDetection   detect allele-specific modification (ASM) m6A signals  (one sample test)\n" +
+                " SampleSpecificASE  detect sample-specific ASE genes  (two sample test)\n" +
+                " SampleSpecificASM  detect sample-specific ASM m6A signals  (two sample test)\n" +
                 " AseSeqSimulator    generate simulation data for test\n" +
-                " AsmPeakDetection   detect allele-specific modification m6A signals in test data\n" +
                 " -h,--help          show help message and exit program\n" +
                 " -v,--version       release version\n\n" + version;
 
@@ -33,8 +37,12 @@ public class RunExecution {
             runMode = 1;
         else if (argsArr.contains("AsmPeakDetection"))
             runMode = 2;
-        else if (argsArr.contains("AseSeqSimulator"))
+        if (argsArr.contains("SampleSpecificASE"))
             runMode = 3;
+        else if (argsArr.contains("SampleSpecificASM"))
+            runMode = 4;
+        else if (argsArr.contains("AseSeqSimulator"))
+            runMode = 5;
         else if (argsArr.contains("-h") | argsArr.contains("--help")) {
             System.out.println(packageUsage);
             System.exit(0);
@@ -50,14 +58,13 @@ public class RunExecution {
     }
 
     private static boolean checkArguments(ArrayList<String> list) {
-        int[] useTools = new int[3];
+        int[] useTools = new int[5];
         useTools[0] = list.contains("AseGeneDetection")? 1: 0;
         useTools[1] = list.contains("AsmPeakDetection")? 1: 0;
-        useTools[2] = list.contains("AseSeqSimulator")? 1: 0;
-        int tools = 0;
-        for (int i: useTools) {
-            tools += i;
-        }
+        useTools[2] = list.contains("SampleSpecificASE")? 1: 0;
+        useTools[3] = list.contains("SampleSpecificASM")? 1: 0;
+        useTools[4] = list.contains("AseSeqSimulator")? 1: 0;
+        int tools = Arrays.stream(useTools).reduce((x, y) -> x+y).getAsInt();
 
         return tools <= 1;
     }
@@ -70,6 +77,12 @@ public class RunExecution {
         } else if (runMode == 2) {
             arr = delRedundantOption(args, "AsmPeakDetection");
             AsmPeakDetection.main(arr);
+        } else if (runMode == 3) {
+            arr = delRedundantOption(args, "SampleSpecificASE");
+            SampleSpecificASE.main(arr);
+        } else if (runMode == 4) {
+            arr = delRedundantOption(args, "SampleSpecificASM");
+            SampleSpecificASM.main(arr);
         } else {
             arr = delRedundantOption(args, "AseSeqSimulator");
             AseSeqSimulator.main(arr);

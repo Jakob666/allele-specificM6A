@@ -221,8 +221,8 @@ public class AseGeneDetection {
 
         if (commandLine.hasOption("rc"))
             readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
-        if (commandLine.hasOption("wc"))
-            wesCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("wc"));
+        if (commandLine.hasOption("bc"))
+            wesCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("bc"));
         if (commandLine.hasOption("s"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
         if (commandLine.hasOption("b"))
@@ -445,13 +445,11 @@ public class AseGeneDetection {
                 double major = majorCount[i], minor = minorCount[i],
                        majorBack = majorBackground[i], minorBack = minorBackground[i];
                 if ((minor - 0) < 0.00001)
-                    minor = 0.1;
-                if ((minorBack - 0) < 0.00001) {
-                    majorBack = (major + minor) / 2;
-                    minorBack = (major + minor) / 2;
-                }
+                    minor = 0.5;
 
-                lor = (major / minor) / (majorBack / minorBack);
+                // WES SNVs only used for annotating RNA-seq SNVs. Because of the alignment error, background reads count do not take part in LOR Std calculation
+                // we assume the odd ratio of background major and minor reads equals 1
+                lor = (major / minor); //  (majorBack / minorBack)
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -468,26 +466,6 @@ public class AseGeneDetection {
 
         // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
         this.lorStd = (Math.abs(this.lorStd-0) < 0.00001)? 0.0001: this.lorStd;
-    }
-
-    /**
-     * Deprecated!
-     * @param wesRecord Deprecated!
-     * @param majorNC Deprecated!
-     * @param minorNC Deprecated!
-     * @return Deprecated!
-     */
-    private int[] getWesReads(String[] wesRecord, String majorNC, String minorNC) {
-        int[] res = null;
-        HashMap<String, Integer> wesNC = new HashMap<>();
-        for (String nc: wesRecord) {
-            wesNC.put(nc.split(":")[0], Integer.parseInt(nc.split(":")[1]));
-        }
-        if (wesNC.keySet().contains(majorNC) && wesNC.keySet().contains(minorNC))
-            res = new int[] {wesNC.get(majorNC), wesNC.get(minorNC)};
-        wesNC.clear();
-
-        return res;
     }
 
     /**
@@ -665,11 +643,11 @@ public class AseGeneDetection {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("vcf", "vcf_file", true, "sample SNP calling result VCF file");
+        Option option = new Option("vcf", "vcf_file", true, "VCF format file generate by RNA-seq or MeRIP-seq data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wes", "wes_vcf_file", true, "WES data SNP calling VCF format file");
+        option = new Option("wes", "wes_vcf_file", true, "VCF format file generate by WES data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
@@ -677,7 +655,7 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "dbsnp file for filtering SNP site");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
         option.setRequired(false);
         options.addOption(option);
 
@@ -689,11 +667,11 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "RNA-seq coverage threshold using for filter SNV records, default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wc", "wes_coverage", true, "WES coverage threshold using for filter SNV records, default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
         option.setRequired(false);
         options.addOption(option);
 
@@ -705,7 +683,7 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "Thread number. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Default 2");
         option.setRequired(false);
         options.addOption(option);
 

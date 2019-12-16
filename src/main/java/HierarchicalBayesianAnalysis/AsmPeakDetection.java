@@ -167,8 +167,7 @@ public class AsmPeakDetection {
         }
 
         // default parameters
-        String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir,
-               peakCoveredSnpFile, peakCoveredSnpBackgroundFile;
+        String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
         int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000, threadNumber = 2;
         double degreeOfFreedom = 10;
 
@@ -253,8 +252,8 @@ public class AsmPeakDetection {
         }
         if (commandLine.hasOption("rc"))
             ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
-        if (commandLine.hasOption("wc"))
-            wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("wc"));
+        if (commandLine.hasOption("bc"))
+            wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("bc"));
         if (commandLine.hasOption("t")) {
             if (Integer.valueOf(commandLine.getOptionValue("t")) < 0) {
                 System.err.println("invalid thread number, should be a positive integer");
@@ -269,24 +268,12 @@ public class AsmPeakDetection {
         apd.getTestResult();
     }
 
-    public HashMap<String, HashMap<String, Integer>> getPeakMajorMinorAlleleCount() {
-        return this.peakMajorMinorAlleleCount;
-    }
-
     public HashMap<String, String> getPeakCoveredGenes() {
         return this.peakCoveredGene;
     }
 
     public HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> getPeakSnpReadsCount() {
         return this.peakSnpReadsCount;
-    }
-
-    public HashMap<String, LinkedList<String>> getPeakMajorAlleleNucleotide() {
-        return this.peakMajorAlleleNucleotide;
-    }
-
-    public HashMap<String, ArrayList<int[]>> getStatisticForTest() {
-        return this.statisticForTest;
     }
 
     public HashMap<String, HashSet<Integer>> getSnvForTest() {
@@ -536,13 +523,11 @@ public class AsmPeakDetection {
                 double major = majorCount[i], minor = minorCount[i],
                         majorBack = majorBackground[i], minorBack = minorBackground[i];
                 if ((minor - 0) < 0.00001)
-                    minor = 0.1;
-                if ((minorBack - 0) < 0.00001) {
-                    majorBack = (major + minor) / 2;
-                    minorBack = (major + minor) / 2;
-                }
+                    minor = 0.5;
 
-                lor = (major / minor) / (majorBack / minorBack);
+                // WES SNVs only used for annotating RNA-seq SNVs. Because of the alignment error, background reads count do not take part in LOR Std calculation
+                // we assume the odd ratio of background major and minor reads equals 1
+                lor = (major / minor);  // (majorBack / minorBack);
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -647,6 +632,7 @@ public class AsmPeakDetection {
             HashMap<String, Integer> samePValPeaksSNVs = new HashMap<>();
             for (String peak: samePValPeaks)
                 samePValPeaksSNVs.put(peak, this.peakSNVNum.get(peak));
+
             // sort items with its major allele frequency when p value and SNV numbers are same
             HashMap<String, Double> samePValPeakMajorAlleleFrequency = new HashMap<>();
             for (String peak: samePValPeaks)
@@ -868,11 +854,11 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "dbsnp file for SNP filtering");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "output", true, "ASM peak test output file, default ./asmPeak.txt");
+        option = new Option("o", "output", true, "ASM m6A signal test output file, default ./asmPeak.txt");
         option.setRequired(false);
         options.addOption(option);
 
@@ -880,11 +866,11 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "INPUT sample SNP site coverage infimum, default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wc", "wes_coverage", true, "WES sample SNP site coverage infimum, default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
         option.setRequired(false);
         options.addOption(option);
 
@@ -896,7 +882,7 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "Thread number. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Default 2");
         option.setRequired(false);
         options.addOption(option);
 

@@ -1,8 +1,8 @@
 # Renlab.m6A_allele 1.0
 
 ## HARDWARE/SOFTWARE REQUIREMENTS
-* Java 1.8
-* 64 bit Linux
+* Java 1.8+
+* Windows / Linux / Mac OS
 
 ## INSTALLATION
 * clone the repo,
@@ -16,7 +16,107 @@ cd ./allele-specificM6A
 make sure the directory contains `renlabm6a_allele.jar`.
 
 ## USAGE
-### 1. Allele-specific expression (ASE) gene detection
+### Overview
+#### Tools Introduction
+renlabm6a_allele.jar provides the following tools:
+
+Tool | Function
+---|---
+AseGeneDetection|detect allele-specific expression (ASE) genes (one sample test)
+AsmPeakDetection|detect allele-specific modification (ASM) m6A signals  (one sample test)
+SampleSpecificASE|detect sample-specific ASE genes  (two sample test)
+SampleSpecificASM|detect sample-specific ASM m6A signals  (two sample test)
+AseSeqSimulator|generate simulation data for test
+
+#### parameters description
+1. **AseGeneDetection**
+   - `-vcf/--vcf_file` : required, VCF format file generate by RNA-seq or MeRIP-seq data SNP calling process
+   - `-wes/--wes_vcf_file` : optional, VCF format file generate by WES data SNP calling process
+   - `-g/--gtf` : required, GTF annotation file
+   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
+   - `-o/--output` : optional, ASE gene test output file, default `./aseGene.txt`
+   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
+   - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
+   - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-t/--thread` : optional, thread number for running test. Default 2
+   - `-h/--help` : help message of AseGeneDetection
+
+2. **AsmPeakDetection**
+   - `-bed/--peak_bed_file` : required, peak calling output result in BED format
+   - `-vcf/--vcf_file` : required, VCF format file generate by RNA-seq or MeRIP-seq data SNP calling process
+   - `-wes/--wes_vcf_file` : optional, VCF format file generate by WES data SNP calling process
+   - `-g/--gtf` : required, GTF annotation file
+   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
+   - `-o/--output` : optional, ASM m6A signal test output file, default `./asmPeak.txt`
+   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
+   - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
+   - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-t/--thread` : optional, thread number for running test. Default 2
+   - `-h/--help` : help message of AsmPeakDetection
+
+3. **SampleSpecificASE**
+   - `-s1_vcf/--sample1_vcf_file` : required, VCF format file generate by sample1 RNA-seq or MeRIP-seq data SNP calling process
+   - `-s2_vcf/--sample2_vcf_file` : required, VCF format file generate by sample2 RNA-seq or MeRIP-seq data SNP calling process
+   - `-s1_wes/--sample1_wes_vcf_file` : optional, VCF format file generate by sample1 WES data SNP calling process
+   - `-s2_wes/--sample2_wes_vcf_file` : optional, VCF format file generate by sample2 WES data SNP calling process
+   - `-g/--gtf` : required, GTF annotation file
+   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
+   - `-o/--output` : optional, ASE gene test output file, default `./sampleSpecificASE.txt`
+   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
+   - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
+   - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-t/--thread` : optional, thread number for running test. Default 2
+   - `-h/--help` : help message of SampleSpecificASE
+4. **SampleSpecificASM**
+   - `-s1_bed/--sample1_bed_file` : required, sample1 peak calling output result in BED format
+   - `-s2_bed/--sample2_bed_file` : required, sample2 peak calling output result in BED format
+   - `-s1_vcf/--sample1_vcf_file` : required, VCF format file generate by sample1 RNA-seq or MeRIP-seq data SNP calling process
+   - `-s2_vcf/--sample2_vcf_file` : required, VCF format file generate by sample2 RNA-seq or MeRIP-seq data SNP calling process
+   - `-s1_wes/--sample1_wes_vcf_file` : optional, VCF format file generate by sample1 WES data SNP calling process
+   - `-s2_wes/--sample2_wes_vcf_file` : optional, VCF format file generate by sample2 WES data SNP calling process
+   - `-g/--gtf` : required, GTF annotation file
+   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
+   - `-o/--output` : optional, ASE gene test output file, default `./sampleSpecificASM.txt`
+   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
+   - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
+   - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-t/--thread` : optional, thread number for running test. Default 2
+   - `-h/--help` : help message of SampleSpecificASM
+
+5. **AseSeqSimulator**
+   - `-g/--gtf` : required, GTF annotation file
+   - `-t/--twobit` : required, UCSC 2bit format file
+   - `-v/--vcf_file` : optional, vcf file path used for generate SNP, default null
+   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
+   - `-o/--output` : optional, simulate data output directory, default `./AseSeqRead`
+   - `-ls/--library_size` : optional, cDNA library size, default 1000000
+   - `-rl/--read_length` : optional, sequencing reads length, default 75
+   - `-pl/--peak_length` : optional, m6A signal peak length, default 250
+   - `-pn/--peakNum` : optional, maximum m6A signal number on a gene, default -1 (no restrict two this parameter)
+   - `-min_mut/--minimum_mutation` : optional, minimum mutation sites number on fragment under a m6A signal, default 0
+   - `-max_mut/--maximum_mutation` : optional, maximum mutation sites number on fragment under a m6A signal, default 3
+   - `-min_cover/--minimum_coverage` : optional, minimum reads coverage when generate RNA-seq data, default 10
+   - `-max_cover/--maximum_coverage` : optional, maximum reads coverage when generate RNA-seq data, default 70
+   - `-al/--ase_infimum` : optional, ASE ratio infimum, default 0.55
+   - `-ah/--ase_supremum` : optional, ASE ratio supremum, default 0.85
+   - `-fm/--fragment_mean` : optional, mean length of fragments, default 250
+   - `-ft/--fragment_theta` : optional, standard deviation of fragment length, default 25
+   - `-gp/--gene_proportion` : optional, the proportion of genes selected in the total number of genes on a particular chromosome, default 0.2
+   - `-mp/--mutate_proportion` : optional, the proportion of mutated genes in the total number of selected genes on a particular chromosome, default 0.4
+   - `-ol/--overlap` : optional, if the random select gene overlapped with each other, default false
+   - `-se/--single_end` : optional, if true, single-end reads, otherwise pair-end. Default true
+   - `-pe/--pcr_error` : optional, probability of PCR sequencing error, default 0.005
+   - `-h/--help` : help message of AseSeqSimulator
+
+### 1. Allele-specific expression (ASE) gene detection (one sample test)
 **data dependency**:
 1. VCF format file generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
 2. VCF format file generate by SNV calling process of `WES data`(optional)
@@ -61,7 +161,7 @@ java -jar ./renlabm6a_allele.jar AseGeneDetection
 ```
 
 
-### 2. Allele-specific modification (ASM) m6A signal detection 
+### 2. Allele-specific modification (ASM) m6A signal detection (one sample test)
 **data dependency**:
 1. GTF format file
 2. VCF format file generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
@@ -77,7 +177,7 @@ suppose here exists files below:
 4. VCF format file generate by DNA data `/path/to/wes_filtered.vcf`
 5. large-scale SNV data set, dbSNP, in VCF format `/path/to/dbsnp.vcf`
 
-* detect ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
+* detect ASM m6A signal only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
 ```
 # command
 java -jar ./renlabm6a_allele.jar AsmPeakDetection 
@@ -87,7 +187,7 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -o /path/to/output_file 
      -t 6
 ```
-* detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
+* detect ASM m6A signal by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
 ```
 # command
 java -jar ./renlabm6a_allele.jar AsmPeakDetection 
@@ -98,7 +198,7 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -o /path/to/output_file
      -t 6
 ```
-* detect ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
+* detect ASM m6A signal by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
 ```
 # command
 java -jar ./renlabm6a_allele.jar AsmPeakDetection 
@@ -109,7 +209,112 @@ java -jar ./renlabm6a_allele.jar AsmPeakDetection
      -o /path/to/output_file
      -t 6
 ```
-### 3. Simulated data generation
+
+### 3. Sample-specific ASE gene detection (two sample test)
+**data dependency**:
+1. paired sample VCF format files generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
+2. paired sample VCF format files generate by SNV calling process of `WES data`(optional)
+3. GTF file (required)
+4. Big scale SNV annotation data set, like dbsnp, 1000Genome etc. (optional, the format of the file is described below). If `WES data` is supported, this parameter will be **ignore**.
+
+**examples**:\
+suppose here exists files below:
+1. human genome GTF file `/path/to/Homo_sapiens.GRCh38.93.chr.gtf`
+2. paired sample VCF format files generate by RNA data `/path/to/sample1_rna_filtered.vcf` & `/path/to/sample2_rna_filtered.vcf`
+3. paired sample VCF format files generate by WES data `/path/to/sample1_wes_filtered.vcf` & `/path/to/sample2_wes_filtered.vcf`
+4. large-scale SNV data set, dbSNP, in VCF format `/path/to/dbsnp.vcf`
+
+* detect sample-specific ASE gene only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASE 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf
+     -o /path/to/output_file 
+     -t 6
+```
+* detect sample-specific ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASE 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf
+     -s1_wes /path/to/sample1_wes_filtered.vcf
+     -s2_wes /path/to/sample2_wes_filtered.vcf
+     -o /path/to/output_file 
+     -t 6
+```
+* detect sample-specific ASE gene by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASE 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf
+     -db /path/to/dbsnp.vcf
+     -o /path/to/output_file 
+     -t 6
+```
+
+### 4. Sample-specific ASM m6A signal detection (two sample test)
+**data dependency**:
+1. GTF format file
+2. paired sample VCF format files generate by SNV calling process of `RNA-seq data` or `MeRIP-seq INPUT data` (required, the format of the file is described below)
+3. paired sample BED format peak calling results generate by `MeRIP-seq data` (required, the format of the file is described below)
+4. paired sample VCF format files generate by SNV calling process of `WES data`(optional)
+5. large-scale SNV annotation data set, like dbsnp, 1000Genome etc. (optional, the format of the file is described below). If `WES data` is supported, this parameter will be **ignore**.
+
+**examples**:\
+suppose here exists files below:
+1. human genome GTF file `/path/to/Homo_sapiens.GRCh38.93.chr.gtf`
+2. paired sample VCF format files generate by RNA data `/path/to/sample1_rna_filtered.vcf` & `/path/to/sample2_rna_filtered.vcf`
+3. paired sample BED format files generate by peak calling process `/path/to/sample1_peak.bed` & `/path/to/sample2_peak.bed`
+4. paired sample VCF format files generate by WES data `/path/to/sample1_wes_filtered.vcf` & `/path/to/sample2_wes_filtered.vcf`
+5. large-scale SNV data set, dbSNP, in VCF format `/path/to/dbsnp.vcf`
+
+* detect sample-specific ASM m6A signal only by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT`
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASM 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_bed /path/to/sample1_peak.bed
+     -s2_bed /path/to/sample2_peak.bed 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf 
+     -o /path/to/output_file 
+     -t 6
+```
+* detect sample-specific ASM m6A signal by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and `WES`
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASM 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_bed /path/to/sample1_peak.bed
+     -s2_bed /path/to/sample2_peak.bed 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf
+     -s1_wes /path/to/sample1_wes_filtered.vcf
+     -s2_wes /path/to/sample2_wes_filtered.vcf
+     -o /path/to/output_file
+     -t 6
+```
+* detect sample-specific ASM m6A signal by using VCF data generate by `RNA-seq` or `MeRIP-seq INPUT` and large-scale SNV data set
+```
+# command
+java -jar ./renlabm6a_allele.jar SampleSpecificASM 
+     -g /path/to/Homo_sapiens.GRCh38.93.chr.gtf 
+     -s1_bed /path/to/sample1_peak.bed
+     -s2_bed /path/to/sample2_peak.bed 
+     -s1_vcf /path/to/sample1_rna_filtered.vcf 
+     -s2_vcf /path/to/sample2_rna_filtered.vcf
+     -db /path/to/dbsnp.vcf
+     -o /path/to/output_file
+     -t 6
+```
+
+### 5. Simulated data generation
 generate simulated data for test,
 **data dependency**:
 1. GTF format file (required)

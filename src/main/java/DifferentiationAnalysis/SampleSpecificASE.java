@@ -91,7 +91,7 @@ public class SampleSpecificASE {
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
-            outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
+            outputFile = new File(System.getProperty("user.dir"), "sampleSpecificASE.txt").getAbsolutePath();
         else
             outputFile = commandLine.getOptionValue("o");
         outputDir = new File(outputFile).getParent();
@@ -165,8 +165,8 @@ public class SampleSpecificASE {
 
         if (commandLine.hasOption("rc"))
             readsCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("rc"));
-        if (commandLine.hasOption("wc"))
-            wesCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("wc"));
+        if (commandLine.hasOption("bc"))
+            wesCoverageThreshold = Integer.valueOf(commandLine.getOptionValue("bc"));
         if (commandLine.hasOption("s"))
             samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
         if (commandLine.hasOption("b"))
@@ -283,13 +283,18 @@ public class SampleSpecificASE {
             for (int i=0; i<sample1MajorCount.length; i++) {
                 double sample1Major = sample1MajorCount[i], sample1Minor = sample1MinorCount[i],
                         sample2Major = sample2MajorCount[i], sample2Minor = sample2MinorCount[i];
-                if ((sample1Minor - 0) < 0.00001)
-                    sample1Minor = 0.1;
 
-                if ((sample2Minor - 0) < 0.00001)
-                    sample2Minor = 0.1;
+                if ((sample1Minor - 0) < 0.00001 && (sample2Minor - 0) < 0.00001)
+                    lor = 1;
+                else {
+                    if ((sample1Minor - 0) < 0.00001)
+                        sample1Minor = 0.5;
 
-                lor = (sample1Major / sample1Minor) / (sample2Major / sample2Minor);
+                    if ((sample2Minor - 0) < 0.00001)
+                        sample2Minor = 0.5;
+                    lor = (sample1Major / sample1Minor) / (sample2Major / sample2Minor);
+                }
+
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -481,16 +486,12 @@ public class SampleSpecificASE {
                     Double q1 = Double.parseDouble(data1[3]), q2 = Double.parseDouble(data2[3]);
                     if (!q1.equals(q2))
                         return q1.compareTo(q2);
+                    Double p1 = Double.parseDouble(data1[2]), p2 = Double.parseDouble(data2[2]);
+                    if (!p1.equals(p2))
+                        return p1.compareTo(p2);
                     // sort gene records with SNV numbers if has same q value
                     Integer snvCount1 = Integer.parseInt(data1[4]), snvCount2 = Integer.parseInt(data2[4]);
-                    if (snvCount1 - snvCount2 != 0)
-                        return snvCount2.compareTo(snvCount1);
-                    // sort gene records with MAF if has same q value
-                    Integer majorCount1 = Integer.parseInt(data1[5]), minorCount1 = Integer.parseInt(data1[6]),
-                            majorCount2 = Integer.parseInt(data2[5]), minorCount2 = Integer.parseInt(data2[6]);
-                    Double maf1 = (double) majorCount1 / (double)(majorCount1 + minorCount1),
-                            maf2 = (double) majorCount2 / (double) (majorCount2 + minorCount2);
-                    return maf2.compareTo(maf1);
+                    return snvCount2.compareTo(snvCount1);
                 }
             });
             for (Map.Entry<String, String[]> rec: records) {
@@ -558,19 +559,19 @@ public class SampleSpecificASE {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "sample1 SNP calling result VCF file");
+        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "VCF format file generate by sample1 RNA-seq or MeRIP-seq data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "sample1 WES data SNP calling VCF format file");
+        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "VCF format file generate by sample1 WES data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_vcf", "sample2_vcf_file", true, "sample2 SNP calling result VCF file");
+        option = new Option("s2_vcf", "sample2_vcf_file", true, "VCF format file generate by sample2 RNA-seq or MeRIP-seq data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "sample2 WES data SNP calling VCF format file");
+        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "VCF format file generate by sample2 WES data SNP calling process");
         option.setRequired(false);
         options.addOption(option);
 
@@ -578,7 +579,7 @@ public class SampleSpecificASE {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "dbsnp file for filtering SNP site");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
         option.setRequired(false);
         options.addOption(option);
 
@@ -590,11 +591,11 @@ public class SampleSpecificASE {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "RNA-seq coverage threshold using for filter SNV records, default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wc", "wes_coverage", true, "WES coverage threshold using for filter SNV records, default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
         option.setRequired(false);
         options.addOption(option);
 
@@ -606,11 +607,11 @@ public class SampleSpecificASE {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "Thread number. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Default 2");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("h", "help", false, "help message of AseGeneDetection");
+        option = new Option("h", "help", false, "help message of SampleSpecificASE");
         option.setRequired(false);
         options.addOption(option);
 

@@ -2,6 +2,7 @@ package DifferentiationAnalysis;
 
 import HierarchicalBayesianAnalysis.AsmPeakDetection;
 import HierarchicalBayesianAnalysis.HierarchicalBayesianModel;
+import org.apache.commons.cli.*;
 import org.apache.log4j.Logger;
 
 import java.io.*;
@@ -74,6 +75,165 @@ public class SampleSpecificASM {
         peakWithSnvBkgFile = new File(new File(outputFile).getParent(), "sample2_peak_with_snv_bkg.txt").getAbsolutePath();
         this.sample2AsmPeakDetector = new AsmPeakDetection(gtfFile, sample2PeakBedFile, sample2VcfFile, sample2WesFile, dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile, degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, threadNumber, logger);
         this.parseGTFFile(gtfFile);
+    }
+
+    public static void main(String[] args) {
+        Options options = new Options();
+        CommandLine commandLine = null;
+        HelpFormatter help = new HelpFormatter();
+        String header = "SampleSpecificASM contains following parameters: ";
+        String footer = "";
+
+        try {
+            commandLine = setCommandLine(args, options);
+        } catch (ParseException pe) {
+            System.err.println(pe.getMessage());
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        }
+
+        if (commandLine.hasOption("h")) {
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(0);
+        }
+
+        // default parameters
+        String gtfFile = null, sample1BedFile = null, sample2BedFile = null, sample1AseVcfFile = null, sample2AseVcfFile = null,
+               sample1WesVcfFile = null, sample2WesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000, threadNumber = 2;
+        double degreeOfFreedom = 10;
+
+        if (!commandLine.hasOption("o"))
+            outputFile = new File(System.getProperty("user.dir"), "sampleSpecificASM.txt").getAbsolutePath();
+        else
+            outputFile = commandLine.getOptionValue("o");
+
+        outputDir = new File(outputFile).getParent();
+        Logger logger = initLog(outputDir);
+
+        if (!commandLine.hasOption("s1_bed")) {
+            logger.error("sample1 Peak calling BED format file can not be empty");
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        } else {
+            File bed = new File(commandLine.getOptionValue("s1_bed"));
+            if (!bed.exists() || !bed.isFile()) {
+                logger.error("invalid BED format file path: " + bed.getAbsolutePath());
+                System.exit(2);
+            }
+            sample1BedFile = bed.getAbsolutePath();
+        }
+
+        if (!commandLine.hasOption("s2_bed")) {
+            logger.error("sample2 Peak calling BED format file can not be empty");
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        } else {
+            File bed = new File(commandLine.getOptionValue("s2_bed"));
+            if (!bed.exists() || !bed.isFile()) {
+                logger.error("invalid BED format file path: " + bed.getAbsolutePath());
+                System.exit(2);
+            }
+            sample2BedFile = bed.getAbsolutePath();
+        }
+
+        if (!commandLine.hasOption("s1_vcf")) {
+            logger.error("sample1 SNP calling VCF format file can not be empty");
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        } else {
+            File vcf = new File(commandLine.getOptionValue("s1_vcf"));
+            if (!vcf.exists() || !vcf.isFile()) {
+                logger.error("invalid file path: " + vcf.getAbsolutePath());
+                System.exit(2);
+            }
+            sample1AseVcfFile = vcf.getAbsolutePath();
+        }
+
+        if (!commandLine.hasOption("s2_vcf")) {
+            logger.error("sample2 SNP calling VCF format file can not be empty");
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        } else {
+            File vcf = new File(commandLine.getOptionValue("s2_vcf"));
+            if (!vcf.exists() || !vcf.isFile()) {
+                logger.error("invalid file path: " + vcf.getAbsolutePath());
+                System.exit(2);
+            }
+            sample2AseVcfFile = vcf.getAbsolutePath();
+        }
+
+        if (commandLine.hasOption("s1_wes")) {
+            File vcf = new File(commandLine.getOptionValue("s1_wes"));
+            if (!vcf.exists() || !vcf.isFile()) {
+                logger.error("invalid file path: " + vcf.getAbsolutePath());
+                System.exit(2);
+            }
+            sample1WesVcfFile = vcf.getAbsolutePath();
+        }
+
+        if (commandLine.hasOption("s2_wes")) {
+            File vcf = new File(commandLine.getOptionValue("s2_wes"));
+            if (!vcf.exists() || !vcf.isFile()) {
+                logger.error("invalid file path: " + vcf.getAbsolutePath());
+                System.exit(2);
+            }
+            sample2WesVcfFile = vcf.getAbsolutePath();
+        }
+
+        if (!commandLine.hasOption("g")) {
+            logger.error("GTF format file can not be empty");
+            help.printHelp("java -jar renlabm6a_allele.jar SampleSpecificASM", header, options, footer, true);
+            System.exit(2);
+        } else {
+            File gtf = new File(commandLine.getOptionValue("g"));
+            if (!gtf.exists() || !gtf.isFile()) {
+                logger.error("invalid file path: " + gtf.getAbsolutePath());
+                System.exit(2);
+            }
+            gtfFile = gtf.getAbsolutePath();
+        }
+
+        if (commandLine.hasOption("db")) {
+            File dbsnp = new File(commandLine.getOptionValue("db"));
+            if (!dbsnp.exists() || !dbsnp.isFile()) {
+                logger.error("invalid file path: " + dbsnp.getAbsolutePath());
+                System.exit(2);
+            }
+            dbsnpFile = dbsnp.getAbsolutePath();
+        }
+
+        if (commandLine.hasOption("s"))
+            samplingTime = Integer.parseInt(commandLine.getOptionValue("s"));
+        if (commandLine.hasOption("b"))
+            burn_in = Integer.parseInt(commandLine.getOptionValue("b"));
+        if (samplingTime <= 500 || burn_in <= 100) {
+            logger.error("sampling times larger than 500 and burn in times at least 100");
+            System.exit(2);
+        }
+        if (commandLine.hasOption("df"))
+            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
+        if (degreeOfFreedom <= 1) {
+            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0, default 10.0");
+            System.exit(2);
+        }
+        if (commandLine.hasOption("rc"))
+            ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
+        if (commandLine.hasOption("bc"))
+            wesSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("bc"));
+        if (commandLine.hasOption("t")) {
+            if (Integer.valueOf(commandLine.getOptionValue("t")) < 0) {
+                System.err.println("invalid thread number, should be a positive integer");
+                System.exit(2);
+            }
+            threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
+        }
+
+        SampleSpecificASM ssasm = new SampleSpecificASM(gtfFile, sample1BedFile, sample1AseVcfFile, sample1WesVcfFile,
+                                                        sample2BedFile, sample2AseVcfFile, sample2WesVcfFile,
+                                                        dbsnpFile, outputFile, degreeOfFreedom, ipSNPCoverageInfimum,
+                                                        wesSNPCoverageInfimum, samplingTime, burn_in, threadNumber, logger);
+        ssasm.testSampleSpecificAsm();
     }
 
     public void testSampleSpecificAsm() {
@@ -407,14 +567,17 @@ public class SampleSpecificASM {
             for (int i=0; i<major1.size(); i++) {
                 double sample1Major = major1.get(i), sample1Minor = minor1.get(i),
                         sample2Major = major2.get(i), sample2Minor = minor2.get(i);
-                if ((sample1Minor - 0) < 0.00001)
-                    sample1Minor = 0.1;
 
-                if ((sample2Minor - 0) < 0.00001)
-                    sample2Minor = 0.1;
+                if ((sample1Minor - 0) < 0.00001 && (sample2Minor - 0) < 0.00001)
+                    lor = 1;
+                else {
+                    if ((sample1Minor - 0) < 0.00001)
+                    sample1Minor = 0.5;
 
-
-                lor = (sample1Major / sample1Minor) / (sample2Major / sample2Minor);
+                    if ((sample2Minor - 0) < 0.00001)
+                        sample2Minor = 0.5;
+                    lor = (sample1Major / sample1Minor) / (sample2Major / sample2Minor);
+                }
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -623,6 +786,9 @@ public class SampleSpecificASM {
                     Double q1 = Double.parseDouble(o1[6]), q2 = Double.parseDouble(o2[6]);
                     if (!q1.equals(q2))
                         return q1.compareTo(q2);
+                    Double p1 = Double.parseDouble(o1[5]), p2 = Double.parseDouble(o2[5]);
+                    if (!p1.equals(p2))
+                        return p1.compareTo(p2);
                     // sort records with same q-value after BH recalibration by SNV number
                     Integer snvCount1 = Integer.parseInt(o1[7]), snvCount2 = Integer.parseInt(o2[7]);
                     return snvCount2.compareTo(snvCount1);
@@ -714,5 +880,80 @@ public class SampleSpecificASM {
             names.add(name);
         }
         return names.stream().filter(x -> !x.equals("unknown")).collect(Collectors.joining());
+    }
+
+    private static Logger initLog(String logHome) {
+        System.setProperty("log_home", logHome);
+        return Logger.getLogger(SampleSpecificASM.class);
+    }
+
+    private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
+        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "sample1 SNP calling result VCF file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s1_bed", "sample1_bed_file", true, "sample1 peak calling result BED file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "sample1 WES data SNP calling VCF format file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s2_vcf", "sample2_vcf_file", true, "sample2 SNP calling result VCF file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s2_bed", "sample2_bed_file", true, "sample2 peak calling result BED file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "sample2 WES data SNP calling VCF format file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("g", "gtf", true, "GTF annotation file");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("o", "output", true, "ASM peak test output file, default ./sampleSpecificASM.txt");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("t", "thread", true, "Thread number. Default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("h", "help", false, "help message of SampleSpecificASM");
+        option.setRequired(false);
+        options.addOption(option);
+
+        CommandLineParser parser = new DefaultParser();
+
+        return parser.parse(options, args);
     }
 }
