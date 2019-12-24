@@ -52,7 +52,7 @@ public class AsmPeakDetection {
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
-     * @param threadNumber hread number, default 2
+     * @param threadNumber thread number, default 2
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
@@ -107,7 +107,7 @@ public class AsmPeakDetection {
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
-     * @param threadNumber hread number, default 2
+     * @param threadNumber thread number, default 2
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,

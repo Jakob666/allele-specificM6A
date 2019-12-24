@@ -37,7 +37,7 @@ public class RunExecution {
             runMode = 1;
         else if (argsArr.contains("AsmPeakDetection"))
             runMode = 2;
-        if (argsArr.contains("SampleSpecificASE"))
+        else if (argsArr.contains("SampleSpecificASE"))
             runMode = 3;
         else if (argsArr.contains("SampleSpecificASM"))
             runMode = 4;
