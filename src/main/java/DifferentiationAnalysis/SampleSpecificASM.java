@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -626,32 +627,37 @@ public class SampleSpecificASM {
                         major2[i] = s2Major.get(i);
                         minor2[i] = s2Minor.get(i);
                     }
-                    this.peakSNVNum.put(label, s1Major.size());
-                    int majorCount1 = s1Major.stream().reduce((x, y) -> x+y).get();
-                    int minorCount1 = s1Minor.stream().reduce((x, y) -> x+y).get();
-                    int majorCount2 = s2Major.stream().reduce((x, y) -> x+y).get();
-                    int minorCount2 = s2Minor.stream().reduce((x, y) -> x+y).get();
 
-                    this.peakMajorMinorReads.put(label, new int[] {majorCount1, minorCount1, majorCount2, minorCount2});
                     HierarchicalBayesianModel hb;
-                    if (minorCount1 == 0 && minorCount2 == 0)
-                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
-                                this.burnIn, major1, major1, major2, major2);
-                    else
-                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
-                                this.burnIn, major1, minor1, major2, minor2);
-                    double pVal = hb.testSignificant();
-                    double peakOddRatio = Math.exp(hb.quantifyGeneLOR());
-                    double peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio+1));
-                    this.lock.lock();
                     try {
+                        this.peakSNVNum.put(label, s1Major.size());
+                        int majorCount1 = s1Major.stream().reduce((x, y) -> x + y).get();
+                        int minorCount1 = s1Minor.stream().reduce((x, y) -> x + y).get();
+                        int majorCount2 = s2Major.stream().reduce((x, y) -> x + y).get();
+                        int minorCount2 = s2Minor.stream().reduce((x, y) -> x + y).get();
+                        this.peakMajorMinorReads.put(label, new int[]{majorCount1, minorCount1, majorCount2, minorCount2});
+
+                        if (minorCount1 == 0 && minorCount2 == 0)
+                            hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
+                                    this.burnIn, major1, major1, major2, major2);
+                        else
+                            hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
+                                    this.burnIn, major1, minor1, major2, minor2);
+                        double pVal = hb.testSignificant();
+                        double peakOddRatio = Math.exp(hb.quantifyGeneLOR());
+                        double peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
+                        this.lock.lock();
                         ArrayList<String> samePValPeaks = this.peakSampleSpecificPValue.getOrDefault(pVal, new ArrayList<>());
                         samePValPeaks.add(label);
                         this.peakSampleSpecificPValue.put(pVal, samePValPeaks);
                         this.peakMajorAlleleFrequency.put(label, peakMAF);
-                        countDown.countDown();
+                    } catch (Exception e) {
+                        this.logger.error("error occurs on record " + label);
+                        this.logger.error(e.getMessage());
                     } finally {
                         this.lock.unlock();
+                        countDown.countDown();
+                        hb = null;
                         s1Major = null;
                         s1Minor = null;
                         s2Major = null;
@@ -665,15 +671,22 @@ public class SampleSpecificASM {
                 threadPoolExecutor.submit(task);
             }
         }
+
         try {
             countDown.await();
         } catch (InterruptedException ie) {
             this.logger.error("analysis interrupted");
+            this.logger.error(ie.getMessage());
         } finally {
             this.sample1AsmPeakDetector = null;
             this.sample2AsmPeakDetector = null;
-
-            threadPoolExecutor.shutdown();
+            try {
+                threadPoolExecutor.shutdown();
+                if (!threadPoolExecutor.awaitTermination(1000, TimeUnit.MILLISECONDS))
+                    threadPoolExecutor.shutdownNow();
+            } catch (InterruptedException ie) {
+                threadPoolExecutor.shutdownNow();
+            }
             this.lock = null;
         }
         this.logger.debug("differentiation analysis complete");
@@ -888,63 +901,63 @@ public class SampleSpecificASM {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "sample1 SNP calling result VCF file");
+        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "sample1 SNP calling result VCF file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s1_bed", "sample1_bed_file", true, "sample1 peak calling result BED file");
+        option = new Option("s1_bed", "sample1_bed_file", true, "sample1 peak calling result BED file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "sample1 WES data SNP calling VCF format file");
+        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "sample1 WES data SNP calling VCF format file, optional");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_vcf", "sample2_vcf_file", true, "sample2 SNP calling result VCF file");
+        option = new Option("s2_vcf", "sample2_vcf_file", true, "sample2 SNP calling result VCF file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_bed", "sample2_bed_file", true, "sample2 peak calling result BED file");
+        option = new Option("s2_bed", "sample2_bed_file", true, "sample2 peak calling result BED file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "sample2 WES data SNP calling VCF format file");
+        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "sample2 WES data SNP calling VCF format file, optional");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("g", "gtf", true, "GTF annotation file");
+        option = new Option("g", "gtf", true, "GTF annotation file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. Optional, the file format see https://github.com/Jakob666/allele-specificM6A");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "output", true, "ASM peak test output file, default ./sampleSpecificASM.txt");
+        option = new Option("o", "output", true, "ASM peak test output file. Optional, default ./sampleSpecificASM.txt");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR). Optional, default 30");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "Thread number. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Optional, Default 2");
         option.setRequired(false);
         options.addOption(option);
 

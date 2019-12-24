@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -328,38 +329,46 @@ public class SampleSpecificASE {
 
         for (String label: this.statisticForTest.keySet()) {
             Runnable runnable = () -> {
-                int[][] geneReads = this.statisticForTest.get(label);
-                int[] sample1MajorReads = geneReads[0], sample1MinorReads = geneReads[1],
-                        sample2MajorReads = geneReads[2], sample2MinorReads = geneReads[3];
-                int sample1Major = Arrays.stream(sample1MajorReads).reduce((x, y) -> x+y).getAsInt();
-                int sample1Minor = Arrays.stream(sample1MinorReads).reduce((x, y) -> x+y).getAsInt();
-                int sample2Major = Arrays.stream(sample2MajorReads).reduce((x, y) -> x+y).getAsInt();
-                int sample2Minor = Arrays.stream(sample2MinorReads).reduce((x, y) -> x+y).getAsInt();
-                this.geneTotalReads.put(label, new int[] {sample1Major, sample1Minor, sample2Major, sample2Minor});
-
                 HierarchicalBayesianModel hb;
-
-                if (sample1Minor==0 && sample2Minor==0) // gene shows ASE in two samples simultaneously
-                    hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
-                        this.samplingTime, this.burnIn, sample1MajorReads, sample1MajorReads, sample2MajorReads, sample2MajorReads);
-                else
-                    hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
-                            this.samplingTime, this.burnIn, sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
-
-                double p = hb.testSignificant();
-                double oddRatio = Math.exp(hb.quantifyGeneLOR());
-                double geneMAF = Math.min(1.0, oddRatio / (oddRatio+1));
-                lock.lock();
+                int[][] geneReads;
+                int[] sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads;
                 try {
+                    geneReads = this.statisticForTest.get(label);
+                    sample1MajorReads = geneReads[0];
+                    sample1MinorReads = geneReads[1];
+                    sample2MajorReads = geneReads[2];
+                    sample2MinorReads = geneReads[3];
+                    int sample1Major = Arrays.stream(sample1MajorReads).reduce((x, y) -> x + y).getAsInt();
+                    int sample1Minor = Arrays.stream(sample1MinorReads).reduce((x, y) -> x + y).getAsInt();
+                    int sample2Major = Arrays.stream(sample2MajorReads).reduce((x, y) -> x + y).getAsInt();
+                    int sample2Minor = Arrays.stream(sample2MinorReads).reduce((x, y) -> x + y).getAsInt();
+                    this.geneTotalReads.put(label, new int[]{sample1Major, sample1Minor, sample2Major, sample2Minor});
+
+                    if (sample1Minor == 0 && sample2Minor == 0) // gene shows ASE in two samples simultaneously
+                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
+                                this.samplingTime, this.burnIn, sample1MajorReads, sample1MajorReads, sample2MajorReads, sample2MajorReads);
+                    else
+                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
+                                this.samplingTime, this.burnIn, sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
+
+                    double p = hb.testSignificant();
+                    double oddRatio = Math.exp(hb.quantifyGeneLOR());
+                    double geneMAF = Math.min(1.0, oddRatio / (oddRatio + 1));
+                    lock.lock();
+
                     ArrayList<String> samePValGenes = this.geneSampleSpecificPValue.getOrDefault(p, new ArrayList<>());
                     samePValGenes.add(label);
                     this.geneSampleSpecificPValue.put(p, samePValGenes);
                     this.genesSNVs.put(label, sample1MajorReads.length);
                     this.geneMajorAlleleFrequency.put(label, geneMAF);
-                    countDown.countDown();
+                } catch (Exception e) {
+                    this.logger.error("error occurs on record " + label);
+                    this.logger.error(e.getMessage());
                 } finally {
                     lock.unlock();
+                    countDown.countDown();
                     hb = null;
+                    geneReads = null;
                     sample1MajorReads = null;
                     sample1MinorReads = null;
                     sample2MajorReads = null;
@@ -368,12 +377,20 @@ public class SampleSpecificASE {
             };
             threadPoolExecutor.submit(runnable);
         }
+
         try {
             countDown.await();
         } catch (InterruptedException ie) {
             this.logger.error("analysis interrupted");
+            this.logger.error(ie.getMessage());
         } finally {
-            threadPoolExecutor.shutdown();
+            try {
+                threadPoolExecutor.shutdown();
+                if (!threadPoolExecutor.awaitTermination(1000, TimeUnit.MILLISECONDS))
+                    threadPoolExecutor.shutdownNow();
+            } catch (InterruptedException ie) {
+                threadPoolExecutor.shutdownNow();
+            }
             this.lock = null;
         }
         this.logger.debug("differentiation analysis complete");
@@ -559,55 +576,55 @@ public class SampleSpecificASE {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "VCF format file generate by sample1 RNA-seq or MeRIP-seq data SNP calling process");
+        Option option = new Option("s1_vcf", "sample1_vcf_file", true, "VCF format file generate by sample1 RNA-seq or MeRIP-seq data SNP calling process, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "VCF format file generate by sample1 WES data SNP calling process");
+        option = new Option("s1_wes", "sample1_wes_vcf_file", true, "VCF format file generate by sample1 WES data SNP calling process, optional");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_vcf", "sample2_vcf_file", true, "VCF format file generate by sample2 RNA-seq or MeRIP-seq data SNP calling process");
+        option = new Option("s2_vcf", "sample2_vcf_file", true, "VCF format file generate by sample2 RNA-seq or MeRIP-seq data SNP calling process, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "VCF format file generate by sample2 WES data SNP calling process");
+        option = new Option("s2_wes", "sample2_wes_vcf_file", true, "VCF format file generate by sample2 WES data SNP calling process, optional");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("g", "gtf", true, "GTF annotation file");
+        option = new Option("g", "gtf", true, "GTF annotation file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. Optional, the file format see https://github.com/Jakob666/allele-specificM6A)");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "output", true, "ASE gene test output file, default ./sampleSpecificASE.txt");
+        option = new Option("o", "output", true, "ASE gene test output file. Optional, default ./sampleSpecificASE.txt");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR). Optional, default 30");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "thread number for running test. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Optional, default 2");
         option.setRequired(false);
         options.addOption(option);
 

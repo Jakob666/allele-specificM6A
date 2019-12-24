@@ -12,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -379,26 +380,32 @@ public class AseGeneDetection {
             return new Runnable() {
                 @Override
                 public void run() {
-                    ArrayList<int[]> statistic = statisticForTest.get(name);
-                    int[] majorCount = statistic.get(0);
-                    int[] minorCount = statistic.get(1);
-                    int[] majorBackground = statistic.get(2);
-                    int[] minorBackground = statistic.get(3);
-                    HierarchicalBayesianModel hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime, burnIn,
-                                                                                majorCount, minorCount,
-                                                                                majorBackground, minorBackground);
-                    double p = hb.testSignificant();
-                    double geneOddRatio = Math.exp(hb.quantifyGeneLOR());
-                    double geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio+1));
-                    lock.lock();
+                    ArrayList<int[]> statistic;
+                    int[] majorCount, minorCount, majorBackground, minorBackground;
+                    HierarchicalBayesianModel hb;
                     try {
+                        statistic = statisticForTest.get(name);
+                        majorCount = statistic.get(0);
+                        minorCount = statistic.get(1);
+                        majorBackground = statistic.get(2);
+                        minorBackground = statistic.get(3);
+                        hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime, burnIn,
+                                majorCount, minorCount, majorBackground, minorBackground);
+                        double p = hb.testSignificant();
+                        double geneOddRatio = Math.exp(hb.quantifyGeneLOR());
+                        double geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio + 1));
+                        lock.lock();
+
                         ArrayList<String> samePValGenes = geneAsePValue.getOrDefault(p, new ArrayList<>());
                         samePValGenes.add(name);
                         geneAsePValue.put(p, samePValGenes);
                         genesSNVs.put(name, majorCount.length);
                         geneMajorAlleleFrequency.put(name, geneMAF);
-                        countDown.countDown();
+                    } catch (Exception e) {
+                        logger.error("error occurs on record " + name);
+                        logger.error(e.getMessage());
                     } finally {
+                        countDown.countDown();
                         lock.unlock();
                         hb = null;
                         majorCount = null;
@@ -418,9 +425,16 @@ public class AseGeneDetection {
             countDown.await();
         } catch (InterruptedException ie) {
             this.logger.error("analysis interrupted");
+            this.logger.error(ie.getMessage());
         } finally {
             this.statisticForTest = null;
-            threadPoolExecutor.shutdown();
+            try {
+                threadPoolExecutor.shutdown();
+                if (!threadPoolExecutor.awaitTermination(1000, TimeUnit.MILLISECONDS))
+                    threadPoolExecutor.shutdownNow();
+            } catch (InterruptedException ie) {
+                threadPoolExecutor.shutdownNow();
+            }
             this.lock = null;
         }
         this.logger.debug("model test complete");
@@ -643,47 +657,47 @@ public class AseGeneDetection {
     }
 
     private static CommandLine setCommandLine(String[] args, Options options) throws ParseException {
-        Option option = new Option("vcf", "vcf_file", true, "VCF format file generate by RNA-seq or MeRIP-seq data SNP calling process");
+        Option option = new Option("vcf", "vcf_file", true, "VCF format file generate by RNA-seq or MeRIP-seq data SNP calling process, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("wes", "wes_vcf_file", true, "VCF format file generate by WES data SNP calling process");
+        option = new Option("wes", "wes_vcf_file", true, "VCF format file generate by WES data SNP calling process, optional");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("g", "gtf", true, "GTF annotation file");
+        option = new Option("g", "gtf", true, "GTF annotation file, required");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format see https://github.com/Jakob666/allele-specificM6A)");
+        option = new Option("db", "dbsnp", true, "big scale SNV annotation data set, like dbsnp, 1000Genome etc. Optional, the file format see https://github.com/Jakob666/allele-specificM6A");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("o", "output", true, "ASE gene test output file, default ./aseGene.txt");
+        option = new Option("o", "output", true, "ASE gene test output file. Optional, default ./aseGene.txt");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution, default 10");
+        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30");
+        option = new Option("bc", "bkg_coverage", true, "reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR). Optional, default 30");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("t", "thread", true, "thread number for running test. Default 2");
+        option = new Option("t", "thread", true, "thread number for running test. Optional, default 2");
         option.setRequired(false);
         options.addOption(option);
 
