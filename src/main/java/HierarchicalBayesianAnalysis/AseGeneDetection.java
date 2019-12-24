@@ -456,14 +456,14 @@ public class AseGeneDetection {
             minorBackground = statistic.get(3);
 
             for (int i=0; i<majorCount.length; i++) {
-                double major = majorCount[i], minor = minorCount[i],
-                       majorBack = majorBackground[i], minorBack = minorBackground[i];
-                if ((minor - 0) < 0.00001)
-                    minor = 0.5;
-
                 // WES SNVs only used for annotating RNA-seq SNVs. Because of the alignment error, background reads count do not take part in LOR Std calculation
                 // we assume the odd ratio of background major and minor reads equals 1
-                lor = (major / minor); //  (majorBack / minorBack)
+                double major = majorCount[i], minor = minorCount[i],
+                       majorBack = majorBackground[i], minorBack = minorBackground[i];
+
+                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
+                // if any of the cell expectations would cause a division by zero error.
+                lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;

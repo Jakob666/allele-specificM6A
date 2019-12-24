@@ -569,16 +569,9 @@ public class SampleSpecificASM {
                 double sample1Major = major1.get(i), sample1Minor = minor1.get(i),
                         sample2Major = major2.get(i), sample2Minor = minor2.get(i);
 
-                if ((sample1Minor - 0) < 0.00001 && (sample2Minor - 0) < 0.00001)
-                    lor = 1;
-                else {
-                    if ((sample1Minor - 0) < 0.00001)
-                    sample1Minor = 0.5;
-
-                    if ((sample2Minor - 0) < 0.00001)
-                        sample2Minor = 0.5;
-                    lor = (sample1Major / sample1Minor) / (sample2Major / sample2Minor);
-                }
+                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
+                // if any of the cell expectations would cause a division by zero error.
+                lor = ((sample1Major + 0.5) / (sample1Minor + 0.5)) / ((sample2Major + 0.5) / (sample2Minor + 0.5));
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
