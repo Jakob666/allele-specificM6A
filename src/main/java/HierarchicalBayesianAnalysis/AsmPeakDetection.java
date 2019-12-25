@@ -169,7 +169,7 @@ public class AsmPeakDetection {
 
         // default parameters
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000, threadNumber = 2;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 5000, threadNumber = 2;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -528,7 +528,11 @@ public class AsmPeakDetection {
 
                 // Haldane's correction, adding 0.5 to all of the cells of a contingency table
                 // if any of the cell expectations would cause a division by zero error.
-                lor = ((major + 0.5) / (minor + 0.5));  // (majorBack / minorBack);
+//                lor = ((major + 0.5) / (minor + 0.5));  // (majorBack / minorBack);
+                if (minor == 0)
+                    lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
+                else
+                    lor = major / minor;
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -597,6 +601,7 @@ public class AsmPeakDetection {
           };
         };
 
+        this.log.debug(this.statisticForTest.size() + " m6A signal peaks to be tested");
         for (String str: this.statisticForTest.keySet()) {
             this.totalPeakCount++;
             Runnable runnable = task.runTask(str);
@@ -674,7 +679,7 @@ public class AsmPeakDetection {
                     prevQValue = qValue;
                 rankage--;
 
-                pValString = Double.toString(pVal);
+                pValString = this.df.format(pVal);
                 qValString = this.df.format(qValue);
                 this.asmQValue.add(String.join("->", new String[]{peak, pValString, qValString}));
             }
@@ -888,11 +893,11 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 50000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
         option.setRequired(false);
         options.addOption(option);
 

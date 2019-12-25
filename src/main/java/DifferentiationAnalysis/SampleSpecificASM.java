@@ -101,7 +101,7 @@ public class SampleSpecificASM {
         // default parameters
         String gtfFile = null, sample1BedFile = null, sample2BedFile = null, sample1AseVcfFile = null, sample2AseVcfFile = null,
                sample1WesVcfFile = null, sample2WesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 10000, burn_in = 2000, threadNumber = 2;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 5000, threadNumber = 2;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -571,7 +571,10 @@ public class SampleSpecificASM {
 
                 // Haldane's correction, adding 0.5 to all of the cells of a contingency table
                 // if any of the cell expectations would cause a division by zero error.
-                lor = ((sample1Major + 0.5) / (sample1Minor + 0.5)) / ((sample2Major + 0.5) / (sample2Minor + 0.5));
+                if (sample1Minor == 0 | sample2Minor == 0)
+                    lor = ((sample1Major + 0.5) / (sample1Minor + 0.5)) / ((sample2Major + 0.5) / (sample2Minor + 0.5));
+                else
+                    lor = sample1Major / sample1Minor / (sample2Major / sample2Minor);
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -739,7 +742,7 @@ public class SampleSpecificASM {
                     prevQValue = qValue;
                 rankage--;
 
-                pValString = Double.toString(pVal);
+                pValString = this.df.format(pVal);
                 qValString = this.df.format(qValue);
                 this.peakSampleSpecificQValue.add(String.join("->", new String[]{peak, pValString, qValString}));
             }
@@ -942,11 +945,11 @@ public class SampleSpecificASM {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 50000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
         option.setRequired(false);
         options.addOption(option);
 

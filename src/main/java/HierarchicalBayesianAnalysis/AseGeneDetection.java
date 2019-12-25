@@ -167,7 +167,7 @@ public class AseGeneDetection {
 
         // default parameters
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 10000, burn_in = 2000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
+        int samplingTime = 50000, burn_in = 5000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
         double degreeOfFreedom = 10;
 
         if (!commandLine.hasOption("o"))
@@ -417,6 +417,7 @@ public class AseGeneDetection {
             };
         };
 
+        this.logger.debug(this.statisticForTest.size() + " genes to be tested");
         for (String label: this.statisticForTest.keySet()) {
             Runnable runnable = task.runTask(label);
             threadPoolExecutor.submit(runnable);
@@ -463,7 +464,10 @@ public class AseGeneDetection {
 
                 // Haldane's correction, adding 0.5 to all of the cells of a contingency table
                 // if any of the cell expectations would cause a division by zero error.
-                lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
+                if (minor == 0)
+                    lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
+                else
+                    lor = major / minor;
                 lor = Math.log(lor);
                 lorList.add(lor);
                 cum += lor;
@@ -538,7 +542,7 @@ public class AseGeneDetection {
                     prevQValue = qValue;
                 rankage--;
 
-                pValString = Double.toString(pVal);
+                pValString = this.df.format(pVal);
                 qValString = this.df.format(qValue);
                 this.geneAseQValue.add(String.join("->", new String[]{geneName, pValString, qValString}));
             }
@@ -689,11 +693,11 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 10000");
+        option = new Option("s", "sampling", true, "sampling times, larger than 500. Optional, default 50000");
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 2000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
         option.setRequired(false);
         options.addOption(option);
 

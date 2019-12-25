@@ -38,8 +38,8 @@ AseSeqSimulator|generate simulation data for test
    - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
-   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of AseGeneDetection
 
@@ -53,8 +53,8 @@ AseSeqSimulator|generate simulation data for test
    - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
-   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of AsmPeakDetection
 
@@ -69,8 +69,8 @@ AseSeqSimulator|generate simulation data for test
    - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
-   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of SampleSpecificASE
 4. **SampleSpecificASM**
@@ -86,8 +86,8 @@ AseSeqSimulator|generate simulation data for test
    - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
-   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 10000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 2000
+   - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of SampleSpecificASM
 

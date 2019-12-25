@@ -65,7 +65,7 @@ public class OddRatioCalc {
      * @return LOR of a SNV site
      */
     private double calculateLogOddRatio(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
-        double oddRatio = (double) majorAlleleReads / ((double) (minorAlleleReads) + 0.0001) / ((double) (majorBackground) / (double) minorBackground);
+        double oddRatio = (double) majorAlleleReads / ((double) (minorAlleleReads) + 0.0001) / ((double) (majorBackground) / (minorBackground + 0.0001));
         return Math.log(oddRatio);
     }
 
@@ -79,6 +79,6 @@ public class OddRatioCalc {
      * @return LOR variance of a SNV site
      */
     private double calculateVariance(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
-        return 1/(double) majorAlleleReads + 1/(double) (minorAlleleReads) + 1/(double) (majorBackground) + 1/(double) (minorBackground);
+        return 1/(double) majorAlleleReads + 1/(minorAlleleReads + 0.0001) + 1/(double) (majorBackground) + 1/(minorBackground + 0.0001);
     }
 }
