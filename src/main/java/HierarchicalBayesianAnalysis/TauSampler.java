@@ -26,12 +26,13 @@ public class TauSampler extends MHSampling {
      * @param variances LOR variance for each SNV sites
      * @param miu expectation of globalLOR
      * @param sigma variance of globalLOR
+     * @param globalLOR global LOR
      * @return sampling result and its posterior density
      */
     public double[] sampling(double prevTau, double prevTauDensity, double[] logOddRatios, double[] variances,
-                             double miu, double sigma) {
+                             double miu, double sigma, double globalLOR) {
         double curTau = this.randomTau(prevTau);
-        double curTauPosteriorDensity = this.posteriorTau(curTau, logOddRatios, variances, miu, sigma);
+        double curTauPosteriorDensity = this.logPosteriorTau(curTau, logOddRatios, variances, miu, sigma, globalLOR);
 
         return this.getSamplingRes(curTau, curTauPosteriorDensity, prevTau, prevTauDensity);
     }
@@ -80,5 +81,29 @@ public class TauSampler extends MHSampling {
         double curTauPriorDensity = this.priorTauDensity(curSamplingTau);
 
         return curTauPriorDensity * Math.pow(sigma, 0.5) * cumProd;
+    }
+
+    /**
+     * logarithm tau posterior density, more robust than posteriorTau method
+     * @param curSamplingTau tau
+     * @param logOddRatios observed LOR
+     * @param variances observed variance
+     * @param globalLORMean global LOR mean
+     * @param globalLORStd global LOR Std
+     * @param globalLOR global LOR
+     * @return logarithm tau posterior density
+     */
+    public double logPosteriorTau(double curSamplingTau, double[] logOddRatios, double[] variances, double globalLORMean, double globalLORStd, double globalLOR) {
+        double sum = 0, std;
+        NormalDistribution nd;
+        for (int i=0; i<variances.length; i++) {
+            std = Math.sqrt(variances[i] + Math.pow(globalLORStd, 2));
+            nd = new NormalDistribution(globalLORMean, std);
+            sum += nd.logDensity(logOddRatios[i]);
+        }
+        nd = new NormalDistribution(globalLORMean, globalLORStd);
+        sum -= nd.logDensity(globalLOR);
+
+        return sum + this.priorTau.logDensity(curSamplingTau);
     }
 }

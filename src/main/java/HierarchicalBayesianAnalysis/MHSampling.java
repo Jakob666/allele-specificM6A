@@ -12,20 +12,20 @@ public class MHSampling {
     /**
      * get new round sampling result via random u and receptance
      * @param curSamplingVal sampling result of new round
-     * @param curSamplingDensity posterior density of sampling result of new round
+     * @param curSamplingLogDensity posterior density of sampling result of new round
      * @param prevSamplingVal sampling result of last round
-     * @param prevSamplingDensity posterior density of sampling result of last round
+     * @param prevSamplingLogDensity posterior density of sampling result of last round
      * @return sampling result
      */
-    public double[] getSamplingRes(double curSamplingVal, double curSamplingDensity,
-                                 double prevSamplingVal, double prevSamplingDensity) {
+    public double[] getSamplingRes(double curSamplingVal, double curSamplingLogDensity,
+                                   double prevSamplingVal, double prevSamplingLogDensity) {
         double u, receptance;
         u = this.getRandomVal();
-        receptance = this.getReceptance(curSamplingDensity, prevSamplingDensity);
+        receptance = this.getReceptance(curSamplingLogDensity, prevSamplingLogDensity);
         if (u < receptance)
-            return new double[]{curSamplingVal, curSamplingDensity};
+            return new double[]{curSamplingVal, curSamplingLogDensity};
         else
-            return new double[]{prevSamplingVal, prevSamplingDensity};
+            return new double[]{prevSamplingVal, prevSamplingLogDensity};
     }
 
     /**
@@ -40,7 +40,7 @@ public class MHSampling {
      * calculate MH sampling receptance
      * @return receptance
      */
-    protected double getReceptance(double curSamplingDensity, double prevSamplingDensity) {
-        return Math.min(1, curSamplingDensity/prevSamplingDensity);
+    protected double getReceptance(double curSamplingLogDensity, double prevSamplingLogDensity) {
+        return Math.min(1, Math.exp(curSamplingLogDensity - prevSamplingLogDensity));
     }
 }

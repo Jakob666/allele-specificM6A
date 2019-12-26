@@ -56,7 +56,7 @@ public class HierarchicalBayesianModel {
      * hierarchical model parameters initialization
      */
     private void initializer() {
-        // calculate the LOR(y) and variance(var) for each bi-allele sites
+        // calculate the LOR(y) and variance(sigma_i^2) for each bi-allele sites
         HashMap<String, double[]> initLORAndVar = this.getInitLORAndVar();
         this.observeLogOddRatio = initLORAndVar.get("LOR");
         this.variances = initLORAndVar.get("VAR");
@@ -78,8 +78,8 @@ public class HierarchicalBayesianModel {
         this.curGlobalLOR = nd.sample();
 
         // the approximate posterior distribution of hyper-parameter tau
-        this.curTauPosteriorDensity = this.ts.posteriorTau(this.curTau, this.observeLogOddRatio, this.variances,
-                                                           this.globalLORMean, this.globalLORSigma);
+        this.curTauPosteriorDensity = this.ts.logPosteriorTau(this.curTau, this.observeLogOddRatio, this.variances,
+                                                              this.globalLORMean, this.globalLORSigma, this.curGlobalLOR);
         // the approximate posterior distribution of average LOR
         this.curGlobalLORPosteriorDensity = nd.density(this.curGlobalLOR);
 
@@ -100,7 +100,7 @@ public class HierarchicalBayesianModel {
         for (int i = 0; i < this.singleASELORMean.length; i++) {
             double lorMean = this.singleASELORMean[i];
             double var = this.variances[i];
-            nd = new NormalDistribution(lorMean, var);
+            nd = new NormalDistribution(lorMean, Math.sqrt(var));
             double lor = nd.sample();
             // initial LOR
             this.singleASELOR[i] = lor;
@@ -128,7 +128,7 @@ public class HierarchicalBayesianModel {
             double prevTau = this.curTau;
             double prevTauPosteriorDensity = this.curTauPosteriorDensity;
             double[] samplingRes = this.ts.sampling(prevTau, prevTauPosteriorDensity, this.singleASELOR,
-                    this.variances, this.globalLORMean, this.globalLORSigma);
+                                                    this.variances, this.globalLORMean, this.globalLORSigma, this.curGlobalLOR);
             this.curTau = samplingRes[0];
             this.curTauPosteriorDensity = samplingRes[1];
 
