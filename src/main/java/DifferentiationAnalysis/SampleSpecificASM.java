@@ -462,10 +462,10 @@ public class SampleSpecificASM {
                     break;
             }
             if (!mergedPeaks.isEmpty()) {
-                this.chrMergedPeaks.put(chrNum, mergedPeaks);
+                // common SNVs of two samples under merged peaks
+                this.commonSNVCoveredByMergedPeaks(chrNum, mergedPeaks, sample1Component, sample2Component);
             }
-            // common SNVs of two samples under merged peaks
-            this.commonSNVCoveredByMergedPeaks(chrNum, mergedPeaks, sample1Component, sample2Component);
+
         }
         if (chrMergedPeaks.isEmpty()) {
             this.logger.debug("contains no overlapped peaks in two samples, analysis interrupt");
@@ -502,6 +502,9 @@ public class SampleSpecificASM {
                                                ArrayList<ArrayList<String>> sample1Component,
                                                ArrayList<ArrayList<String>> sample2Component) {
         HashSet<Integer> commonSites = this.commonSNVs.get(chrNum);
+        if (commonSites == null)
+            return;
+        this.chrMergedPeaks.put(chrNum, mergedPeaks);
         // position-> [majorNC-> count, minorNC-> count]
         HashMap<String, HashMap<String, Integer>> sample1Reads, sample2Reads;
         for (int i=0; i<mergedPeaks.size(); i++) {
