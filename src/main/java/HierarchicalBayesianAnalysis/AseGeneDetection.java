@@ -579,7 +579,7 @@ public class AseGeneDetection {
                 majorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("major");
                 minorBackground = (this.geneBackgroundReads == null)? 0: this.geneBackgroundCount.get(label).get("minor");
 
-                finalRecords.put(geneName, new String[]{geneId, geneName, pVal, qVal, Integer.toString(snvNum),
+                finalRecords.put(label, new String[]{geneId, geneName, pVal, qVal, Integer.toString(snvNum),
                         Integer.toString(majorCount), Integer.toString(minorCount), Integer.toString(majorBackground),
                         Integer.toString(minorBackground), this.df.format(majorAlleleFrequency), majorAlleleRecord});
             }
