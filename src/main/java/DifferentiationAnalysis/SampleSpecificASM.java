@@ -251,11 +251,9 @@ public class SampleSpecificASM {
     private void dataPreparation() {
         // prepare data for test
         this.sample1AsmPeakDetector.getPeakSNPReadsCount();
-        this.sample1AsmPeakDetector.getPeakCoveredGene();
         this.sample1AsmPeakDetector.dataPreparation();
 
         this.sample2AsmPeakDetector.getPeakSNPReadsCount();
-        this.sample2AsmPeakDetector.getPeakCoveredGene();
         this.sample2AsmPeakDetector.dataPreparation();
         // whether m6A peaks cover common genes between two samples
         // chr:peakStart:peakEnd -> geneId

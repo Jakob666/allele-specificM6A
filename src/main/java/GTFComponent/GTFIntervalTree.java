@@ -27,7 +27,7 @@ public class GTFIntervalTree {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.gtfFile))));
-            String line = "", chrNum, geneName, geneId, componentType;
+            String line = "", chrNum, geneName, geneId, componentType, strand;
             String[] info, geneInfo;
             int start, end;
             while (line != null) {
@@ -42,11 +42,12 @@ public class GTFIntervalTree {
                         continue;
                     start = Integer.parseInt(info[3]);
                     end = Integer.parseInt(info[4]);
+                    strand = info[6];
                     geneInfo = this.getGeneInfo(info[8]);
                     geneId = geneInfo[0];
                     geneName = geneInfo[1];
 
-                    GTFIntervalTreeNode gitn = new GTFIntervalTreeNode(start, end, 0, 0, geneName, geneId);
+                    GTFIntervalTreeNode gitn = new GTFIntervalTreeNode(start, end, 0, 0, geneName, geneId, strand);
                     IntervalTree it = this.gtfIntervalTrees.getOrDefault(chrNum, new IntervalTree());
                     it = it.insertNode(it, gitn);
                     this.gtfIntervalTrees.put(chrNum, it);

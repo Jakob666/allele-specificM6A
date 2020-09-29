@@ -282,48 +282,10 @@ public class AsmPeakDetection {
     }
 
     public void getTestResult() {
-        this.getPeakCoveredGene();
         this.parseGTFFile();
         this.asmPeakTest();
         this.bhRecalibrationOfEachPeak();
         this.outputResult();
-    }
-
-    /**
-     * locate m6A signal in BED format file to corresponding gene, peakCoveredGene = {chr:peakStart:peakEnd -> geneId, ...}
-     */
-    public void getPeakCoveredGene() {
-        BufferedReader bfr = null;
-        try {
-            bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.peakBedFile))));
-            String line = "", chrNum, peakStart, peakEnd, geneId, label;
-            String[] info;
-            while (line != null) {
-                line = bfr.readLine();
-                if (line != null) {
-                    if (line.startsWith("#"))
-                        continue;
-                    info = line.split("\t");
-                    chrNum = info[0];
-                    peakStart = info[1];
-                    peakEnd = info[2];
-                    geneId = info[3];
-
-                    label = String.join(":", new String[]{chrNum, peakStart, peakEnd});
-                    this.peakCoveredGene.put(label, geneId);
-                }
-            }
-        } catch (IOException ie) {
-            ie.printStackTrace();
-        } finally {
-            if (bfr != null) {
-                try {
-                    bfr.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
     }
 
     /**
@@ -334,6 +296,7 @@ public class AsmPeakDetection {
         HeterozygoteReadsCount hrc = new HeterozygoteReadsCount(this.peakCoveredSnpFile, this.ipSNPReadInfimum, this.log);
         this.peakSnpReadsCount = hrc.getMajorMinorHaplotype();
         this.peakMajorAlleleNucleotide = hrc.getPeakMajorAlleleNucleotides();
+        this.peakCoveredGene = hrc.getPeakCoveredGene();
     }
 
     /**

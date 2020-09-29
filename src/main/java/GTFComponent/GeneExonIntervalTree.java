@@ -18,7 +18,7 @@ public class GeneExonIntervalTree {
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.gtfFile))));
             this.geneExonIntervalTree = new HashMap<>();
-            String line = "", chrNum, geneId, geneName;
+            String line = "", chrNum, geneId, geneName, strand;
             String[] info, geneInfo;
             int exonStart, exonEnd;
             while (line != null) {
@@ -35,7 +35,8 @@ public class GeneExonIntervalTree {
                     geneName = geneInfo[1];
                     exonStart = Integer.valueOf(info[3]);
                     exonEnd = Integer.valueOf(info[4]);
-                    GTFIntervalTreeNode gitn = new GTFIntervalTreeNode(exonStart, exonEnd, 0, 0, geneName, geneId);
+                    strand = info[6];
+                    GTFIntervalTreeNode gitn = new GTFIntervalTreeNode(exonStart, exonEnd, 0, 0, geneName, geneId, strand);
 
                     HashMap<String, IntervalTree> chrGenes = this.geneExonIntervalTree.getOrDefault(chrNum, new HashMap<>());
                     IntervalTree it = chrGenes.getOrDefault(geneId, new IntervalTree());

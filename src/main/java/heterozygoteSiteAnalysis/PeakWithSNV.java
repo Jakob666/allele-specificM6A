@@ -1,19 +1,25 @@
 package heterozygoteSiteAnalysis;
 
+import GTFComponent.GTFIntervalTree;
+import GTFComponent.GTFIntervalTreeNode;
 import GTFComponent.GeneExonIntervalTree;
 import org.apache.commons.cli.*;
 
 import java.io.*;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 
 public class PeakWithSNV {
     private String gtfFile, bedFile, vcfFile, outputFile;
     private boolean exonMutation;
+    private HashMap<String, IntervalTree> geneIntervalTree;
     // chr -> geneId -> peakTree;  chr -> geneId -> exonIntervalTree
     private HashMap<String, HashMap<String, IntervalTree>> peakTreeMap, geneExonIntervalTree;
-    private HashMap<String, String> geneNames, peakGeneId;
+    private HashMap<String, String> geneNames;
+    private HashMap<String, ArrayList<String>> peakGeneId;
 
     public static void main(String[] args) {
         Options options = new Options();
@@ -51,15 +57,24 @@ public class PeakWithSNV {
     }
 
     public void locateSnvInPeak() {
+        this.buildGTFIntervalTree();
         this.buildPeakIntervalTree();
         this.parseGTFFile();
         this.parseVCFFile();
     }
 
+    private void buildGTFIntervalTree() {
+        GTFIntervalTree git = new GTFIntervalTree(this.gtfFile);
+        git.parseGTFFile();
+        this.geneIntervalTree = git.getGtfIntervalTrees();
+    }
+
     private void buildPeakIntervalTree() {
         BufferedReader bfr = null;
         String chrNum, label, geneId, strand, blockSize, blockStart;
-        int start, end, blockCount;
+        int start, end, peakCenter, blockCount;
+        ArrayList<String> peakCoveredGenes;
+        LinkedList<GTFIntervalTreeNode> potentialLocateGene;
         this.peakTreeMap = new HashMap<>();
         this.peakGeneId = new HashMap<>();
         try {
@@ -72,34 +87,35 @@ public class PeakWithSNV {
                     if (line.startsWith("#"))
                         continue;
                     info = line.split("\t");
+                    // BED format file must contains chr, peakStart, peakEnd
                     chrNum = info[0];
                     start = Integer.parseInt(new BigDecimal(info[1]).toPlainString());
                     end = Integer.parseInt(new BigDecimal(info[2]).toPlainString());
-                    geneId = info[3];
-                    strand = info[5];
-                    blockCount = Integer.valueOf(info[9]);
-                    blockSize = info[10];
-                    blockStart = info[11];
+                    peakCenter = (int) Math.round((start + end) * 0.5);
+                    IntervalTree it = this.geneIntervalTree.getOrDefault(chrNum, null);
+                    if (it == null)
+                        continue;
+                    GTFIntervalTreeNode gitn = (GTFIntervalTreeNode) it.search(it.root, peakCenter);
+                    if (gitn == null)
+                        continue;
+                    potentialLocateGene = new LinkedList<>();
+                    this.searchLocateGene(gitn, peakCenter, potentialLocateGene);
 
                     HashMap<String, IntervalTree> chrTree = peakTreeMap.getOrDefault(chrNum, new HashMap<>());
-                    if (blockCount > 1) {
-                        IntervalTreeNode[] nodes = this.multiBlock(start, end, blockSize, blockStart);
-                        for (IntervalTreeNode node : nodes) {
-                            IntervalTree it = chrTree.getOrDefault(strand, new IntervalTree());
-                            it = it.insertNode(it, node);
-                            chrTree.put(strand, it);
-                        }
-                    } else {
+                    peakCoveredGenes = new ArrayList<>();
+                    for (GTFIntervalTreeNode node: potentialLocateGene) {
+                        strand = node.strand;
                         IntervalTreeNode newNode = new IntervalTreeNode(start, end, start, end);
-                        IntervalTree it = chrTree.getOrDefault(strand, new IntervalTree());
-                        it = it.insertNode(it, newNode);
-                        chrTree.put(strand, it);
+                        IntervalTree tree = chrTree.getOrDefault(strand, new IntervalTree());
+                        tree = tree.insertNode(tree, newNode);
+                        chrTree.put(strand, tree);
+                        peakCoveredGenes.add(node.geneId);
                     }
                     peakTreeMap.put(chrNum, chrTree);
                     label = String.join("->",
                                         new String[] {new BigDecimal(info[1]).toPlainString(),
                                                       new BigDecimal(info[2]).toPlainString()});
-                    this.peakGeneId.put(label, geneId);
+                    this.peakGeneId.put(label, peakCoveredGenes);
                 }
                 info = null;
             }
@@ -207,11 +223,12 @@ public class PeakWithSNV {
                                                                  "geneId", "geneName", "majorAllele", "minorAllele",
                                                                  "majorAlleleCount", "minorAlleleCount"}));
             bfw.newLine();
-            String readIn = "", writeOut, chrNum, refNc, altNc, majorNc, minorNc, geneId, geneName, peakStart, peakEnd, label;
+            String readIn = "", writeOut, chrNum, refNc, altNc, majorNc, minorNc, geneName, peakStart, peakEnd, label;
             int position, allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
             boolean specialMutation;
             String[] info;
             int[] readsCount;
+            ArrayList<String> geneIds;
             IntervalTree posStrandTree, negStrandTree;
             while (readIn != null) {
                 readIn = bfr.readLine();
@@ -294,18 +311,20 @@ public class PeakWithSNV {
                             peakStart = Integer.toString(posStrandSearchResult.peakStart);
                             peakEnd = Integer.toString(posStrandSearchResult.peakEnd);
                             label = String.join("->", new String[] {peakStart, peakEnd});
-                            geneId = this.peakGeneId.get(label);
-                            geneName = this.geneNames.getOrDefault(geneId, null);
-                            if (geneName == null)
-                                continue;
-                            if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
-                                continue;
-                            writeOut = String.join("\t",
-                                                    new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
-                                                    majorNc, minorNc, String.valueOf(majorAlleleCount),
-                                                    String.valueOf(minorAlleleCount)});
-                            bfw.write(writeOut);
-                            bfw.newLine();
+                            geneIds = this.peakGeneId.get(label);
+                            for (String geneId: geneIds) {
+                                geneName = this.geneNames.getOrDefault(geneId, null);
+                                if (geneName == null)
+                                    continue;
+                                if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
+                                    continue;
+                                writeOut = String.join("\t",
+                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
+                                                majorNc, minorNc, String.valueOf(majorAlleleCount),
+                                                String.valueOf(minorAlleleCount)});
+                                bfw.write(writeOut);
+                                bfw.newLine();
+                            }
                         }
                     }
                     if (negStrandTree != null) {
@@ -314,18 +333,20 @@ public class PeakWithSNV {
                             peakStart = Integer.toString(negStrandSearchResult.peakStart);
                             peakEnd = Integer.toString(negStrandSearchResult.peakEnd);
                             label = String.join("->", new String[] {peakStart, peakEnd});
-                            geneId = this.peakGeneId.get(label);
-                            geneName = this.geneNames.getOrDefault(geneId, null);
-                            if (geneName == null)
-                                continue;
-                            if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
-                                continue;
-                            writeOut = String.join("\t",
-                                    new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
+                            geneIds = this.peakGeneId.get(label);
+                            for (String geneId: geneIds) {
+                                geneName = this.geneNames.getOrDefault(geneId, null);
+                                if (geneName == null)
+                                    continue;
+                                if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
+                                    continue;
+                                writeOut = String.join("\t",
+                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
                                                 majorNc, minorNc, String.valueOf(majorAlleleCount),
                                                 String.valueOf(minorAlleleCount)});
-                            bfw.write(writeOut);
-                            bfw.newLine();
+                                bfw.write(writeOut);
+                                bfw.newLine();
+                            }
                         }
                     }
                 }
@@ -410,6 +431,22 @@ public class PeakWithSNV {
         }
 
         return reads;
+    }
+
+    private void searchLocateGene(GTFIntervalTreeNode gitn, int position,
+                                  LinkedList<GTFIntervalTreeNode> potentialLocateGene) {
+        potentialLocateGene.add(gitn);
+
+        if (gitn.rightChild != null) {
+            GTFIntervalTreeNode rc = (GTFIntervalTreeNode) gitn.rightChild;
+            if (rc.intervalStart <= position && position <= rc.intervalEnd)
+                this.searchLocateGene(rc, position, potentialLocateGene);
+        }
+        if (gitn.leftChild != null) {
+            GTFIntervalTreeNode lc = (GTFIntervalTreeNode) gitn.leftChild;
+            if (lc.intervalStart <= position && position <= lc.intervalEnd)
+                this.searchLocateGene(lc, position, potentialLocateGene);
+        }
     }
 
     private boolean ifInExon(String chrNum, String geneId, int position) {
