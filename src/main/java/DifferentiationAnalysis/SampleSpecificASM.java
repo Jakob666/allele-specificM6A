@@ -54,12 +54,13 @@ public class SampleSpecificASM {
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
      * @param threadNumber thread number, default 2
+     * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param logger log4j instance
      */
     public SampleSpecificASM(String gtfFile, String sample1PeakBedFile, String sample1VcfFile, String sample1WesFile,
                              String sample2PeakBedFile, String sample2VcfFile, String sample2WesFile, String dbsnpFile,
                              String outputFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                             int samplingTime, int burnIn, int threadNumber, Logger logger) {
+                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
         this.logger = logger;
         this.outputFile = outputFile;
         this.degreeOfFreedom = degreeOfFreedom;
@@ -71,10 +72,17 @@ public class SampleSpecificASM {
         String peakWithSnvBkgFile = null;
         if (sample1WesFile!=null)
             peakWithSnvBkgFile = new File(new File(outputFile).getParent(), "sample1_peak_with_snv_bkg.txt").getAbsolutePath();
-        this.sample1AsmPeakDetector = new AsmPeakDetection(gtfFile, sample1PeakBedFile, sample1VcfFile, sample1WesFile, dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile, degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, threadNumber, logger);
+        this.sample1AsmPeakDetector = new AsmPeakDetection(gtfFile, sample1PeakBedFile, sample1VcfFile, sample1WesFile,
+                                                           dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile,
+                                                           degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
+                                                           burnIn, threadNumber, onlyExonMutation, logger);
+
         peakWithSnvFile = new File(new File(outputFile).getParent(), "sample2_peak_with_snv.txt").getAbsolutePath();
         peakWithSnvBkgFile = new File(new File(outputFile).getParent(), "sample2_peak_with_snv_bkg.txt").getAbsolutePath();
-        this.sample2AsmPeakDetector = new AsmPeakDetection(gtfFile, sample2PeakBedFile, sample2VcfFile, sample2WesFile, dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile, degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, threadNumber, logger);
+        this.sample2AsmPeakDetector = new AsmPeakDetection(gtfFile, sample2PeakBedFile, sample2VcfFile, sample2WesFile,
+                                                           dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile,
+                                                           degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
+                                                           burnIn, threadNumber, onlyExonMutation, logger);
         this.parseGTFFile(gtfFile);
     }
 
@@ -103,6 +111,7 @@ public class SampleSpecificASM {
                sample1WesVcfFile = null, sample2WesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
         int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 5000, threadNumber = 2;
         double degreeOfFreedom = 10;
+        boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "sampleSpecificASM.txt").getAbsolutePath();
@@ -229,11 +238,13 @@ public class SampleSpecificASM {
             }
             threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
         }
+        if (commandLine.hasOption("oe"))
+            onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
 
         SampleSpecificASM ssasm = new SampleSpecificASM(gtfFile, sample1BedFile, sample1AseVcfFile, sample1WesVcfFile,
-                                                        sample2BedFile, sample2AseVcfFile, sample2WesVcfFile,
-                                                        dbsnpFile, outputFile, degreeOfFreedom, ipSNPCoverageInfimum,
-                                                        wesSNPCoverageInfimum, samplingTime, burn_in, threadNumber, logger);
+                                                        sample2BedFile, sample2AseVcfFile, sample2WesVcfFile, dbsnpFile,
+                                                        outputFile, degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
+                                                        samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
         ssasm.testSampleSpecificAsm();
     }
 
@@ -955,6 +966,10 @@ public class SampleSpecificASM {
         options.addOption(option);
 
         option = new Option("t", "thread", true, "thread number for running test. Optional, Default 2");
+        option.setRequired(false);
+        options.addOption(option);
+
+        option = new Option("oe", "only_exon", true, "true, if only remain SNPs locate in exon region; otherwise, false. Optional, default false");
         option.setRequired(false);
         options.addOption(option);
 
