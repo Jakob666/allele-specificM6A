@@ -72,9 +72,9 @@ public class GeneSNVRecord {
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.outputFile))));
             bfw.write(String.join("\t", new String[] {"#chr", "geneId", "geneName", "position",
                                                                 "majorAllele", "minorAllele",
-                                                                "majorAlleleCount", "minorAlleleCount"}));
+                                                                "majorAlleleCount", "minorAlleleCount", "qualityLabel"}));
             bfw.newLine();
-            String readIn = "", writeOut, chrNum, geneId, geneName, refNc, altNc, majorNc, minorNc;
+            String readIn = "", writeOut, chrNum, geneId, geneName, refNc, altNc, majorNc, minorNc, qualityLabel;
             int position, allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
             boolean specialMutation;
             String[] info;
@@ -103,6 +103,7 @@ public class GeneSNVRecord {
 
                     refNc = info[3];
                     altNc = info[4];
+                    qualityLabel = info[6];
                     // whether SNV site contains multiple possible mutations
                     specialMutation = altNc.length() > 1 && altNc.contains(",");
 
@@ -167,7 +168,7 @@ public class GeneSNVRecord {
                         geneId = node.geneId;
                         geneName = node.geneName;
                         writeOut = String.join("\t", new String[]{chrNum, geneId, geneName, info[1], majorNc, minorNc,
-                                String.valueOf(majorAlleleCount), String.valueOf(minorAlleleCount)});
+                                String.valueOf(majorAlleleCount), String.valueOf(minorAlleleCount), qualityLabel});
                         bfw.write(writeOut);
                         bfw.newLine();
                     }

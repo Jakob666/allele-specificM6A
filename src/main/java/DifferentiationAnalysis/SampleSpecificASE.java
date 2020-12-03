@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 public class SampleSpecificASE {
     private String outputFile;
     private int samplingTime, burnIn, threadNumber;
-    private double degreeOfFreedom, lorStd;
     private Logger logger;
     private HashMap<String, HashMap<Integer, String[]>> sample1GeneAlleleReads, sample2GeneAlleleReads;
     private AseGeneDetection sample1GeneDetector, sample2GeneDetector;
@@ -42,7 +41,6 @@ public class SampleSpecificASE {
      * @param sample2WesFile sample2 VCF format file via WES data, optional
      * @param dbsnpFile dbsnp annotation file for SNP filtering
      * @param outputFile result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -52,22 +50,21 @@ public class SampleSpecificASE {
      * @param logger log4j instance
      */
     public SampleSpecificASE(String gtfFile, String sample1VcfFile, String sample1WesFile, String sample2VcfFile, String sample2WesFile,
-                             String dbsnpFile, String outputFile, double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
+                             String dbsnpFile, String outputFile, int readsCoverageThreshold, int wesCoverageThreshold,
                              int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
         this.logger = logger;
         this.outputFile = outputFile;
-        this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.threadNumber = threadNumber;
         String snvLocationFile = new File(new File(outputFile).getParent(), "sample1_snv_location.txt").getAbsolutePath();
         this.sample1GeneDetector = new AseGeneDetection(gtfFile, sample1VcfFile, sample1WesFile, dbsnpFile, snvLocationFile,
-                                                        outputFile, degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold,
+                                                        outputFile, readsCoverageThreshold, wesCoverageThreshold,
                                                         samplingTime, burnIn, threadNumber, onlyExonMutation, logger);
 
         snvLocationFile = new File(new File(outputFile).getParent(), "sample2_snv_location.txt").getAbsolutePath();
         this.sample2GeneDetector = new AseGeneDetection(gtfFile, sample2VcfFile, sample2WesFile, dbsnpFile, snvLocationFile,
-                                                        outputFile, degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold,
+                                                        outputFile, readsCoverageThreshold, wesCoverageThreshold,
                                                         samplingTime, burnIn, threadNumber, onlyExonMutation, logger);
     }
 
@@ -94,8 +91,7 @@ public class SampleSpecificASE {
         // default parameters
         String gtfFile = null, sample1VcfFile = null, sample1WesVcfFile = null, sample2VcfFile = null, sample2WesVcfFile = null,
                dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 50000, burn_in = 5000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
-        double degreeOfFreedom = 10;
+        int samplingTime = 50000, burn_in = 10000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
         boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
@@ -183,12 +179,6 @@ public class SampleSpecificASE {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("df"))
-            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
-        if (degreeOfFreedom <= 1) {
-            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
-            System.exit(2);
-        }
         if (commandLine.hasOption("t")) {
             if (Integer.valueOf(commandLine.getOptionValue("t")) <= 0) {
                 System.err.println("invalid thread number, should be a positive integer");
@@ -200,14 +190,13 @@ public class SampleSpecificASE {
             onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
 
         SampleSpecificASE ssase = new SampleSpecificASE(gtfFile, sample1VcfFile, sample1WesVcfFile, sample2VcfFile, sample2WesVcfFile,
-                                                        dbsnpFile, outputFile, degreeOfFreedom, readsCoverageThreshold, wesCoverageThreshold,
+                                                        dbsnpFile, outputFile, readsCoverageThreshold, wesCoverageThreshold,
                                                         samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
         ssase.testSampleSpecificAse();
     }
 
     public void testSampleSpecificAse() {
         this.dataPreparation();
-        this.calcLORStd();
         this.aseDifferentiationAnalysis();
         this.bhRecalibrationOfEachGene();
         this.output();
@@ -277,49 +266,6 @@ public class SampleSpecificASE {
     }
 
     /**
-     * calculate the standard deviation of LOR of all SNV sites on genome
-     */
-    private void calcLORStd() {
-        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        ArrayList<Double> lorList = new ArrayList<>();
-        int[] sample1MajorCount, sample1MinorCount, sample2MajorCount, sample2MinorCount;
-        double lor, cum = 0;
-        for (String label: this.statisticForTest.keySet()) {
-            int[][] statistic = this.statisticForTest.get(label);
-            sample1MajorCount = statistic[0];
-            sample1MinorCount = statistic[1];
-            sample2MajorCount = statistic[2];
-            sample2MinorCount = statistic[3];
-
-            for (int i=0; i<sample1MajorCount.length; i++) {
-                double sample1Major = sample1MajorCount[i], sample1Minor = sample1MinorCount[i],
-                        sample2Major = sample2MajorCount[i], sample2Minor = sample2MinorCount[i];
-
-                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
-                // if any of the cell expectations would cause a division by zero error.
-                if (sample1Minor == 0 | sample2Minor == 0)
-                    lor = ((sample1Major + 0.5) / (sample1Minor + 0.5)) / ((sample2Major + 0.5) / (sample2Minor + 0.5));
-                else
-                    lor = sample1Major / sample1Minor / (sample2Major / sample2Minor);
-                lor = Math.log(lor);
-                lorList.add(lor);
-                cum += lor;
-            }
-        }
-        double lorMean = cum / lorList.size();
-        double variance = 0.0;
-        for (Double val: lorList) {
-            variance += Math.pow((val - lorMean), 2);
-        }
-
-        this.lorStd = Math.sqrt(variance / lorList.size());
-        lorList = null;
-
-        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        this.lorStd = (Math.abs(this.lorStd-0)<0.00001)? 0.0001: this.lorStd;
-    }
-
-    /**
      * run differentiation analysis
      */
     private void aseDifferentiationAnalysis() {
@@ -331,6 +277,7 @@ public class SampleSpecificASE {
         this.geneTotalReads = new HashMap<>();
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
+        long tenPercent = Math.round(this.statisticForTest.size() * 0.1);
 
         for (String label: this.statisticForTest.keySet()) {
             Runnable runnable = () -> {
@@ -348,17 +295,31 @@ public class SampleSpecificASE {
                     int sample2Major = Arrays.stream(sample2MajorReads).reduce((x, y) -> x + y).getAsInt();
                     int sample2Minor = Arrays.stream(sample2MinorReads).reduce((x, y) -> x + y).getAsInt();
                     this.geneTotalReads.put(label, new int[]{sample1Major, sample1Minor, sample2Major, sample2Minor});
+                    double df, aveDepth, scaleParam, epsilon = 0.00000000001;
+                    df = Math.max(3, sample1MajorReads.length);
+                    aveDepth = Arrays.stream(sample1MajorReads).average().getAsDouble();
+                    scaleParam = (aveDepth < 10)? 50: 100;
 
                     if (sample1Minor == 0 && sample2Minor == 0) // gene shows ASE in two samples simultaneously
-                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
-                                this.samplingTime, this.burnIn, sample1MajorReads, sample1MajorReads, sample2MajorReads, sample2MajorReads);
+                        hb = new HierarchicalBayesianModel(df, scaleParam, this.samplingTime, this.burnIn,
+                                sample1MajorReads, sample1MajorReads, sample2MajorReads, sample2MajorReads);
                     else
-                        hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom,
-                                this.samplingTime, this.burnIn, sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
+                        hb = new HierarchicalBayesianModel(df, scaleParam, this.samplingTime, this.burnIn,
+                                sample1MajorReads, sample1MinorReads, sample2MajorReads, sample2MinorReads);
 
-                    double p = hb.testSignificant();
-                    double oddRatio = Math.exp(hb.quantifyGeneLOR());
-                    double geneMAF = Math.min(1.0, oddRatio / (oddRatio + 1));
+                    double p = 0, oddRatio, geneMAF = 0;
+                    boolean wellDone = false;
+                    int maxTrail = 0;
+                    while (!wellDone && maxTrail < 10) {  // avoid MCMC failed
+                        p = hb.testSignificant();
+                        oddRatio = Math.exp(hb.quantifyGeneLOR());
+                        geneMAF = Math.min(1.0, oddRatio / (oddRatio + 1));
+                        Double maf = new Double(geneMAF);
+                        if (!maf.equals(Double.NaN) && !(Math.abs(geneMAF - 1.0) < epsilon) && !(Math.abs(geneMAF) < epsilon))
+                            wellDone = true;
+                        maxTrail++;
+                    }
+
                     lock.lock();
 
                     ArrayList<String> samePValGenes = this.geneSampleSpecificPValue.getOrDefault(p, new ArrayList<>());
@@ -370,8 +331,12 @@ public class SampleSpecificASE {
                     this.logger.error("error occurs on record " + label);
                     this.logger.error(e.getMessage());
                 } finally {
-                    lock.unlock();
                     countDown.countDown();
+                    if (countDown.getCount() % tenPercent == 0) {
+                        double proportion = 100 - 10.0 * countDown.getCount() / tenPercent;
+                        logger.debug(proportion + "% completed");
+                    }
+                    lock.unlock();
                     hb = null;
                     geneReads = null;
                     sample1MajorReads = null;
@@ -609,10 +574,6 @@ public class SampleSpecificASE {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
-        option.setRequired(false);
-        options.addOption(option);
-
         option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
@@ -625,7 +586,7 @@ public class SampleSpecificASE {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 

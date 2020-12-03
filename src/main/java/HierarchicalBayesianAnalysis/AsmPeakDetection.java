@@ -22,7 +22,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class AsmPeakDetection {
     private String gtfFile, peakBedFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0, threadNumber;
-    private double degreeOfFreedom, lorStd;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
     private HashMap<Double, ArrayList<String>> asmPValue = new HashMap<>();
@@ -47,7 +46,6 @@ public class AsmPeakDetection {
      * @param wesFile VCF format file via WES data, optional
      * @param dbsnpFile dbsnp file for SNP filtering
      * @param asmPeakFile test result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -57,7 +55,7 @@ public class AsmPeakDetection {
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
-                            String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            String asmPeakFile, int ipSNPReadInfimum, int wesSNPReadInfimum,
                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger log) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
@@ -71,7 +69,6 @@ public class AsmPeakDetection {
         } else
             this.dbsnpRecord = null;
         this.asmPeakFile = asmPeakFile;
-        this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
@@ -103,7 +100,6 @@ public class AsmPeakDetection {
      * @param dbsnpFile dbsnp file for SNP filtering
      * @param peakWithSnvFile peak contains SNVs
      * @param asmPeakFile test result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -113,7 +109,7 @@ public class AsmPeakDetection {
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
-                            String peakWithSnvFile, String peakWithSnvBkgFile, String asmPeakFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                            String peakWithSnvFile, String peakWithSnvBkgFile, String asmPeakFile, int ipSNPReadInfimum, int wesSNPReadInfimum,
                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger log) {
         this.gtfFile = gtfFile;
         this.peakBedFile = peakBedFile;
@@ -126,7 +122,6 @@ public class AsmPeakDetection {
         } else
             this.dbsnpRecord = null;
         this.asmPeakFile = asmPeakFile;
-        this.degreeOfFreedom = degreeOfFreedom;
         this.ipSNPReadInfimum = ipSNPReadInfimum;
         this.wesSNPReadInfimum = wesSNPReadInfimum;
         this.samplingTime = samplingTime;
@@ -171,8 +166,7 @@ public class AsmPeakDetection {
 
         // default parameters
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 5000, threadNumber = 2;
-        double degreeOfFreedom = 10;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 10000, threadNumber = 2;
         boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
@@ -248,12 +242,6 @@ public class AsmPeakDetection {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("df"))
-            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
-        if (degreeOfFreedom <= 1) {
-            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
-            System.exit(2);
-        }
         if (commandLine.hasOption("rc"))
             ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("bc"))
@@ -270,7 +258,7 @@ public class AsmPeakDetection {
         }
 
         AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
-                                                    degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
+                                                    ipSNPCoverageInfimum, wesSNPCoverageInfimum,
                                                     samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
         apd.getTestResult();
     }
@@ -325,7 +313,6 @@ public class AsmPeakDetection {
         this.getPeakSNPReadsCount();
         this.getPeakSNPBackground();
         this.dataPreparation();
-        this.calcLorStd();
         this.hierarchicalModelTest();
     }
 
@@ -475,52 +462,6 @@ public class AsmPeakDetection {
     }
 
     /**
-     * calculate the standard deviation of LOR of all SNV sites covered by m6A signals on genome
-     */
-    private void calcLorStd() {
-        this.log.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        ArrayList<Double> lorList = new ArrayList<>();
-        int[] majorCount, minorCount, majorBackground, minorBackground;
-        double lor, cum = 0;
-        for (String label: this.statisticForTest.keySet()) {
-            ArrayList<int[]> statistic = this.statisticForTest.get(label);
-            majorCount = statistic.get(0);
-            minorCount = statistic.get(1);
-            majorBackground = statistic.get(2);
-            minorBackground = statistic.get(3);
-
-            for (int i=0; i<majorCount.length; i++) {
-                // WES SNVs only used for annotating RNA-seq SNVs. Because of the alignment error, background reads count do not take part in LOR Std calculation
-                // we assume the odd ratio of background major and minor reads equals 1
-                double major = majorCount[i], minor = minorCount[i],
-                        majorBack = majorBackground[i], minorBack = minorBackground[i];
-
-                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
-                // if any of the cell expectations would cause a division by zero error.
-//                lor = ((major + 0.5) / (minor + 0.5));  // (majorBack / minorBack);
-                if (minor == 0)
-                    lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
-                else
-                    lor = major / minor;
-                lor = Math.log(lor);
-                lorList.add(lor);
-                cum += lor;
-            }
-        }
-        double lorMean = cum / lorList.size();
-        double variance = 0.0;
-        for (Double val: lorList) {
-            variance += Math.pow((val - lorMean), 2);
-        }
-
-        this.lorStd = Math.sqrt(variance / lorList.size());
-        lorList.clear();
-
-        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        this.lorStd = (Math.abs(this.lorStd-0)<0.00001)? 0.0001: this.lorStd;
-    }
-
-    /**
      * calculate m6A signal p value via hierarchical model
      */
     private void hierarchicalModelTest() {
@@ -534,6 +475,7 @@ public class AsmPeakDetection {
               @Override
               public void run() {
                   ArrayList<int[]> statistic;
+                  double df, aveDepth, scaleParam, epsilon = 0.00000000001;
                   int[] majorCount, minorCount, majorBackground, minorBackground;
                   HierarchicalBayesianModel hb;
                   try {
@@ -543,11 +485,24 @@ public class AsmPeakDetection {
                       majorBackground = statistic.get(2);
                       minorBackground = statistic.get(3);
                       // get p value via hierarchical model
-                      hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime,
+                      df = Math.max(3, majorCount.length);
+                      aveDepth = Arrays.stream(majorCount).average().getAsDouble();
+                      scaleParam = (aveDepth - 10 < epsilon)? 50: 100;
+                      boolean wellDone = false;
+                      int maxTrail = 0;
+                      double pVal = 0, peakOddRatio, peakMAF = 0;
+                      hb = new HierarchicalBayesianModel(df, scaleParam, samplingTime,
                               burnIn, majorCount, minorCount, majorBackground, minorBackground);
-                      double pVal = hb.testSignificant();
-                      double peakOddRatio = Math.exp(hb.quantifyGeneLOR());
-                      double peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
+                      while (!wellDone && maxTrail < 10) {  // avoid MCMC failed
+                          pVal = hb.testSignificant();
+                          peakOddRatio = Math.exp(hb.quantifyGeneLOR());
+                          peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
+                          Double maf = new Double(peakMAF);
+                          if (!maf.equals(Double.NaN) && !(Math.abs(peakMAF - 1.0) < epsilon) && !(Math.abs(peakMAF) < epsilon))
+                              wellDone = true;
+                          maxTrail++;
+                      }
+
                       lock.lock();
                       ArrayList<String> samePValPeaks = asmPValue.getOrDefault(pVal, new ArrayList<>());
                       samePValPeaks.add(name);
@@ -850,10 +805,6 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
-        option.setRequired(false);
-        options.addOption(option);
-
         option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
@@ -866,7 +817,7 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 

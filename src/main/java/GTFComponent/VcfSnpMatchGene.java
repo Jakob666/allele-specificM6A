@@ -43,8 +43,9 @@ public class VcfSnpMatchGene {
         BufferedReader bfr = null;
         try {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.vcfFile))));
-            String line = "", chrNum, refNc, altNc, majorNc, minorNc;
+            String line = "", chrNum, refNc, altNc, majorNc, minorNc, qualityLabel;
             int position, allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
+            double qualityScore;
             boolean specialMutation;
             int[] readsCount;
             IntervalTree it;
@@ -60,6 +61,8 @@ public class VcfSnpMatchGene {
                     info = line.split("\t");
                     refNc = info[3];
                     altNc = info[4];
+                    qualityScore = Double.parseDouble(info[5]);
+                    qualityLabel = info[6];
                     // whether SNV site contains multiple possible mutations
                     specialMutation = altNc.length() > 1 && altNc.contains(",");
 
@@ -129,7 +132,10 @@ public class VcfSnpMatchGene {
                         minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
                     }
 
-                    if (majorAlleleCount < this.readsCoverageThreshold)
+                    if (qualityScore - 100 < 0.00001 && !qualityLabel.equals("PASS"))
+                        continue;
+
+                    if (majorAlleleCount < this.readsCoverageThreshold && minorAlleleCount == 0)
                         continue;
 
                     // locate the SNV site on particular gene using GTF interval tree

@@ -19,7 +19,6 @@ public class SampleSpecificASM {
     private Logger logger;
     private String outputFile;
     private int samplingTime, burnIn, threadNumber;
-    private double degreeOfFreedom, lorStd;
     private AsmPeakDetection sample1AsmPeakDetector, sample2AsmPeakDetector;
     private HashMap<String, String> sample1PeakCoveredGene, sample2PeakCoveredGene;
     private HashMap<String, HashSet<String>> mergedPeakCoveredGenes;
@@ -48,7 +47,6 @@ public class SampleSpecificASM {
      * @param sample2WesFile sample2 VCF format file via WES data, optional
      * @param dbsnpFile dbsnp file for SNP filtering
      * @param outputFile test result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param ipSNPReadInfimum reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesSNPReadInfimum reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -59,11 +57,10 @@ public class SampleSpecificASM {
      */
     public SampleSpecificASM(String gtfFile, String sample1PeakBedFile, String sample1VcfFile, String sample1WesFile,
                              String sample2PeakBedFile, String sample2VcfFile, String sample2WesFile, String dbsnpFile,
-                             String outputFile, double degreeOfFreedom, int ipSNPReadInfimum, int wesSNPReadInfimum,
+                             String outputFile, int ipSNPReadInfimum, int wesSNPReadInfimum,
                              int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
         this.logger = logger;
         this.outputFile = outputFile;
-        this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.threadNumber = threadNumber;
@@ -74,14 +71,14 @@ public class SampleSpecificASM {
             peakWithSnvBkgFile = new File(new File(outputFile).getParent(), "sample1_peak_with_snv_bkg.txt").getAbsolutePath();
         this.sample1AsmPeakDetector = new AsmPeakDetection(gtfFile, sample1PeakBedFile, sample1VcfFile, sample1WesFile,
                                                            dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile,
-                                                           degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
+                                                           ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
                                                            burnIn, threadNumber, onlyExonMutation, logger);
 
         peakWithSnvFile = new File(new File(outputFile).getParent(), "sample2_peak_with_snv.txt").getAbsolutePath();
         peakWithSnvBkgFile = new File(new File(outputFile).getParent(), "sample2_peak_with_snv_bkg.txt").getAbsolutePath();
         this.sample2AsmPeakDetector = new AsmPeakDetection(gtfFile, sample2PeakBedFile, sample2VcfFile, sample2WesFile,
                                                            dbsnpFile, peakWithSnvFile, peakWithSnvBkgFile, outputFile,
-                                                           degreeOfFreedom, ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
+                                                           ipSNPReadInfimum, wesSNPReadInfimum, samplingTime,
                                                            burnIn, threadNumber, onlyExonMutation, logger);
         this.parseGTFFile(gtfFile);
     }
@@ -109,8 +106,7 @@ public class SampleSpecificASM {
         // default parameters
         String gtfFile = null, sample1BedFile = null, sample2BedFile = null, sample1AseVcfFile = null, sample2AseVcfFile = null,
                sample1WesVcfFile = null, sample2WesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 5000, threadNumber = 2;
-        double degreeOfFreedom = 10;
+        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 10000, threadNumber = 2;
         boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
@@ -221,12 +217,6 @@ public class SampleSpecificASM {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("df"))
-            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
-        if (degreeOfFreedom <= 1) {
-            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0, default 10.0");
-            System.exit(2);
-        }
         if (commandLine.hasOption("rc"))
             ipSNPCoverageInfimum = Integer.parseInt(commandLine.getOptionValue("rc"));
         if (commandLine.hasOption("bc"))
@@ -243,14 +233,13 @@ public class SampleSpecificASM {
 
         SampleSpecificASM ssasm = new SampleSpecificASM(gtfFile, sample1BedFile, sample1AseVcfFile, sample1WesVcfFile,
                                                         sample2BedFile, sample2AseVcfFile, sample2WesVcfFile, dbsnpFile,
-                                                        outputFile, degreeOfFreedom, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
+                                                        outputFile, ipSNPCoverageInfimum, wesSNPCoverageInfimum,
                                                         samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
         ssasm.testSampleSpecificAsm();
     }
 
     public void testSampleSpecificAsm() {
         this.dataPreparation();
-        this.calcLORStd();
         this.asmDifferentiationAnalysis();
         this.bhRecalibrationOfEachPeak();
         this.output();
@@ -565,47 +554,6 @@ public class SampleSpecificASM {
     }
 
     /**
-     * calculate the standard deviation of LOR of all SNV sites on genome
-     */
-    private void calcLORStd() {
-        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        ArrayList<Double> lorList = new ArrayList<>();
-        double lor, cum = 0;
-        for (String label: this.sample1Major.keySet()) {
-            ArrayList<Integer> major1 = this.sample1Major.get(label);
-            ArrayList<Integer> minor1 = this.sample1Minor.get(label);
-            ArrayList<Integer> major2 = this.sample2Major.get(label);
-            ArrayList<Integer> minor2 = this.sample2Minor.get(label);
-
-            for (int i=0; i<major1.size(); i++) {
-                double sample1Major = major1.get(i), sample1Minor = minor1.get(i),
-                        sample2Major = major2.get(i), sample2Minor = minor2.get(i);
-
-                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
-                // if any of the cell expectations would cause a division by zero error.
-                if (sample1Minor == 0 | sample2Minor == 0)
-                    lor = ((sample1Major + 0.5) / (sample1Minor + 0.5)) / ((sample2Major + 0.5) / (sample2Minor + 0.5));
-                else
-                    lor = sample1Major / sample1Minor / (sample2Major / sample2Minor);
-                lor = Math.log(lor);
-                lorList.add(lor);
-                cum += lor;
-            }
-        }
-        double lorMean = cum / lorList.size();
-        double variance = 0.0;
-        for (Double val: lorList) {
-            variance += Math.pow((val - lorMean), 2);
-        }
-
-        this.lorStd = Math.sqrt(variance / lorList.size());
-        lorList = null;
-
-        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        this.lorStd = (Math.abs(this.lorStd-0)<0.00001)? 0.0001: this.lorStd;
-    }
-
-    /**
      * sample specific ASM test
      */
     private void asmDifferentiationAnalysis() {
@@ -616,6 +564,7 @@ public class SampleSpecificASM {
         this.peakMajorMinorReads = new HashMap<>();
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         CountDownLatch countDown = new CountDownLatch(this.sample1Major.size());
+        long tenPercent = Math.round(this.sample1Major.size() * 0.1);
 
         ArrayList<int[]> chrPeaks;
         for (String chr: this.chrMergedPeaks.keySet()) {
@@ -644,16 +593,29 @@ public class SampleSpecificASM {
                         int majorCount2 = s2Major.stream().reduce((x, y) -> x + y).get();
                         int minorCount2 = s2Minor.stream().reduce((x, y) -> x + y).get();
                         this.peakMajorMinorReads.put(label, new int[]{majorCount1, minorCount1, majorCount2, minorCount2});
-
+                        double df, aveDepth, scaleParam, epsilon = 0.00000000001;
+                        df = Math.max(3, major1.length);
+                        aveDepth = Arrays.stream(major1).average().getAsDouble();
+                        scaleParam = (aveDepth < 10)? 50: 100;
                         if (minorCount1 == 0 && minorCount2 == 0)
-                            hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
+                            hb = new HierarchicalBayesianModel(df, scaleParam, this.samplingTime,
                                     this.burnIn, major1, major1, major2, major2);
                         else
-                            hb = new HierarchicalBayesianModel(this.lorStd, this.degreeOfFreedom, this.samplingTime,
+                            hb = new HierarchicalBayesianModel(df, scaleParam, this.samplingTime,
                                     this.burnIn, major1, minor1, major2, minor2);
-                        double pVal = hb.testSignificant();
-                        double peakOddRatio = Math.exp(hb.quantifyGeneLOR());
-                        double peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
+                        boolean wellDone = false;
+                        int maxTrail = 0;
+                        double pVal = 0, peakOddRatio, peakMAF = 0;
+                        while (!wellDone && maxTrail < 10) {  // avoid MCMC failed
+                            pVal = hb.testSignificant();
+                            peakOddRatio = Math.exp(hb.quantifyGeneLOR());
+                            peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
+                            Double maf = new Double(peakMAF);
+                            if (!maf.equals(Double.NaN) && !(Math.abs(peakMAF - 1.0) < epsilon) && !(Math.abs(peakMAF) < epsilon))
+                                wellDone = true;
+                            maxTrail++;
+                        }
+
                         this.lock.lock();
                         ArrayList<String> samePValPeaks = this.peakSampleSpecificPValue.getOrDefault(pVal, new ArrayList<>());
                         samePValPeaks.add(label);
@@ -663,8 +625,12 @@ public class SampleSpecificASM {
                         this.logger.error("error occurs on record " + label);
                         this.logger.error(e.getMessage());
                     } finally {
-                        this.lock.unlock();
                         countDown.countDown();
+                        if (countDown.getCount() % tenPercent == 0) {
+                            double proportion = 100 - 10.0 * countDown.getCount() / tenPercent;
+                            logger.debug(proportion + "% completed");
+                        }
+                        this.lock.unlock();
                         hb = null;
                         s1Major = null;
                         s1Minor = null;
@@ -961,7 +927,7 @@ public class SampleSpecificASM {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 

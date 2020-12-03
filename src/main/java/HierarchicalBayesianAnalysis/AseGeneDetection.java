@@ -31,7 +31,6 @@ public class AseGeneDetection {
     private HashMap<String, ArrayList<int[]>> statisticForTest = new HashMap<>();
     private ArrayList<String> geneAseQValue;
     private DecimalFormat df = new DecimalFormat("0.0000");
-    private double degreeOfFreedom, lorStd;
     private ReentrantLock lock;
     private Logger logger;
 
@@ -42,7 +41,6 @@ public class AseGeneDetection {
      * @param wesFile VCF format file via WES data, optional
      * @param dbsnpFile dbsnp annotation file for SNP filtering
      * @param aseGeneFile test result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -52,7 +50,7 @@ public class AseGeneDetection {
      * @param logger log4j instance
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
-                            double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
+                            int readsCoverageThreshold, int wesCoverageThreshold,
                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
         HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
@@ -73,7 +71,6 @@ public class AseGeneDetection {
         if (dbsnpRecord != null)
             dbsnpRecord = null;
 
-        this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
@@ -99,7 +96,6 @@ public class AseGeneDetection {
      * @param dbsnpFile dbsnp annotation file for SNP filtering
      * @param snvLocationFile SNVs location file
      * @param aseGeneFile test result output file
-     * @param degreeOfFreedom the degree of freedom of inverse-Chi-square distribution, default 10
      * @param readsCoverageThreshold reads coverage threshold when filter INPUT sample SNV sites, default 10
      * @param wesCoverageThreshold reads coverage threshold when filter WES SNV sites, default 30
      * @param samplingTime sampling time, default 10000
@@ -109,7 +105,7 @@ public class AseGeneDetection {
      * @param logger log4j instance
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String snvLocationFile, String aseGeneFile,
-                            double degreeOfFreedom, int readsCoverageThreshold, int wesCoverageThreshold,
+                            int readsCoverageThreshold, int wesCoverageThreshold,
                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
         HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
@@ -130,7 +126,6 @@ public class AseGeneDetection {
         if (dbsnpRecord != null)
             dbsnpRecord = null;
 
-        this.degreeOfFreedom = degreeOfFreedom;
         this.samplingTime = samplingTime;
         this.burnIn = burnIn;
         this.aseGeneFile = aseGeneFile;
@@ -169,8 +164,7 @@ public class AseGeneDetection {
 
         // default parameters
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 50000, burn_in = 5000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
-        double degreeOfFreedom = 10;
+        int samplingTime = 50000, burn_in = 10000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
         boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
@@ -235,12 +229,6 @@ public class AseGeneDetection {
             logger.error("sampling times larger than 500 and burn in times at least 100");
             System.exit(2);
         }
-        if (commandLine.hasOption("df"))
-            degreeOfFreedom = Double.parseDouble(commandLine.getOptionValue("df"));
-        if (degreeOfFreedom <= 1) {
-            System.out.println("invalid inverse-Chi-square distribution parameter for tau sampling. Must larger than 1.0");
-            System.exit(2);
-        }
         if (commandLine.hasOption("t")) {
             if (Integer.valueOf(commandLine.getOptionValue("t")) <= 0) {
                 System.err.println("invalid thread number, should be a positive integer");
@@ -252,7 +240,7 @@ public class AseGeneDetection {
             onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
         }
 
-        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile, degreeOfFreedom,
+        AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
                 readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
         agd.getTestResult();
     }
@@ -267,7 +255,6 @@ public class AseGeneDetection {
 
     public void getTestResult() {
         this.dataPreparation();
-        this.calcLorStd();
         this.aseGeneTest();
         this.bhRecalibrationOfEachGene();
         this.outputResult();
@@ -381,12 +368,14 @@ public class AseGeneDetection {
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         this.lock = new ReentrantLock();
         CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
+        long tenPercent = Math.round(this.statisticForTest.size() * 0.1);
 
         RunTest task = (String name) -> {
             return new Runnable() {
                 @Override
                 public void run() {
                     ArrayList<int[]> statistic;
+                    double df, scaleParam, aveDepth, epsilon = 0.00000000001, mafLowerBound = 0.49, asLowBound = 0.59;
                     int[] majorCount, minorCount, majorBackground, minorBackground;
                     HierarchicalBayesianModel hb;
                     try {
@@ -395,11 +384,28 @@ public class AseGeneDetection {
                         minorCount = statistic.get(1);
                         majorBackground = statistic.get(2);
                         minorBackground = statistic.get(3);
-                        hb = new HierarchicalBayesianModel(lorStd, degreeOfFreedom, samplingTime, burnIn,
+                        df = Math.max(3, majorCount.length);
+                        aveDepth = Arrays.stream(majorCount).average().getAsDouble();
+                        if (majorCount.length == 1)
+                            scaleParam = 50;
+                        else
+                            scaleParam = (aveDepth - 15 < epsilon)? 50: 100;
+                        hb = new HierarchicalBayesianModel(df, scaleParam, samplingTime, burnIn,
                                 majorCount, minorCount, majorBackground, minorBackground);
-                        double p = hb.testSignificant();
-                        double geneOddRatio = Math.exp(hb.quantifyGeneLOR());
-                        double geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio + 1));
+                        boolean wellDone = false;
+                        int maxTrail = 0;
+                        double p = 0, geneOddRatio, geneMAF = 0;
+                        while (!wellDone && maxTrail < 10) {    // avoid MCMC failed
+                            p = hb.testSignificant();
+                            geneOddRatio = Math.exp(hb.quantifyGeneLOR());
+                            geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio + 1));
+                            Double maf = new Double(geneMAF);
+                            if (!maf.equals(Double.NaN) && !(!hb.isAllZero() && Math.abs(geneMAF - 1.0) < epsilon) &&
+                                !(geneMAF - mafLowerBound < epsilon) && !(geneMAF-asLowBound>epsilon && p - 0.05 > epsilon))
+                                wellDone = true;
+                            maxTrail++;
+                        }
+
                         lock.lock();
 
                         ArrayList<String> samePValGenes = geneAsePValue.getOrDefault(p, new ArrayList<>());
@@ -409,9 +415,15 @@ public class AseGeneDetection {
                         geneMajorAlleleFrequency.put(name, geneMAF);
                     } catch (Exception e) {
                         logger.error("error occurs on record " + name);
+                        e.printStackTrace();
                         logger.error(e.getMessage());
                     } finally {
                         countDown.countDown();
+                        if (countDown.getCount() % tenPercent == 0) {
+                            double proportion = 100 - 10.0 * countDown.getCount() / tenPercent;
+                            if (proportion >= 0)
+                                logger.debug(proportion + "% completed");
+                        }
                         lock.unlock();
                         hb = null;
                         majorCount = null;
@@ -445,51 +457,6 @@ public class AseGeneDetection {
             this.lock = null;
         }
         this.logger.debug("model test complete");
-    }
-
-    /**
-     * calculate the standard deviation of LOR of all SNV sites on genome
-     */
-    private void calcLorStd() {
-        this.logger.debug("calculate LOR standard as parameter of Inverse chi-square distribution");
-        ArrayList<Double> lorList = new ArrayList<>();
-        int[] majorCount, minorCount, majorBackground, minorBackground;
-        double lor, cum = 0;
-        for (String label: this.statisticForTest.keySet()) {
-            ArrayList<int[]> statistic = this.statisticForTest.get(label);
-            majorCount = statistic.get(0);
-            minorCount = statistic.get(1);
-            majorBackground = statistic.get(2);
-            minorBackground = statistic.get(3);
-
-            for (int i=0; i<majorCount.length; i++) {
-                // WES SNVs only used for annotating RNA-seq SNVs. Because of the alignment error, background reads count do not take part in LOR Std calculation
-                // we assume the odd ratio of background major and minor reads equals 1
-                double major = majorCount[i], minor = minorCount[i],
-                       majorBack = majorBackground[i], minorBack = minorBackground[i];
-
-                // Haldane's correction, adding 0.5 to all of the cells of a contingency table
-                // if any of the cell expectations would cause a division by zero error.
-                if (minor == 0)
-                    lor = ((major + 0.5) / (minor + 0.5)); //  (majorBack / minorBack)
-                else
-                    lor = major / minor;
-                lor = Math.log(lor);
-                lorList.add(lor);
-                cum += lor;
-            }
-        }
-        double lorMean = cum / lorList.size();
-        double variance = 0.0;
-        for (Double val: lorList) {
-            variance += Math.pow((val - lorMean), 2);
-        }
-
-        this.lorStd = Math.sqrt(variance / lorList.size());
-        lorList.clear();
-
-        // avoid org.apache.commons.math3.exception.NotStrictlyPositiveException: standard deviation (0)
-        this.lorStd = (Math.abs(this.lorStd-0) < 0.00001)? 0.0001: this.lorStd;
     }
 
     /**
@@ -687,10 +654,6 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("df", "degree_of_freedom", true, "degree of freedom of inverse-Chi-square distribution. Optional, default 10");
-        option.setRequired(false);
-        options.addOption(option);
-
         option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
         option.setRequired(false);
         options.addOption(option);
@@ -703,7 +666,7 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 5000");
+        option = new Option("b", "burn", true, "burn-in times, more than 100 and less than sampling times. Optional, default 10000");
         option.setRequired(false);
         options.addOption(option);
 

@@ -35,11 +35,11 @@ public class OddRatioCalc {
             majorReads = this.majorSNPReads[i];
             minorReads = this.minorSNPReads[i];
             if (this.majorAlleleBackground == null)
-                majorBackground = (majorReads + minorReads) / 2;
+                majorBackground = -1;
             else
                 majorBackground = (this.majorAlleleBackground[i] == 0)? (majorReads + minorReads) / 2: this.majorAlleleBackground[i];
             if (this.minorAlleleBackground == null)
-                minorBackground = (majorReads + minorReads) / 2;
+                minorBackground = -1;
             else
                 minorBackground = (this.minorAlleleBackground[i] == 0)? (majorReads + minorReads) / 2: this.minorAlleleBackground[i];
             logOddratio = this.calculateLogOddRatio(majorReads, minorReads, majorBackground, minorBackground);
@@ -66,10 +66,11 @@ public class OddRatioCalc {
      */
     private double calculateLogOddRatio(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
         double oddRatio;
-        if (minorAlleleReads == 0 | minorBackground == 0)
-            oddRatio = ((majorAlleleReads + 0.5) / (minorAlleleReads + 0.5)) / ((majorBackground + 0.5) / (minorBackground + 0.5));
+        if (majorBackground < 0)  // without WES data
+            oddRatio = (majorAlleleReads + 0.5) / (minorAlleleReads + 0.5);
         else
-            oddRatio = (double) majorAlleleReads / (double) (minorAlleleReads) / ((double) (majorBackground) / (double) (minorBackground));
+            oddRatio = ((majorAlleleReads + 0.5) / (minorAlleleReads + 0.5)) / ((majorBackground + 0.5) / (minorBackground + 0.5));
+
         return Math.log(oddRatio);
     }
 
@@ -83,9 +84,9 @@ public class OddRatioCalc {
      * @return LOR variance of a SNV site
      */
     private double calculateVariance(int majorAlleleReads, int minorAlleleReads, int majorBackground, int minorBackground) {
-        if (minorAlleleReads == 0 | minorBackground == 0)
-            return  1 / (majorAlleleReads + 0.5) + 1 / (minorAlleleReads + 0.5) + 1 / (majorBackground + 0.5) + 1 / (minorBackground + 0.5);
+        if (majorBackground < 0)
+            return 1 / (majorAlleleReads + 0.5) + 1 / (minorAlleleReads + 0.5);
         else
-            return 1/(double) majorAlleleReads + 1/(double)(minorAlleleReads) + 1/(double) (majorBackground) + 1/(double)(minorBackground);
+            return  1 / (majorAlleleReads + 0.5) + 1 / (minorAlleleReads + 0.5) + 1 / (majorBackground + 0.5) + 1 / (minorBackground + 0.5);
     }
 }
