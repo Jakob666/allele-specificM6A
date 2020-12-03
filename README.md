@@ -35,11 +35,10 @@ AseSeqSimulator|generate simulation data for test
    - `-g/--gtf` : required, GTF annotation file
    - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
    - `-o/--output` : optional, ASE gene test output file, default `./aseGene.txt`
-   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
    - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 20000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of AseGeneDetection
 
@@ -50,11 +49,10 @@ AseSeqSimulator|generate simulation data for test
    - `-g/--gtf` : required, GTF annotation file
    - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
    - `-o/--output` : optional, ASM m6A signal test output file, default `./asmPeak.txt`
-   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
    - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 20000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of AsmPeakDetection
 
@@ -66,11 +64,10 @@ AseSeqSimulator|generate simulation data for test
    - `-g/--gtf` : required, GTF annotation file
    - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
    - `-o/--output` : optional, ASE gene test output file, default `./sampleSpecificASE.txt`
-   - `-df/--degree_of_freedom` : optional, degree of freedom of inverse-Chi-square distribution, default 10
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
    - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 20000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of SampleSpecificASE
 4. **SampleSpecificASM**
@@ -87,34 +84,10 @@ AseSeqSimulator|generate simulation data for test
    - `-rc/--reads_coverage` : optional, reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR), default 10
    - `-bc/--bkg_coverage` :optional, reads coverage threshold using for filter WES data SNVs in VCF file (aim for reducing FDR), default 30
    - `-s/--sampling`: optional, MCMC sampling times, larger than 500, default 50000
-   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 5000
+   - `-b/--burn` : optional, MCMC burn-in times, more than 100 and less than sampling times. Default 20000
    - `-t/--thread` : optional, thread number for running test. Default 2
    - `-h/--help` : help message of SampleSpecificASM
 
-5. **AseSeqSimulator**
-   - `-g/--gtf` : required, GTF annotation file
-   - `-t/--twobit` : required, UCSC 2bit format file
-   - `-v/--vcf_file` : optional, vcf file path used for generate SNP, default null
-   - `-db/--dbsnp` : optional, big scale SNV annotation data set, like dbsnp, 1000Genome etc. (the file format is described below)
-   - `-o/--output` : optional, simulate data output directory, default `./AseSeqRead`
-   - `-ls/--library_size` : optional, cDNA library size, default 1000000
-   - `-rl/--read_length` : optional, sequencing reads length, default 75
-   - `-pl/--peak_length` : optional, m6A signal peak length, default 250
-   - `-pn/--peakNum` : optional, maximum m6A signal number on a gene, default -1 (no restrict two this parameter)
-   - `-min_mut/--minimum_mutation` : optional, minimum mutation sites number on fragment under a m6A signal, default 0
-   - `-max_mut/--maximum_mutation` : optional, maximum mutation sites number on fragment under a m6A signal, default 3
-   - `-min_cover/--minimum_coverage` : optional, minimum reads coverage when generate RNA-seq data, default 10
-   - `-max_cover/--maximum_coverage` : optional, maximum reads coverage when generate RNA-seq data, default 70
-   - `-al/--ase_infimum` : optional, ASE ratio infimum, default 0.55
-   - `-ah/--ase_supremum` : optional, ASE ratio supremum, default 0.85
-   - `-fm/--fragment_mean` : optional, mean length of fragments, default 250
-   - `-ft/--fragment_theta` : optional, standard deviation of fragment length, default 25
-   - `-gp/--gene_proportion` : optional, the proportion of genes selected in the total number of genes on a particular chromosome, default 0.2
-   - `-mp/--mutate_proportion` : optional, the proportion of mutated genes in the total number of selected genes on a particular chromosome, default 0.4
-   - `-ol/--overlap` : optional, if the random select gene overlapped with each other, default false
-   - `-se/--single_end` : optional, if true, single-end reads, otherwise pair-end. Default true
-   - `-pe/--pcr_error` : optional, probability of PCR sequencing error, default 0.005
-   - `-h/--help` : help message of AseSeqSimulator
 
 ### 1. Allele-specific expression (ASE) gene detection (one sample test)
 **data dependency**:
