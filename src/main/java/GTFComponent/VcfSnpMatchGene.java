@@ -132,10 +132,10 @@ public class VcfSnpMatchGene {
                         minorNc = (allele1Count < allele2Count)? refNc: altNc.split(",")[0];
                     }
 
-                    if (qualityScore - 100 < 0.00001 && !qualityLabel.equals("PASS"))
+                    if (qualityScore - 100 < 0.00001 && qualityLabel.equals("LOWQUAL"))
                         continue;
 
-                    if (majorAlleleCount < this.readsCoverageThreshold && minorAlleleCount == 0)
+                    if (majorAlleleCount < this.readsCoverageThreshold)
                         continue;
 
                     // locate the SNV site on particular gene using GTF interval tree

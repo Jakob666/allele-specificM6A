@@ -30,7 +30,7 @@ public class M6AGenerator {
         UniformIntegerDistribution uid;
         int modifyPosition;
 
-        uid = new UniformIntegerDistribution(peakStart + readLength/2, peakEnd - readLength/2);
+        uid = new UniformIntegerDistribution(peakStart, peakEnd);
 
         // randomly select m6A modification sites on exon
         modifyPosition = uid.sample();

@@ -20,7 +20,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Test ASM peaks with VCF format file and BED format file
  */
 public class AsmPeakDetection {
-    private String gtfFile, peakBedFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
+    private String gtfFile, wesFile, asmPeakFile, peakCoveredSnpFile, peakCoveredWesSnpFile;
     private int ipSNPReadInfimum, wesSNPReadInfimum, samplingTime, burnIn, totalPeakCount = 0, threadNumber;
     private Logger log;
     private HashMap<String, HashMap<String, HashMap<String, HashMap<String, Integer>>>> peakSnpReadsCount, peakSnpBackground;
@@ -51,14 +51,12 @@ public class AsmPeakDetection {
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
      * @param threadNumber thread number, default 2
-     * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
                             String asmPeakFile, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                            int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger log) {
+                            int samplingTime, int burnIn, int threadNumber, Logger log) {
         this.gtfFile = gtfFile;
-        this.peakBedFile = peakBedFile;
         this.wesFile = wesFile;
         String outputDir = new File(asmPeakFile).getParent();
         this.log = log;
@@ -77,13 +75,13 @@ public class AsmPeakDetection {
 
         this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
         this.peakCoveredSnpFile = new File(outputDir, "peak_with_snv.txt").getAbsolutePath();
-        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile, onlyExonMutation);
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile);
         pws.locateSnvInPeak();
         this.log.debug("SNP locations in " + this.peakCoveredSnpFile);
         this.peakCoveredWesSnpFile = new File(outputDir, "peak_with_snv_bkg.txt").getAbsolutePath();
         if (wesFile != null) {
             this.log.debug("locate WES data SNP record in " + vcfFile + " to corresponding m6A signal peaks");
-            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile, onlyExonMutation);
+            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile);
             pws.locateSnvInPeak();
             this.log.debug("SNP locations in " + this.peakCoveredWesSnpFile);
         }
@@ -105,14 +103,12 @@ public class AsmPeakDetection {
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
      * @param threadNumber thread number, default 2
-     * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param log log4j instance
      */
     public AsmPeakDetection(String gtfFile, String peakBedFile, String vcfFile, String wesFile, String dbsnpFile,
                             String peakWithSnvFile, String peakWithSnvBkgFile, String asmPeakFile, int ipSNPReadInfimum, int wesSNPReadInfimum,
-                            int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger log) {
+                            int samplingTime, int burnIn, int threadNumber, Logger log) {
         this.gtfFile = gtfFile;
-        this.peakBedFile = peakBedFile;
         this.wesFile = wesFile;
         this.log = log;
         if (dbsnpFile != null) {
@@ -130,13 +126,13 @@ public class AsmPeakDetection {
 
         this.log.debug("locate SNP record in " + vcfFile + " to corresponding m6A signal peaks");
         this.peakCoveredSnpFile = peakWithSnvFile;
-        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile, onlyExonMutation);
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredSnpFile);
         pws.locateSnvInPeak();
         this.log.debug("SNP locations in " + this.peakCoveredSnpFile);
         this.peakCoveredWesSnpFile = peakWithSnvBkgFile;
         if (wesFile != null) {
             this.log.debug("locate WES data SNP record in " + vcfFile + " to corresponding m6A signal peaks");
-            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile, onlyExonMutation);
+            pws = new PeakWithSNV(gtfFile, peakBedFile, vcfFile, this.peakCoveredWesSnpFile);
             pws.locateSnvInPeak();
             this.log.debug("SNP locations in " + this.peakCoveredWesSnpFile);
         }
@@ -166,8 +162,7 @@ public class AsmPeakDetection {
 
         // default parameters
         String gtfFile = null, bedFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int ipSNPCoverageInfimum = 10, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 10000, threadNumber = 2;
-        boolean onlyExonMutation = false;
+        int ipSNPCoverageInfimum = 5, wesSNPCoverageInfimum = 30, samplingTime = 50000, burn_in = 10000, threadNumber = 2;
 
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "asmPeak.txt").getAbsolutePath();
@@ -253,13 +248,10 @@ public class AsmPeakDetection {
             }
             threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
         }
-        if (commandLine.hasOption("oe")) {
-            onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
-        }
 
         AsmPeakDetection apd = new AsmPeakDetection(gtfFile, bedFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
                                                     ipSNPCoverageInfimum, wesSNPCoverageInfimum,
-                                                    samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
+                                                    samplingTime, burn_in, threadNumber, logger);
         apd.getTestResult();
     }
 
@@ -390,8 +382,8 @@ public class AsmPeakDetection {
                         backgroundMajor = wesReads.get(majorAllele);
                         backgroundMinor = wesReads.get(minorAllele);
                     } else {
-                        backgroundMajor = (minor + major) / 2;
-                        backgroundMinor = (minor + major) / 2;
+                        backgroundMajor = -1;
+                        backgroundMinor = -1;
                     }
                     wesMajor.add(backgroundMajor);
                     wesMinor.add(backgroundMinor);
@@ -469,6 +461,7 @@ public class AsmPeakDetection {
         ExecutorService threadPoolExecutor = Executors.newFixedThreadPool(this.threadNumber);
         this.lock = new ReentrantLock();
         CountDownLatch countDown = new CountDownLatch(this.statisticForTest.size());
+        long tenPercent = Math.round(this.statisticForTest.size() * 0.1);
 
         RunTest task = (String name) -> {
           return new Runnable() {
@@ -485,15 +478,21 @@ public class AsmPeakDetection {
                       majorBackground = statistic.get(2);
                       minorBackground = statistic.get(3);
                       // get p value via hierarchical model
-                      df = Math.max(3, majorCount.length);
+                      if (majorCount.length == 1 && minorCount[0] == 0 && majorCount[0] <= 35)
+                          df = 2;
+                      else
+                          df = Math.max(3, majorCount.length);
                       aveDepth = Arrays.stream(majorCount).average().getAsDouble();
-                      scaleParam = (aveDepth - 10 < epsilon)? 50: 100;
+                      if (majorCount.length == 1)
+                          scaleParam = 50;
+                      else
+                          scaleParam = (aveDepth - 15 < 0.000001)? 50: 100;
                       boolean wellDone = false;
                       int maxTrail = 0;
                       double pVal = 0, peakOddRatio, peakMAF = 0;
                       hb = new HierarchicalBayesianModel(df, scaleParam, samplingTime,
                               burnIn, majorCount, minorCount, majorBackground, minorBackground);
-                      while (!wellDone && maxTrail < 10) {  // avoid MCMC failed
+                      while (!wellDone && maxTrail < 20) {  // avoid MCMC failed
                           pVal = hb.testSignificant();
                           peakOddRatio = Math.exp(hb.quantifyGeneLOR());
                           peakMAF = Math.min(1.0, peakOddRatio / (peakOddRatio + 1));
@@ -512,8 +511,13 @@ public class AsmPeakDetection {
                       log.error("error occurs on record " + name);
                       log.error(e.getMessage());
                   } finally {
-                      lock.unlock();
                       countDown.countDown();
+                      if (countDown.getCount() % tenPercent == 0) {
+                          double proportion = 100 - 10.0 * countDown.getCount() / tenPercent;
+                          if (proportion >= 0)
+                              log.debug(proportion + "% completed");
+                      }
+                      lock.unlock();
                       statistic = null;
                       majorCount = null;
                       minorCount = null;
@@ -805,7 +809,7 @@ public class AsmPeakDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 5");
         option.setRequired(false);
         options.addOption(option);
 
@@ -822,10 +826,6 @@ public class AsmPeakDetection {
         options.addOption(option);
 
         option = new Option("t", "thread", true, "thread number for running test. Optional, default 2");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("oe", "only_exon", true, "true, if only remain SNPs locate in exon region; otherwise, false. Optional, default false");
         option.setRequired(false);
         options.addOption(option);
 

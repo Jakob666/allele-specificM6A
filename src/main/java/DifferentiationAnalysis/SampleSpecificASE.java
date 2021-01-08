@@ -46,12 +46,11 @@ public class SampleSpecificASE {
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
      * @param threadNumber thread number, default 2
-     * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param logger log4j instance
      */
     public SampleSpecificASE(String gtfFile, String sample1VcfFile, String sample1WesFile, String sample2VcfFile, String sample2WesFile,
                              String dbsnpFile, String outputFile, int readsCoverageThreshold, int wesCoverageThreshold,
-                             int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
+                             int samplingTime, int burnIn, int threadNumber, Logger logger) {
         this.logger = logger;
         this.outputFile = outputFile;
         this.samplingTime = samplingTime;
@@ -60,12 +59,12 @@ public class SampleSpecificASE {
         String snvLocationFile = new File(new File(outputFile).getParent(), "sample1_snv_location.txt").getAbsolutePath();
         this.sample1GeneDetector = new AseGeneDetection(gtfFile, sample1VcfFile, sample1WesFile, dbsnpFile, snvLocationFile,
                                                         outputFile, readsCoverageThreshold, wesCoverageThreshold,
-                                                        samplingTime, burnIn, threadNumber, onlyExonMutation, logger);
+                                                        samplingTime, burnIn, threadNumber, logger);
 
         snvLocationFile = new File(new File(outputFile).getParent(), "sample2_snv_location.txt").getAbsolutePath();
         this.sample2GeneDetector = new AseGeneDetection(gtfFile, sample2VcfFile, sample2WesFile, dbsnpFile, snvLocationFile,
                                                         outputFile, readsCoverageThreshold, wesCoverageThreshold,
-                                                        samplingTime, burnIn, threadNumber, onlyExonMutation, logger);
+                                                        samplingTime, burnIn, threadNumber, logger);
     }
 
     public static void main(String[] args) {
@@ -92,7 +91,6 @@ public class SampleSpecificASE {
         String gtfFile = null, sample1VcfFile = null, sample1WesVcfFile = null, sample2VcfFile = null, sample2WesVcfFile = null,
                dbsnpFile = null, outputFile, outputDir;
         int samplingTime = 50000, burn_in = 10000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
-        boolean onlyExonMutation = false;
 
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "sampleSpecificASE.txt").getAbsolutePath();
@@ -186,12 +184,10 @@ public class SampleSpecificASE {
             }
             threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
         }
-        if (commandLine.hasOption("oe"))
-            onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
 
         SampleSpecificASE ssase = new SampleSpecificASE(gtfFile, sample1VcfFile, sample1WesVcfFile, sample2VcfFile, sample2WesVcfFile,
                                                         dbsnpFile, outputFile, readsCoverageThreshold, wesCoverageThreshold,
-                                                        samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
+                                                        samplingTime, burn_in, threadNumber, logger);
         ssase.testSampleSpecificAse();
     }
 
@@ -591,10 +587,6 @@ public class SampleSpecificASE {
         options.addOption(option);
 
         option = new Option("t", "thread", true, "thread number for running test. Optional, default 2");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("oe", "only_exon", true, "true, if only remain SNPs locate in exon region; otherwise, false. Optional, default false");
         option.setRequired(false);
         options.addOption(option);
 

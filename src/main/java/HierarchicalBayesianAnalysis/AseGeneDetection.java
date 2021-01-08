@@ -46,12 +46,11 @@ public class AseGeneDetection {
      * @param samplingTime sampling time, default 10000
      * @param burnIn burn in time, default 2000
      * @param threadNumber thread number, default 2
-     * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param logger log4j instance
      */
     public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String aseGeneFile,
                             int readsCoverageThreshold, int wesCoverageThreshold,
-                            int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
+                            int samplingTime, int burnIn, int threadNumber, Logger logger) {
         HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
             DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, logger);
@@ -81,7 +80,7 @@ public class AseGeneDetection {
         }
         this.logger.debug("locate SNP record in " + vcfFile + " to corresponding genes");
         String snvLocationFile = new File(new File(aseGeneFile).getParent(), "snv_location.txt").getAbsolutePath();
-        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, onlyExonMutation);
+        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile);
         gsr.locateSnv();
         gsr = null;
         this.threadNumber = threadNumber;
@@ -104,9 +103,9 @@ public class AseGeneDetection {
      * @param onlyExonMutation only remain SNPs locate in exon region, default false
      * @param logger log4j instance
      */
-    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String snvLocationFile, String aseGeneFile,
-                            int readsCoverageThreshold, int wesCoverageThreshold,
-                            int samplingTime, int burnIn, int threadNumber, boolean onlyExonMutation, Logger logger) {
+    public AseGeneDetection(String gtfFile, String vcfFile, String wesFile, String dbsnpFile, String snvLocationFile,
+                            String aseGeneFile, int readsCoverageThreshold, int wesCoverageThreshold,
+                            int samplingTime, int burnIn, int threadNumber, Logger logger) {
         HashMap<String, LinkedList<DbsnpAnnotation.DIYNode>> dbsnpRecord = null;
         if (dbsnpFile != null) {
             DbsnpAnnotation da = new DbsnpAnnotation(dbsnpFile, logger);
@@ -135,7 +134,7 @@ public class AseGeneDetection {
             System.exit(2);
         }
         this.logger.debug("locate SNP record in " + vcfFile + " to corresponding genes");
-        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile, onlyExonMutation);
+        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, snvLocationFile);
         gsr.locateSnv();
         gsr = null;
         this.threadNumber = threadNumber;
@@ -164,8 +163,7 @@ public class AseGeneDetection {
 
         // default parameters
         String gtfFile = null, aseVcfFile = null, wesVcfFile = null, dbsnpFile = null, outputFile, outputDir;
-        int samplingTime = 50000, burn_in = 10000, readsCoverageThreshold = 10, wesCoverageThreshold = 30, threadNumber = 2;
-        boolean onlyExonMutation = false;
+        int samplingTime = 50000, burn_in = 10000, readsCoverageThreshold = 5, wesCoverageThreshold = 30, threadNumber = 2;
 
         if (!commandLine.hasOption("o"))
             outputFile = new File(System.getProperty("user.dir"), "aseGene.txt").getAbsolutePath();
@@ -236,12 +234,9 @@ public class AseGeneDetection {
             }
             threadNumber = Integer.valueOf(commandLine.getOptionValue("t"));
         }
-        if (commandLine.hasOption("oe")) {
-            onlyExonMutation = commandLine.getOptionValue("oe").toLowerCase().equals("true");
-        }
 
         AseGeneDetection agd = new AseGeneDetection(gtfFile, aseVcfFile, wesVcfFile, dbsnpFile, outputFile,
-                readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, threadNumber, onlyExonMutation, logger);
+                readsCoverageThreshold, wesCoverageThreshold, samplingTime, burn_in, threadNumber, logger);
         agd.getTestResult();
     }
 
@@ -384,7 +379,10 @@ public class AseGeneDetection {
                         minorCount = statistic.get(1);
                         majorBackground = statistic.get(2);
                         minorBackground = statistic.get(3);
-                        df = Math.max(3, majorCount.length);
+                        if (majorCount.length == 1 && minorCount[0] == 0 && majorCount[0] <= 35)
+                            df = 2;
+                        else
+                            df = Math.max(3, majorCount.length);
                         aveDepth = Arrays.stream(majorCount).average().getAsDouble();
                         if (majorCount.length == 1)
                             scaleParam = 50;
@@ -395,7 +393,7 @@ public class AseGeneDetection {
                         boolean wellDone = false;
                         int maxTrail = 0;
                         double p = 0, geneOddRatio, geneMAF = 0;
-                        while (!wellDone && maxTrail < 10) {    // avoid MCMC failed
+                        while (!wellDone && maxTrail < 20) {    // avoid MCMC failed
                             p = hb.testSignificant();
                             geneOddRatio = Math.exp(hb.quantifyGeneLOR());
                             geneMAF = Math.min(1.0, geneOddRatio / (geneOddRatio + 1));
@@ -654,7 +652,7 @@ public class AseGeneDetection {
         option.setRequired(false);
         options.addOption(option);
 
-        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 10");
+        option = new Option("rc", "reads_coverage", true, "reads coverage threshold using for filter RNA-seq or MeRIP-seq data SNVs in VCF file (aim for reducing FDR). Optional, default 5");
         option.setRequired(false);
         options.addOption(option);
 
@@ -671,10 +669,6 @@ public class AseGeneDetection {
         options.addOption(option);
 
         option = new Option("t", "thread", true, "thread number for running test. Optional, default 2");
-        option.setRequired(false);
-        options.addOption(option);
-
-        option = new Option("oe", "only_exon", true, "true, if only remain SNPs locate in exon region; otherwise, false. Optional, default false");
         option.setRequired(false);
         options.addOption(option);
 

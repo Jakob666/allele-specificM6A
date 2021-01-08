@@ -37,8 +37,9 @@ public class HeterozygoteReadsCount {
                     new InputStreamReader(new FileInputStream(this.peakCoveredSNPFile))
             );
             String line = "";
+            double qualityScore;
             String[] info;
-            String chr, position, peakStart, peakEnd, peakRange, geneId, geneName, majorNc, minorNc;
+            String chr, position, peakStart, peakEnd, peakRange, geneId, qualityLabel, majorNc, minorNc;
             int majorCount, minorCount;
             while (line != null) {
                 line = bfr.readLine();
@@ -52,10 +53,15 @@ public class HeterozygoteReadsCount {
                     position = info[3];
                     peakRange = peakStart +":"+peakEnd;
                     geneId = info[4];
-                    majorNc = info[6];
-                    minorNc = info[7];
-                    majorCount = Integer.parseInt(info[8]);
-                    minorCount = Integer.parseInt(info[9]);
+                    qualityScore = Double.parseDouble(info[6]);
+                    qualityLabel = info[7];
+                    majorNc = info[8];
+                    minorNc = info[9];
+                    majorCount = Integer.parseInt(info[10]);
+                    minorCount = Integer.parseInt(info[11]);
+                    if (qualityScore - 100 < 0.00001 && qualityLabel.equals("LOWQUAL"))
+                        continue;
+
                     if (majorCount < this.readsCountThreshold)
                         continue;
 

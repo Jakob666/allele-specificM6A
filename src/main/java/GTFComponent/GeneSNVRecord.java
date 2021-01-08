@@ -12,7 +12,6 @@ import java.util.LinkedList;
 
 public class GeneSNVRecord {
     private String gtfFile, vcfFile, outputFile;
-    private boolean exonMutation;
     private HashMap<String, IntervalTree> geneIntervalTree;
     private HashMap<String, HashMap<String, IntervalTree>> geneExonIntervalTree;
 
@@ -20,31 +19,20 @@ public class GeneSNVRecord {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(options, args);
         String gtfFile, vcfFile, outputFile;
-        boolean inExon = false;
 
         gtfFile = new File(commandLine.getOptionValue("g")).getAbsolutePath();
         vcfFile = new File(commandLine.getOptionValue("v")).getAbsolutePath();
         outputFile = new File(commandLine.getOptionValue("o")).getAbsolutePath();
-        if (commandLine.hasOption("ex")) {
-            int val = Integer.valueOf(commandLine.getOptionValue("ex"));
-            if (val == 1)
-                inExon = true;
-            else if (val != 0){
-                System.out.println("invalid value of parameter ex, must be 0 or 1");
-                System.exit(2);
-            }
-        }
 
-        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, outputFile, inExon);
+        GeneSNVRecord gsr = new GeneSNVRecord(gtfFile, vcfFile, outputFile);
         gsr.parseGTFFile();
         gsr.parseVCFFile();
     }
 
-    public GeneSNVRecord(String gtfFile, String vcfFile, String outputFile, boolean inExon) {
+    public GeneSNVRecord(String gtfFile, String vcfFile, String outputFile) {
         this.gtfFile = gtfFile;
         this.vcfFile = vcfFile;
         this.outputFile = outputFile;
-        this.exonMutation = inExon;
     }
 
     public void locateSnv() {
@@ -56,12 +44,9 @@ public class GeneSNVRecord {
         GTFIntervalTree git = new GTFIntervalTree(this.gtfFile);
         git.parseGTFFile();
         this.geneIntervalTree = git.getGtfIntervalTrees();
-        if (this.exonMutation) {
-            GeneExonIntervalTree geit = new GeneExonIntervalTree(this.gtfFile);
-            geit.generateExonTree();
-            this.geneExonIntervalTree = geit.getGeneExonIntervalTree();
-        } else
-            this.geneExonIntervalTree = null;
+        GeneExonIntervalTree geit = new GeneExonIntervalTree(this.gtfFile);
+        geit.generateExonTree();
+        this.geneExonIntervalTree = geit.getGeneExonIntervalTree();
     }
 
     private void parseVCFFile() {
@@ -256,12 +241,10 @@ public class GeneSNVRecord {
     private void searchLocateGene(GTFIntervalTreeNode gitn, String chrNum, int position,
                                   LinkedList<IntervalTreeNode> potentialLocateGene) {
         String geneId = gitn.geneId;
-        if (this.exonMutation) {
-            boolean inExon = this.ifInExon(chrNum, geneId, position);
-            if (inExon)
-                potentialLocateGene.add(gitn);
-        } else
+        boolean inExon = this.ifInExon(chrNum, geneId, position);
+        if (inExon)
             potentialLocateGene.add(gitn);
+
 
         if (gitn.rightChild != null) {
             GTFIntervalTreeNode rc = (GTFIntervalTreeNode) gitn.rightChild;
@@ -298,10 +281,6 @@ public class GeneSNVRecord {
 
         option = new Option("o", "output", true, "Output file path");
         option.setRequired(true);
-        options.addOption(option);
-
-        option = new Option("ex", "exon", true, "If the mutation must be in exon. 1 or 0, represent must or not, respectively. Default 0");
-        option.setRequired(false);
         options.addOption(option);
 
         CommandLineParser parser = new DefaultParser();

@@ -14,7 +14,6 @@ import java.util.LinkedList;
 
 public class PeakWithSNV {
     private String gtfFile, bedFile, vcfFile, outputFile;
-    private boolean exonMutation;
     private HashMap<String, IntervalTree> geneIntervalTree;
     // chr -> geneId -> peakTree;  chr -> geneId -> exonIntervalTree
     private HashMap<String, HashMap<String, IntervalTree>> peakTreeMap, geneExonIntervalTree;
@@ -25,35 +24,23 @@ public class PeakWithSNV {
         Options options = new Options();
         CommandLine commandLine = setCommandLine(options, args);
         String bedFile, vcfFile, gtfFile, outputFile;
-        boolean inExon = false;
 
         bedFile = new File(commandLine.getOptionValue("b")).getAbsolutePath();
         vcfFile = new File(commandLine.getOptionValue("v")).getAbsolutePath();
         gtfFile = new File(commandLine.getOptionValue("g")).getAbsolutePath();
         outputFile = new File(commandLine.getOptionValue("o")).getAbsolutePath();
 
-        if (commandLine.hasOption("ex")) {
-            int val = Integer.valueOf(commandLine.getOptionValue("ex"));
-            if (val == 1)
-                inExon = true;
-            else if (val != 0){
-                System.out.println("invalid value of parameter ex, must be 0 or 1");
-                System.exit(2);
-            }
-        }
-
-        PeakWithSNV pws = new PeakWithSNV(gtfFile, bedFile, vcfFile, outputFile, inExon);
+        PeakWithSNV pws = new PeakWithSNV(gtfFile, bedFile, vcfFile, outputFile);
         pws.buildPeakIntervalTree();
         pws.parseGTFFile();
         pws.parseVCFFile();
     }
 
-    public PeakWithSNV(String gtfFile, String bedFile, String vcfFile, String outputFile, boolean exonMutation) {
+    public PeakWithSNV(String gtfFile, String bedFile, String vcfFile, String outputFile) {
         this.gtfFile = gtfFile;
         this.bedFile = bedFile;
         this.vcfFile = vcfFile;
         this.outputFile = outputFile;
-        this.exonMutation = exonMutation;
     }
 
     public void locateSnvInPeak() {
@@ -150,8 +137,7 @@ public class PeakWithSNV {
 
     private void parseGTFFile() {
         this.geneIdMatchName();
-        if (this.exonMutation)
-            this.generateExonTree();
+        this.generateExonTree();
     }
 
     private void geneIdMatchName() {
@@ -220,10 +206,11 @@ public class PeakWithSNV {
             bfr = new BufferedReader(new InputStreamReader(new FileInputStream(new File(this.vcfFile))));
             bfw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(this.outputFile))));
             bfw.write(String.join("\t", new String[] {"#chr", "peakStart", "peakEnd", "mutatePosition",
-                                                                 "geneId", "geneName", "majorAllele", "minorAllele",
-                                                                 "majorAlleleCount", "minorAlleleCount"}));
+                    "geneId", "geneName", "qualityScore", "qualityLabel", "majorAllele", "minorAllele",
+                    "majorAlleleCount", "minorAlleleCount"}));
             bfw.newLine();
-            String readIn = "", writeOut, chrNum, refNc, altNc, majorNc, minorNc, geneName, peakStart, peakEnd, label;
+            String readIn = "", writeOut, chrNum, qualityScore, qualityLabel, refNc, altNc, majorNc, minorNc,
+                   geneName, peakStart, peakEnd, label;
             int position, allele1Count, allele2Count, majorAlleleCount, minorAlleleCount;
             boolean specialMutation;
             String[] info;
@@ -240,6 +227,8 @@ public class PeakWithSNV {
                     position = Integer.valueOf(info[1]);
                     refNc = info[3];
                     altNc = info[4];
+                    qualityScore = info[5];
+                    qualityLabel = info[6];
                     // whether SNV site contains multiple possible mutations
                     specialMutation = altNc.length() > 1 && altNc.contains(",");
 
@@ -316,11 +305,11 @@ public class PeakWithSNV {
                                 geneName = this.geneNames.getOrDefault(geneId, null);
                                 if (geneName == null)
                                     continue;
-                                if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
+                                if (!this.ifInExon(chrNum, geneId, position))
                                     continue;
                                 writeOut = String.join("\t",
-                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
-                                                majorNc, minorNc, String.valueOf(majorAlleleCount),
+                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName, qualityScore,
+                                                qualityLabel, majorNc, minorNc, String.valueOf(majorAlleleCount),
                                                 String.valueOf(minorAlleleCount)});
                                 bfw.write(writeOut);
                                 bfw.newLine();
@@ -338,11 +327,11 @@ public class PeakWithSNV {
                                 geneName = this.geneNames.getOrDefault(geneId, null);
                                 if (geneName == null)
                                     continue;
-                                if (this.exonMutation && !this.ifInExon(chrNum, geneId, position))
+                                if (!this.ifInExon(chrNum, geneId, position))
                                     continue;
                                 writeOut = String.join("\t",
-                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName,
-                                                majorNc, minorNc, String.valueOf(majorAlleleCount),
+                                        new String[] {chrNum, peakStart, peakEnd, info[1], geneId, geneName, qualityScore,
+                                                qualityLabel, majorNc, minorNc, String.valueOf(majorAlleleCount),
                                                 String.valueOf(minorAlleleCount)});
                                 bfw.write(writeOut);
                                 bfw.newLine();
@@ -476,10 +465,6 @@ public class PeakWithSNV {
 
         option = new Option("o", "output", true, "Output file path");
         option.setRequired(true);
-        options.addOption(option);
-
-        option = new Option("ex", "exon", true, "If the mutation must be in exon. 1 or 0, represent must or not, respectively. Default 0");
-        option.setRequired(false);
         options.addOption(option);
 
         CommandLineParser parser = new DefaultParser();
